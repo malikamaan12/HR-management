@@ -2,6 +2,8 @@
 
 13 September 2026 · Proposed roadmap, not a production-readiness certification
 
+Expanded after comparison with Workday, SAP SuccessFactors, Rippling, BambooHR, HiBob, Deputy and Bayzat: see [competitive gap assessment](HR-Competitive-Gap-Plan.md). It adds employee services, expenses/advances, benefits, compensation/headcount planning, learning, employee listening and event margin workflows. These additions require separate scope selection and re-estimation; the ranges below do not cover the entire expanded backlog.
+
 ## Product direction
 
 Build one workspace for permanent employees, contract employees and event staff: a reliable employee record, a shared approval inbox, and a mobile-friendly self-service portal. Improve the current React/Express/PostgreSQL application incrementally. A full rewrite would delay the workflows that are already implemented.
