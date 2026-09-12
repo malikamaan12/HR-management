@@ -1,0 +1,135 @@
+Detailed Employee Database Feature Prompt & Field Requirements
+
+This document details the requirements for the Employee Database module, the central component of the HR system. It covers features, field specifications, data types, validation rules, and considerations for Qatar-specific compliance.
+
+I. Core Features
+
+Centralized Employee Records: A single source of truth for all employee information.
+
+Dual Database Architecture: Separate data structures optimized for Permanent and Temporary (Event) Staff, while allowing for common data points.
+
+Document Management Integration: Seamlessly link documents to employee profiles.
+
+Workflow Integration: Trigger workflows based on data changes (e.g., visa expiry notifications).
+
+Reporting & Analytics: Enable comprehensive reporting on employee demographics, skills, and compliance status.
+
+Security & Access Control: Role-based access control to protect sensitive data.
+
+Audit Trail: Track all changes made to employee records.
+
+Self-Service Portal Integration: Allow employees to view and update their information (with appropriate permissions).
+
+Qatar Compliance: Ensure all required fields and data formats adhere to Qatar labor laws and regulations.
+
+II. Data Fields & Specifications
+
+This section is divided into sections: Personal Information, Employment Details, Government & Compliance, Qualification & Skills, Bank Details, and Emergency Contact. Fields marked with (Required) are mandatory. Data types are indicated in parentheses.
+
+A. Personal Information
+
+Field Name	Data Type	Validation Rules	Notes
+Full Name (English)	Text (255)		
+Full Name (Arabic)	Text (255)		(Required) for Qatar compliance
+QID Number	Number (14)	Unique, Valid QID format	(Required)
+Date of Birth	Date	Valid date range	(Required)
+Nationality	Dropdown (List of Countries)		(Required)
+Gender	Radio Button (Male/Female/Other)		(Required)
+Marital Status	Dropdown (Single/Married/Divorced/Widowed)		
+Religion	Dropdown (Islam/Christianity/Hinduism/Other)		(Required) in Qatar
+Blood Group	Dropdown (A+/A-/B+/B-/AB+/AB-/O+/O-)		
+Primary Mobile	Number (15)	Valid mobile number format	(Required)
+Secondary Contact	Number (15)	Valid mobile number format	
+Personal Email	Email	Valid email format	
+Emergency Contact Name	Text (255)		(Required)
+Emergency Contact Number	Number (15)	Valid mobile number format	(Required)
+Residential Address in Qatar	Text (500)		(Required)
+Home Country Address	Text (500)		
+Photograph	Image Upload	File size limit, Accepted formats (JPEG, PNG)	
+
+B. Employment Details
+
+Field Name	Data Type	Validation Rules	Notes
+Employee ID	Auto-Generated (Unique)		(Required)
+Employment Type	Dropdown (Permanent/Temporary/Contract)		(Required)
+Event Staff Eligibility	Checkbox		
+Department	Dropdown (List of Departments)		(Required)
+Designation	Dropdown (List of Job Titles)		(Required)
+Location	Dropdown (List of Locations)		(Required)
+Reporting Manager	Search Field (Employee Database)	Valid Employee ID	(Required)
+Secondary Reporting Manager	Search Field (Employee Database)	Valid Employee ID	
+Date of Joining	Date		(Required)
+Contract End Date	Date	Conditional – Required for Temporary/Contract	
+Work Location	Dropdown (List of Locations)		
+Work Email	Email	Valid email format	
+Work Phone	Number (15)	Valid phone number format	
+Cost Center	Dropdown (List of Cost Centers)		
+Employee Category	Dropdown (Expatriate/National)		(Required)
+Job Grade	Dropdown (List of Job Grades)		
+Probation Period (Months)	Number (Integer)		
+Notice Period (Days)	Number (Integer)		
+
+C. Government & Compliance
+
+Field Name	Data Type	Validation Rules	Notes
+Passport Number	Text (50)		(Required) for Expatriates
+Passport Expiry Date	Date		(Required) for Expatriates
+Passport Scan	Document Upload	File size limit, Accepted formats (PDF, JPEG)	(Required) for Expatriates
+Visa Type	Dropdown (Work Visa, Family Visa, etc.)		(Required) for Expatriates
+Visa Number	Text (50)		(Required) for Expatriates
+Visa Expiry Date	Date		(Required) for Expatriates
+Visa Scan	Document Upload	File size limit, Accepted formats (PDF, JPEG)	(Required) for Expatriates
+Work Permit Number	Text (50)		(Required) for Expatriates
+Work Permit Expiry	Date		(Required) for Expatriates
+Work Permit Scan	Document Upload	File size limit, Accepted formats (PDF, JPEG)	(Required) for Expatriates
+Health Card Number	Text (50)		(Required)
+Health Card Expiry	Date		(Required)
+Health Card Scan	Document Upload	File size limit, Accepted formats (PDF, JPEG)	(Required)
+Medical Certificate Date	Date		(Required)
+Medical Certificate Scan	Document Upload	File size limit, Accepted formats (PDF, JPEG)	(Required)
+
+D. Qualification & Skills
+
+Field Name	Data Type	Validation Rules	Notes
+Educational Qualifications	Table (Repeatable)	Degree, Institution, Year, Grade	
+Professional Certifications	Table (Repeatable)	Certificate, Authority, Expiry Date	
+Skills	Multi-select Dropdown (List of Skills)		
+Languages	Multi-select Dropdown (List of Languages)	Proficiency Level (Beginner/Intermediate/Advanced)	
+Special Qualifications for Events	Multi-select Dropdown (List of Event-Specific Skills)		
+
+E. Bank Details
+
+Field Name	Data Type	Validation Rules	Notes
+Bank Name	Dropdown (List of Qatar Banks)		(Required)
+IBAN Number	Text (22)	Valid IBAN format	(Required)
+Swift Code	Text (11)		(Required)
+Bank Branch	Text (255)		
+Account Name	Text (255)		(Required)
+
+F. Emergency Contact (Already covered in Personal Information)
+
+III. Data Security & Privacy Considerations
+
+Encryption: Encrypt sensitive data at rest and in transit.
+
+Access Control: Implement role-based access control to restrict access to sensitive data.
+
+Data Masking: Mask sensitive data when displayed to users who do not have the necessary permissions.
+
+Audit Logging: Track all access and modifications to employee records.
+
+GDPR Compliance: Ensure compliance with GDPR regulations (if applicable).
+
+Qatar Data Privacy Laws: Adhere to all relevant Qatar data privacy laws.
+
+IV. Future Enhancements
+
+Integration with Background Check Services: Automate background checks.
+
+AI-Powered Skill Matching: Improve skill matching for recruitment and development.
+
+Document OCR: Optical Character Recognition to automatically extract data from uploaded documents.
+
+Biometric Authentication: Enhance security with biometric login.
+
+This detailed prompt provides a comprehensive foundation for building a robust and compliant Employee Database module. Remember to prioritize data accuracy, security, and user experience throughout the development process.

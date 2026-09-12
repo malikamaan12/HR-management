@@ -1,0 +1,63 @@
+ Role & Permission Management APIs
+Prompt: "Generate an Express.js API endpoint (/Admin/Roles) that returns a list of all defined roles in the system. Include the role name, description, and associated permissions. This should call an internal function to retrieve the role data."
+Expected Response: API endpoint definition and code snippet (Express.js).
+AI Type: Code Generation, API Design
+
+
+Prompt: "Generate an Express.js API endpoint (/Admin/CreateRole) that allows administrators to create a new role. The endpoint should accept the role name, description, and a list of permissions. Store the role data in the database."
+Expected Response: API endpoint definition and code snippet (Express.js).
+AI Type: Code Generation, API Design
+
+
+Prompt: "Generate an Express.js API endpoint (/Admin/UpdateRole/{roleId}) that allows administrators to update an existing role. The endpoint should accept the role ID and a list of permissions to update."
+Expected Response: API endpoint definition and code snippet (Express.js).
+AI Type: Code Generation, API Design
+
+
+Prompt: "Generate an Express.js API endpoint (/Admin/Permissions) that returns a list of all available permissions in the system. Include the permission name and description."
+Expected Response: API endpoint definition and code snippet (Express.js).
+AI Type: Code Generation, API Design
+
+
+II. User Access Control APIs
+Prompt: "Generate an Express.js API endpoint (/Admin/AssignRoleToUser) that allows administrators to assign a role to a user. The endpoint should accept the user ID and the role ID."
+Expected Response: API endpoint definition and code snippet (Express.js).
+AI Type: Code Generation, API Design
+
+
+Prompt: "Generate an Express.js API endpoint (/Admin/GetUserRoles/{userId}) that returns a list of roles assigned to a given user."
+Expected Response: API endpoint definition and code snippet (Express.js).
+AI Type: Code Generation, API Design
+
+
+III. Security Logging APIs
+Prompt: "Generate an Express.js API endpoint (/Security/LogEvent) that logs security-related events, such as login attempts, data access, and permission changes. The endpoint should accept the event type, user ID, timestamp, and a description of the event. Store the event data in a security log table."
+Expected Response: API endpoint definition and code snippet (Express.js).
+AI Type: Code Generation, API Design
+
+
+Prompt: "Design a PostgreSQL database schema (using Drizzle ORM) for storing security logs. Include columns for: id (primary key), eventType, userId, timestamp, description, and ipAddress."
+Expected Response: SQL code for the table.
+AI Type: Code Generation, Database Schema Design
+
+
+IV. Middleware for Access Control
+Prompt: "Generate an Express.js middleware function that checks if a user has the required permission to access a specific API endpoint. The function should accept the required permission as a parameter and return a 403 Forbidden error if the user does not have the permission."
+Expected Response: JavaScript code for the middleware function.
+AI Type: Code Generation, Security Implementation
+
+
+Prompt: "Implement a mechanism to audit all API calls, logging the user ID, API endpoint, request parameters, and response status to the security log table. This should be implemented as middleware."
+Expected Response: JavaScript code for the middleware function.
+AI Type: Code Generation, Security Implementation
+
+
+Key Considerations:
+Least Privilege Principle: Grant users only the minimum permissions necessary to perform their tasks.
+Role Hierarchy: Design a clear role hierarchy to simplify permission management.
+Security Logging: Log all security-related events for auditing and incident response.
+Authentication & Authorization: Implement robust authentication and authorization mechanisms.
+Data Encryption: Encrypt sensitive data at rest and in transit.
+Regular Security Audits: Conduct regular security audits to identify and address vulnerabilities.
+Compliance: Ensure compliance with relevant security regulations and standards.
+These prompts should provide a solid foundation for building the Admin & Access Control module. Remember to adapt the generated code to your specific project structure and coding style. Consider using a dedicated access control library or framework to simplify the implementation.

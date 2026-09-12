@@ -1,0 +1,135 @@
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
+import { useLocation } from "wouter";
+import { useAuth } from "@/contexts/AuthContext";
+import { useTheme } from "@/contexts/ThemeContext";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { LogOut, User, Settings, Moon, Sun } from "lucide-react";
+
+interface HeaderProps {
+  pageTitle: string;
+}
+
+export default function Header({ pageTitle }: HeaderProps) {
+  const { user, logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
+  const [, setLocation] = useLocation();
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      // Redirect will be handled by auth context
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+  };
+
+  const handleAccountClick = () => {
+    setLocation('/account');
+  };
+
+  const handleSettingsClick = () => {
+    setLocation('/settings');
+  };
+  
+  const handleThemeToggle = () => {
+    toggleTheme();
+  };
+
+  return (
+    <header className={cn("shadow-sm z-20", 
+      theme === 'dark' ? 'bg-gray-800 text-white' : 'bg-white text-neutral-800'
+    )}>
+      <div className="px-4 sm:px-6 py-3 flex items-center justify-between">
+        <div className="flex items-center">
+          <h2 className={cn("text-xl font-poppins font-semibold", 
+            theme === 'dark' ? 'text-white' : 'text-neutral-800'
+          )}>{pageTitle}</h2>
+        </div>
+        <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-3">
+            {/* Theme Toggle Button */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn("rounded-full", 
+                theme === 'dark' ? 'text-yellow-300 hover:text-yellow-200 hover:bg-gray-700' : 'text-gray-500 hover:text-gray-700'
+              )}
+              onClick={handleThemeToggle}
+              aria-label="Toggle theme"
+            >
+              {theme === 'dark' ? (
+                <Sun className="h-5 w-5" />
+              ) : (
+                <Moon className="h-5 w-5" />
+              )}
+            </Button>
+            
+            <button aria-label="Open communication hub" onClick={()=>setLocation("/communications")} className={cn("relative",
+              theme === 'dark' ? 'text-gray-300 hover:text-white' : 'text-neutral-500 hover:text-neutral-700'
+            )}>
+              <i className="fas fa-bell text-xl"></i>
+            </button>
+            <button aria-label="Open communication hub" onClick={()=>setLocation("/communications")} className={cn("relative",
+              theme === 'dark' ? 'text-gray-300 hover:text-white' : 'text-neutral-500 hover:text-neutral-700'
+            )}>
+              <i className="fas fa-envelope text-xl"></i>
+            </button>
+
+            {/* User Dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="flex items-center space-x-2 rounded-full overflow-hidden">
+                  <Avatar className={cn("h-9 w-9 cursor-pointer ring-2 ring-offset-2 ring-primary", 
+                    theme === 'dark' ? 'ring-offset-gray-800' : 'ring-offset-white'
+                  )}>
+                    <AvatarImage 
+                      src={user?.avatar || ''} 
+                      alt={user?.firstName || 'User'} 
+                    />
+                    <AvatarFallback className="bg-primary text-white">
+                      {user?.firstName?.charAt(0)}{user?.lastName?.charAt(0)}
+                    </AvatarFallback>
+                  </Avatar>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56" 
+                sideOffset={12}
+              >
+                <DropdownMenuLabel>
+                  <div className="flex flex-col space-y-1">
+                    <p className="font-medium">{user?.firstName} {user?.lastName}</p>
+                    <p className="text-xs text-muted-foreground">{user?.role}</p>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem className="cursor-pointer" onClick={handleAccountClick}>
+                  <User className="mr-2 h-4 w-4" />
+                  <span>My Account</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem className="cursor-pointer" onClick={handleSettingsClick}>
+                  <Settings className="mr-2 h-4 w-4" />
+                  <span>Settings</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem className="cursor-pointer text-destructive focus:text-destructive" onClick={handleLogout}>
+                  <LogOut className="mr-2 h-4 w-4" />
+                  <span>Logout</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+      </div>
+    </header>
+  );
+}

@@ -1,0 +1,104 @@
+This plan applies the "E3 Aurora" visual language to the core modules identified in the sources (Dual Workforce, Compliance, Events), utilizing a Bento Grid layout for data density and Polymorphism (Glassmorphism) for a modern, depth-based aesthetic.
+1. Design System: "E3 Aurora"
+Color Palette & Gradient Strategy
+The "E3 Aurora" gradient will serve as the heartbeat of the application, used to denote active states, data visualization, and primary actions.
+• The Gradient: linear-gradient(135deg, #6A4FB3 0%, #5C77B6 50%, #46A6A9 100%)
+    ◦ #6A4FB3 (Purple): Used for Permanent Workforce & Admin Actions.
+    ◦ #5C77B6 (Indigo): Used for Analytics & Information.
+    ◦ #46A6A9 (Teal): Used for Event Staff (Temporary), Success States, and Financials (Payroll/WPS).
+• Backgrounds: To ensure the UI is "not broken" and readable:
+    ◦ Light Mode: Off-white background (#F8F9FA) with subtle aurora mesh blurs in the corners.
+    ◦ Dark Mode: Deep slate (#0F172A) allowing the neon aurora gradients to glow.
+Visual Style: Polymorphism & Glassmorphism
+• Panels/Cards: High transparency (10-20% opacity) with a background blur (backdrop-filter: blur(12px)) and a subtle white/gradient border. This creates the "glass" effect over the background.
+• Depth: Use multiple layers. The background has the gradient mesh; the middle layer has the glass cards; the top layer has sharp, high-contrast text and buttons.
+Layout: The Bento Grid
+• Responsive Grid: A modular dashboard where every component is a rectangular cell.
+    ◦ 1x1 Cell: KPIs (e.g., Total Headcount).
+    ◦ 2x1 Cell: Lists (e.g., Recent Alerts).
+    ◦ 2x2 Cell: Complex Charts (e.g., Event Cost Analysis).
+• Behavior: On mobile, the Bento grid naturally reflows into a single vertical column.
+
+--------------------------------------------------------------------------------
+2. Core UI Components
+A. The Navigation Sidebar (Glass Rail)
+• Style: A vertical glass rail on the left.
+• Active State: The active module icon (e.g., "Event Staff") glows with the Teal (#46A6A9) portion of the gradient.
+• Animation: Hovering over an icon expands a tooltip with a "spring" animation.
+B. Dashboard: "The Command Center" (Bento Layout)
+This is the landing page, integrating data from all sources.
+1. Cell A (Large - 2x2): Workforce Map (Geofencing)
+    ◦ Visual: A dark map view showing Qatar.
+    ◦ Data: Pulsing Teal dots for active Event Staff at venues (e.g., Lusail Stadium) and Purple dots for Permanent Staff in the HQ.
+    ◦ Interaction: Hovering over a dot reveals a glass tooltip with the staff name and check-in time.
+2. Cell B (Tall - 1x2): Compliance Health Ring
+    ◦ Visual: A donut chart using the E3 Aurora Gradient.
+    ◦ Data: Tracks QID/Visa expiries.
+    ◦ Logic: The ring is full (Teal) when compliant. Segments turn Red if documents are expiring within 30 days.
+    ◦ Animation: The ring spins and fills upon loading.
+3. Cell C (Wide - 2x1): The "Payroll Pulse"
+    ◦ Visual: A waveform line chart showing salary disbursement trends.
+    ◦ Data: WPS Status (Sent/Pending). A Teal line indicates successful WPS processing; a Purple line indicates pending reviews.
+4. Cell D (1x1): Quick Action "Magic Button"
+    ◦ Visual: A floating action button with the full Aurora gradient.
+    ◦ Action: Triggers a "polymorphic" modal that morphs from the button to fill the screen for "Create Job Requisition" or "New Event Roster".
+
+--------------------------------------------------------------------------------
+3. Module-Specific UI Plans
+I. Employee Database (Dual View)
+To handle the "Dual Workforce" requirement:
+• The Switch: A prominent "pill" toggle at the top.
+    ◦ Left (Purple): Permanent Staff.
+    ◦ Right (Teal): Event Staff.
+    ◦ Animation: The active background slides smoothly between the two options.
+• Profile Card:
+    ◦ Header: Displays the employee's photo with a border ring color-coded by their visa status (Teal = Valid, Orange = Expiring Soon).
+    ◦ Documents Section: A "stack" of cards. Clicking expands them accordion-style to show QID, Passport, and Contract scans.
+II. Event Staff Roster (Drag & Drop)
+• Layout: Split screen.
+    ◦ Left: List of available staff (Cards with "Skill Tags" in Indigo).
+    ◦ Right: Event Slots (Empty glass containers).
+• Interaction: Dragging a staff member into a slot triggers a Teal ripple effect if the skills match. If there is a conflict (e.g., overlapping shift), the slot pulses Red and vibrates.
+III. Mobile App (Event Staff View)
+• Design: Simplified for readability in sunlight (outdoor events).
+• Check-In Button: A massive, "Press and Hold" button using the Teal (#46A6A9) gradient.
+    ◦ Animation: As the user holds, the button fills up like a liquid container. Upon completion, it explodes into confetti particles.
+• Digital ID: A "Flip Card" component.
+    ◦ Front: Photo, Name, QR Code for site access.
+    ◦ Back: QID details and emergency contact (accessible via a tap flip animation).
+
+--------------------------------------------------------------------------------
+4. Ensuring "UI is Not Broken" (Resilience Strategy)
+To ensure robustness as requested:
+1. Gradient Text Fallback:
+    ◦ Risk: Gradient text can disappear on older browsers.
+    ◦ Fix: Define a solid color: #5C77B6 fallback before applying the -webkit-background-clip: text.
+2. Contrast Safety:
+    ◦ Risk: White text on the Teal part of the gradient might have low contrast.
+    ◦ Fix: Use distinct drop shadows on text overlaying gradients, or ensure the Teal used for text is slightly darkened (#3A8E91) while keeping the background neon.
+3. Loading States (Skeleton Screens):
+    ◦ Instead of spinning wheels, use Shimmering Bento Cells. The grey card background pulses with a faint Aurora gradient moving left-to-right to indicate data is fetching.
+4. Error Handling:
+    ◦ If a WPS file fails to generate, the "Payroll Pulse" cell doesn't break. It turns into a "Glass Crack" visual (stylized, not messy) with a clear "Retry" button in Purple.
+5. Technical Implementation (CSS/Tailwind Snippet)
+/* E3 Aurora Gradient Class */
+.bg-e3-aurora {
+  background: linear-gradient(135deg, #6A4FB3 0%, #5C77B6 50%, #46A6A9 100%);
+}
+
+/* Glassmorphism Card Class */
+.glass-bento-card {
+  background: rgba(255, 255, 255, 0.05); /* Ultra low opacity */
+  backdrop-filter: blur(16px);           /* The frost effect */
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+  border-radius: 24px;                   /* Soft, modern corners */
+  transition: all 0.3s ease;
+}
+
+/* Hover Animation */
+.glass-bento-card:hover {
+  transform: translateY(-5px);
+  border-color: #5C77B6;                 /* Indigo border on hover */
+  box-shadow: 0 10px 40px rgba(106, 79, 179, 0.2); /* Purple glow */
+}

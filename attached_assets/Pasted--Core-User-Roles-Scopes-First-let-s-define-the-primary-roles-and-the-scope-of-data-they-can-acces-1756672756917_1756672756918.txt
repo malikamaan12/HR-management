@@ -1,0 +1,83 @@
+ Core User Roles & Scopes
+First, let's define the primary roles and the scope of data they can access.
+
+Super Admin: Unrestricted access to all modules and all data for system configuration and maintenance.
+
+C-Level Executive (CEO, COO, etc.): High-level, read-only access to organization-wide dashboards and analytics. No access to individual employee records unless required.
+
+HR Director: Full access to all HR modules and data across the entire organization. Can configure HR policies and workflows.
+
+HR Manager / Generalist: Full functional access to HR modules but scoped to specific departments or business units.
+
+Specialized HR Roles (Recruiter, Payroll Specialist): Deep access within their specific modules (e.g., Recruitment, Payroll), with limited or no access to other modules.
+
+Department Head / Line Manager: Functional access (view, edit, approve) limited to their direct and indirect reports (their team/department).
+
+Event Manager: A unique manager role with access limited only to the pool of temporary event staff and the Event Management module.
+
+Finance/Audit: Read-only access to payroll, compensation, and compliance reports for financial auditing.
+
+Permanent Employee: Self-service access limited strictly to their own personal data.
+
+Temporary / Event Staff: Limited self-service access focused on their schedule, timesheets, and availability for events.
+
+II. Detailed Access Control Matrix
+This table breaks down the specific permissions for each role across the key HR system modules.
+
+Permission Key:
+
+C: Create/Add
+
+R: Read/View
+
+U: Update/Edit
+
+D: Delete/Archive
+
+A: Approve
+
+X: Full Admin/Configure
+
+-: No Access
+
+Module / Role	Super Admin	C-Level Exec	HR Director	HR Manager	Recruiter	Payroll Specialist	Dept. Head	Event Manager	Finance / Audit	Permanent Employee	Temporary Staff
+1. Employee Database	X	R (Aggregate)	CRUD	CRUD (Scoped)	R (Candidates)	R (Scoped)	R (Team)	R (Event Staff)	-	RU (Self)	RU (Self)
+2. Recruitment & Onboarding	X	-	CRUD, A	CRUD, A	CRUD, A	-	RU, A (Team)	-	-	R (Referrals)	-
+3. Attendance & Time Tracking	X	R (Dashboard)	CRUD, A	CRUD, A	-	CRUD, A	CRU, A (Team)	CRU, A (Event)	R	R (Self)	CRU (Self)
+4. Payroll Management	X	R (Dashboard)	CRUD, A	R (Scoped)	-	CRUD, A	R (Team Comp)	-	R (All)	R (Self)	R (Self)
+5. Leave & Absence Mgt.	X	R (Dashboard)	CRUD, A	CRUD, A	-	R	CR, A (Team)	-	-	CR (Self)	-
+6. Event Staff Management	X	-	CRUD	CRU	R (Pool)	R (Pay Rates)	-	CRUD, A	-	-	RU (Avail.)
+7. Compliance & Documents	X	-	X	CRUD (Scoped)	RU (Onboard)	R (Payroll Docs)	R (Team)	R (Event Staff)	R	CRU (Self)	CRU (Self)
+8. Communication Hub	X	R	X	C (Scoped)	C (Candidates)	C (Payroll)	C (Team)	C (Event Staff)	-	R	R
+9. Performance Management	X	R (Dashboard)	X	CRUD, A	-	-	CRU, A (Team)	CRU, A (Event)	-	CRU (Self)	R (Self)
+10. Reports & Analytics	X	R (All)	X	R (Scoped)	R (Recruit.)	R (Payroll)	R (Team)	R (Event)	R (Financial)	R (Self)	R (Self)
+11. Training & Development	X	R (Dashboard)	X	CRUD (Scoped)	-	-	CR, A (Team)	CRU (Event)	-	CRU (Self)	CRU (Self)
+12. Benefits & Perks	X	R (Costs)	X	CRUD (Scoped)	-	R	R (Team)	-	R (Costs)	CRU (Self)	-
+13. System Configuration	X	-	-	-	-	-	-	-	-	-	-
+
+Export to Sheets
+III. Detailed Justification for Key Roles
+HR Director
+Access: Full strategic and operational control over all HR functions.
+
+Justification: This role is responsible for the entire HR strategy and its implementation. They need to configure policies (leave, performance), oversee all employee data, approve high-level actions, and generate organization-wide reports for strategic planning.
+
+Department Head / Line Manager
+Access: Scoped to their team. Focuses on approval workflows and team management.
+
+Justification: The manager's primary role is people management. They need to view their team's profiles, approve leave and timesheets, conduct performance reviews, and access reports related to their team's productivity and costs. They should not see payroll details of other departments or have access to HR policy configuration.
+
+Event Manager
+Access: A unique role with access strictly limited to the temporary staff pool and event management tools.
+
+Justification: This is a critical security and privacy boundary. Event managers need to create events, roster temporary staff, track their attendance on-site, and rate their performance. They have no legitimate need to access information about permanent employees, ensuring the privacy of the core organizational staff.
+
+Payroll Specialist
+Access: Deep access to financial and attendance data but limited access to other personal data.
+
+Justification: This role handles sensitive financial information. They need to create and edit payroll data, run calculations, and manage WPS compliance. They do not need access to performance reviews, recruitment pipelines, or training records, thus minimizing the risk of data exposure.
+
+Permanent vs. Temporary Employee
+Permanent Employee Access: Broad self-service capabilities including leave requests, benefits management, and performance reviews.
+
+Temporary Staff Access: Limited self-service focused on the transactional nature of their work: updating availability, submitting timesheets for events, viewing their schedule, and accessing event-specific communications. They do not have access to modules like long-term leave, benefits, or formal performance reviews. This streamlined interface improves their user experience and system security.

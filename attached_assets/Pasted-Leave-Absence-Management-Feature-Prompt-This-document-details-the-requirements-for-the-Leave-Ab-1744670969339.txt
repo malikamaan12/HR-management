@@ -1,0 +1,237 @@
+Leave & Absence Management Feature Prompt
+This document details the requirements for the Leave & Absence Management module, outlining features, data fields, workflows, and Qatar-specific considerations.
+I. Core Features
+Leave Request Submission: Employees can submit leave requests through a self-service portal or mobile app.
+Automated Workflow: Requests are routed to the appropriate approvers based on pre-defined rules.
+Leave Accrual: Automatic calculation of leave accruals based on employment type, tenure, and Qatar Labor Law.
+Leave Balance Tracking: Real-time tracking of available leave balances for each employee.
+Conflict Checking: System prevents overlapping leave requests within the same team or department.
+Integration with Attendance: Automatic updates to attendance records upon leave approval.
+Reporting & Analytics: Generate reports on leave trends, utilization rates, and outstanding requests.
+Qatar Compliance: Adherence to Qatar Labor Law regarding annual leave, sick leave, and other types of leave.
+Mobile App Integration: Allow employees to submit and track leave requests via the mobile app.
+II. Data Fields & Specifications
+A. Leave Type Configuration:
+Field Name
+Data Type
+Validation Rules
+Notes
+Leave Type Name
+Text (255)
+
+
+(e.g., Annual Leave, Sick Leave, Maternity Leave, Hajj Leave)
+Leave Category
+Dropdown (Paid, Unpaid)
+
+
+
+
+Accrual Method
+Dropdown (Fixed Amount, Accrual Rate, None)
+
+
+
+
+Accrual Rate
+Number (Decimal)
+
+
+(e.g., 1.25 days per month)
+Maximum Accrual
+Number (Days)
+
+
+
+
+Carryover Allowed
+Checkbox
+
+
+
+
+Carryover Limit
+Number (Days)
+
+
+
+
+Requires Medical Certificate
+Checkbox
+
+
+For Sick Leave
+Approval Workflow
+Dropdown (Predefined Workflow)
+
+
+
+
+Applicable To
+Multi-select (All Employees, Specific Departments, Specific Employee Types)
+
+
+
+
+
+B. Leave Request:
+Field Name
+Data Type
+Validation Rules
+Notes
+Employee ID
+Auto-Populated (Linked to Employee Database)
+
+
+
+
+Leave Type
+Dropdown (Based on Leave Type Configuration)
+
+
+
+
+Start Date
+Date
+
+
+
+
+End Date
+Date
+
+
+
+
+Number of Days
+Calculated
+
+
+
+
+Half Day
+Checkbox
+
+
+
+
+Reason
+Text Area
+
+
+
+
+Supporting Document
+Document Upload
+
+
+(e.g., Medical Certificate)
+Status
+Dropdown (Pending, Approved, Rejected, Cancelled)
+
+
+
+
+Approved By
+Search Field (Employee Database)
+
+
+
+
+Approval Date
+Date
+
+
+
+
+Comments
+Text Area
+
+
+
+
+
+C. Leave Balance:
+Field Name
+Data Type
+Validation Rules
+Notes
+Employee ID
+Auto-Populated (Linked to Employee Database)
+
+
+
+
+Leave Type
+Dropdown (Based on Leave Type Configuration)
+
+
+
+
+Accrued Days
+Number (Decimal)
+
+
+
+
+Used Days
+Number (Decimal)
+
+
+
+
+Remaining Days
+Calculated
+
+
+
+
+Last Accrual Date
+Date
+
+
+
+
+
+III. Workflows
+Leave Request Submission: Employee submits a leave request through the self-service portal or mobile app.
+Approval Workflow:
+Request is routed to the employee’s direct manager.
+Manager approves or rejects the request.
+If required, the request is routed to a second-level approver (e.g., Department Head).
+Employee receives notification of the approval/rejection status.
+
+
+Leave Accrual:
+System automatically calculates leave accruals based on the configured accrual method.
+Accrued leave is added to the employee’s leave balance.
+Accrual is triggered on a predefined schedule (e.g., monthly, quarterly).
+
+
+Leave Cancellation: Employee can cancel a pending leave request.
+IV. Reporting & Analytics
+Leave Summary Report: Total leave taken by department, employee, or leave type.
+Leave Balance Report: Current leave balances for all employees.
+Leave Request Report: List of all leave requests, including status and approval history.
+Leave Trend Report: Identify patterns in leave requests over time.
+Absenteeism Report: Track employee absenteeism rates.
+V. Qatar-Specific Considerations
+Annual Leave: Minimum 21 days of annual leave after one year of service (Qatar Labor Law).
+Sick Leave: 15 days of sick leave per year (2 weeks full pay, 4 weeks half pay, beyond that unpaid). Requires medical certificate.
+Maternity Leave: 50 days of maternity leave (Qatar Labor Law).
+Hajj Leave: Entitlement to leave for Hajj pilgrimage (Qatar Labor Law).
+Ramadan Working Hours: Adjust leave accrual and scheduling to accommodate reduced working hours during Ramadan.
+Documentation: Ensure proper documentation is collected for sick leave and other types of leave.
+Arabic Language Support: All forms and reports should be available in Arabic.
+VI. Integration Points
+Employee Database: Retrieve employee information and update leave balances.
+Attendance & Time Tracking: Automatic updates to attendance records upon leave approval.
+Payroll Management: Integrate with payroll to deduct leave days from salary.
+Mobile App: Allow employees to submit and track leave requests.
+HRIS System: Share leave data with other HR systems.
+VII. Security Considerations
+Access Control: Implement role-based access control to restrict access to sensitive leave data.
+Data Encryption: Encrypt leave data at rest and in transit.
+Audit Trail: Maintain a detailed audit trail of all leave requests and approvals.
+This detailed feature prompt provides a comprehensive foundation for building a robust and compliant Leave & Absence Management module. Prioritize accuracy, automation, and adherence to Qatar Labor Law to ensure efficient leave management and employee satisfaction.
+

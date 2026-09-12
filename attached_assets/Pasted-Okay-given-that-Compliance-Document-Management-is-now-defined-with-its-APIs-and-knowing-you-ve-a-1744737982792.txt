@@ -1,0 +1,46 @@
+Okay, given that Compliance & Document Management is now defined with its APIs, and knowing you've already laid the groundwork with the previous prompts, here's a set of feature prompts designed to build out the core functionality. These are geared towards generating code snippets and component structures, assuming you're using your existing tech stack (React, TypeScript, Express.js, PostgreSQL/Drizzle). I'll categorize them for clarity.
+Important: These prompts build on the previous ones. Ensure you've addressed the database schema and basic API routes first.
+I. Document Upload & Storage Features
+Prompt: "Generate a React component (TypeScript, Tailwind CSS, shadcn/ui) for uploading documents. Include: a drag-and-drop area, a file selection button, a document type dropdown (populated from the /DocumentManagement/DocumentTypes API endpoint - assume it returns a list of document type objects with id and name), and a loading indicator. The component should call the /DocumentManagement/UploadDocument API endpoint upon successful upload, passing the employee ID, document type ID, and the file. Handle success and error responses."
+Expected Response: React component code.
+AI Type: Code Generation, Frontend Development
+Prompt: "Write the Express.js route (/DocumentManagement/UploadDocument) to handle document uploads. It should: 1) Authenticate the user. 2) Validate the employee ID and document type ID. 3) Store the uploaded file securely (consider using a cloud storage service like AWS S3 or similar). 4) Store the document metadata (employee ID, document type ID, filename, upload date, etc.) in the PostgreSQL database using Drizzle ORM. 5) Return a success or error response."
+Expected Response: Express.js route code.
+AI Type: Code Generation, Backend Development
+Prompt: "Create a PostgreSQL function (using Drizzle ORM) that automatically generates a unique filename for each uploaded document, based on the employee ID, document type, and timestamp. The filename should be URL-safe."
+Expected Response: SQL code for the function.
+AI Type: Code Generation, Database Function
+II. Document Viewing & Management Features
+Prompt: "Generate a React component (TypeScript, Tailwind CSS, shadcn/ui) to display a list of documents for a given employee. The component should: 1) Fetch the document list from the /DocumentManagement/GetDocuments/{employeeId} API endpoint. 2) Display the documents in a table with columns for Document Type, Upload Date, and a Download button. 3) Implement pagination for large document lists."
+Expected Response: React component code.
+AI Type: Code Generation, Frontend Development
+Prompt: "Write the Express.js route (/DocumentManagement/GetDocuments/{employeeId}) to retrieve a list of documents for a given employee ID. It should: 1) Authenticate the user. 2) Validate the employee ID. 3) Query the PostgreSQL database for all documents associated with the employee. 4) Return the document metadata (filename, document type, upload date, etc.)."
+Expected Response: Express.js route code.
+AI Type: Code Generation, Backend Development
+Prompt: "Generate an Express.js route (/DocumentManagement/DownloadDocument/{documentId}) to serve a document file. It should: 1) Authenticate the user. 2) Validate the document ID. 3) Retrieve the document file from storage. 4) Set the appropriate Content-Type header. 5) Stream the file to the client."
+Expected Response: Express.js route code.
+AI Type: Code Generation, Backend Development
+III. Compliance & Audit Trail Features
+Prompt: "Write a PostgreSQL function (using Drizzle ORM) that checks if an employee has all the required documents based on their employment type (permanent/temporary) and Qatar Labor Law. The function should return true if all required documents are present, and false otherwise."
+Expected Response: SQL code for the function.
+AI Type: Code Generation, Database Function
+Prompt: "Generate an Express.js API route (/Compliance/CheckEmployeeCompliance/{employeeId}) that calls the PostgreSQL function from the previous prompt and returns a boolean indicating whether the employee is compliant."
+Expected Response: Express.js route code.
+AI Type: Code Generation, Backend Development
+Prompt: "Create a table in PostgreSQL (using Drizzle ORM) to store audit trail events for document management. Include columns for: event timestamp, user ID, document ID, event type (e.g., 'Upload', 'Download', 'Update', 'Delete'), and a description."
+Expected Response: SQL code for the table.
+AI Type: Code Generation, Database Schema Design
+Prompt: "Write a middleware function for Express.js that automatically logs all document management API calls to the audit trail table, including the user ID, API endpoint, request parameters, and response status."
+Expected Response: JavaScript code for the middleware.
+AI Type: Code Generation, Backend Development
+IV. Expiry Tracking
+Prompt: "Write a scheduled task (using a library like node-cron) that runs daily and checks for documents expiring within the next 30 days. It should send an email notification to the employee and their manager. Assume you have an email sending service configured."
+Expected Response: JavaScript code for the scheduled task.
+AI Type: Code Generation, Backend Development
+Key Considerations:
+API Documentation: Ensure your API endpoints are well-documented (e.g., using Swagger/OpenAPI).
+Error Handling: Implement robust error handling throughout the system.
+Security: Protect sensitive document data with appropriate security measures.
+Testing: Thoroughly test all features.
+Adaptation: You'll likely need to adapt the generated code to fit your specific project structure and coding style.
+These prompts should give you a strong starting point for building out the Compliance & Document Management features in your E3 HR Management System. Let me know if you'd like me to refine any of these prompts or generate code for specific components.

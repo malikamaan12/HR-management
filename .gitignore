@@ -1,0 +1,15 @@
+node_modules
+dist
+.DS_Store
+server/public
+vite.config.ts.*
+*.tar.gz
+.env
+.env.*
+!.env.example
+coverage
+
+# Local development screenshots (may contain personal data)
+attached_assets/**/*.png
+attached_assets/**/*.jpg
+attached_assets/**/*.jpeg

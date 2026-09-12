@@ -1,0 +1,155 @@
+Recruitment & Onboarding Feature Details
+This document outlines the features and requirements for the Recruitment and Onboarding modules, detailing functionality, data fields, and integration points.
+I. Recruitment Module
+A. Core Features:
+Job Requisition Management: Streamlined process for creating, reviewing, and approving job requisitions.
+Applicant Tracking System (ATS): Manage applications, track candidate progress, and communicate with applicants.
+Multi-Channel Job Posting: Post jobs to internal career sites, external job boards, and social media.
+Candidate Screening & Shortlisting: Automated screening based on keywords and qualifications.
+Interview Scheduling: Automated scheduling with interviewers and candidates.
+Collaboration Tools: Enable interviewers to share feedback and collaborate on candidate evaluations.
+Reporting & Analytics: Track key recruitment metrics (time-to-fill, cost-per-hire, source of hire).
+Qatar Compliance: Ensure adherence to Qatar labor laws regarding job postings and candidate selection.
+B. Data Fields & Specifications:
+Job Requisition: (See previous response for detailed field list - reuse that structure)
+Candidate Profile:
+Full Name (English) - Text (255)
+Full Name (Arabic) - Text (255)
+Email - Email
+Phone Number - Number (15)
+LinkedIn Profile URL - URL
+Resume/CV - Document Upload (PDF, DOCX)
+Cover Letter - Document Upload (PDF, DOCX)
+Skills - Multi-select Dropdown
+Experience - Table (Job Title, Company, Dates, Description)
+Education - Table (Degree, Institution, Dates)
+QID Number (if applicable) - Number (14)
+Visa Status (if applicable) - Dropdown
+Source of Application - Dropdown (Job Board, Referral, Internal, etc.)
+Application Date - Date
+
+
+Interview Feedback:
+Interviewer Name - Search Field (Employee Database)
+Interview Date - Date
+Interview Round - Dropdown (First, Second, Final)
+Overall Rating - Dropdown (1-5 stars)
+Feedback Comments - Text Area
+Recommendation - Dropdown (Hire, Reject, Hold)
+
+
+C. Workflow:
+Job Requisition Creation: Department Head initiates, HR reviews & approves.
+Job Posting: System posts to configured job boards.
+Application Submission: Candidates apply through portal or job boards.
+Automated Screening: System filters based on keywords and qualifications.
+Shortlisting: HR reviews screened candidates and shortlists for interviews.
+Interview Scheduling: System automates scheduling with interviewers.
+Interview Process: Interviewers conduct interviews and provide feedback.
+Candidate Evaluation: HR reviews feedback and makes a hiring decision.
+Offer Management: HR generates and sends offer letter.
+II. Onboarding Module
+A. Core Features:
+Automated Onboarding Workflows: Guided workflows for new hires, tailored to role and employment type.
+Digital Document Collection: Securely collect required documents from new hires.
+Electronic Signature: Enable electronic signing of employment contracts and other documents.
+Task Management: Assign and track onboarding tasks for HR, IT, and the new hire.
+Compliance Checks: Ensure all required compliance checks are completed.
+Welcome Package: Provide new hires with essential information about the company and their role.
+Integration with Employee Database: Seamlessly transfer new hire data to the Employee Database.
+Qatar Compliance: Ensure onboarding process adheres to Qatar labor laws.
+B. Data Fields & Specifications:
+Onboarding Checklist: (See detailed structure below)
+New Hire Information: (Populated from Recruitment Module)
+Document Uploads: (See Employee Database - Government & Compliance section for required documents)
+Task Assignments:
+Task Name - Text (255)
+Assigned To - Dropdown (HR, IT, New Hire, Manager)
+Due Date - Date
+Status - Dropdown (Not Started, In Progress, Completed)
+Comments - Text Area
+
+
+C. Onboarding Checklist Structure (Example):
+Category
+Task
+Assigned To
+Due Date
+Status
+Pre-Joining
+Background Verification
+HR
+[Date]
+Completed/Pending
+
+
+Contract Signing
+New Hire
+[Date]
+Completed/Pending
+
+
+QID Application (if applicable)
+HR
+[Date]
+Completed/Pending
+First Day
+System Access Creation
+IT
+[Date]
+Completed/Pending
+
+
+Office Tour
+Manager
+[Date]
+Completed/Pending
+
+
+Introduction to Team
+Manager
+[Date]
+Completed/Pending
+First Week
+Orientation Session
+HR
+[Date]
+Completed/Pending
+
+
+Benefits Enrollment
+HR
+[Date]
+Completed/Pending
+
+
+Goal Setting
+Manager
+[Date]
+Completed/Pending
+
+D. Workflow:
+Offer Acceptance: Candidate accepts offer through the system.
+Onboarding Initiation: System automatically triggers onboarding workflow.
+Document Collection: New hire uploads required documents.
+Task Assignment: System assigns tasks to HR, IT, and the new hire.
+Compliance Checks: HR verifies compliance with Qatar labor laws.
+System Access Provisioning: IT creates system access for the new hire.
+Orientation & Training: New hire completes orientation and training.
+Onboarding Completion: HR marks onboarding as complete.
+III. Integration Points:
+Employee Database: Seamless transfer of new hire data.
+Recruitment Module: Trigger onboarding workflow upon offer acceptance.
+Document Management System: Store and manage onboarding documents.
+Digital Signature Service: Enable electronic signing of documents.
+Qatar Ministry of Labor API: Submit employment contracts and other required documents.
+Background Check Services: Integrate with background check providers.
+IT Systems: Automate system access provisioning.
+IV. Qatar-Specific Considerations:
+Arabic Language Support: All forms and communications should be available in Arabic.
+QID & Visa Verification: Ensure accurate QID and visa information is collected and verified.
+Labor Contract Compliance: Ensure employment contracts comply with Qatar labor laws.
+Document Attestation: Verify the authenticity of educational and professional certificates.
+Medical Examination: Ensure new hires undergo a medical examination as required by Qatar law.
+This detailed feature outline provides a solid foundation for building a robust and compliant Recruitment and Onboarding system. Remember to prioritize user experience and automation to streamline the process and improve the new hire experience.
+

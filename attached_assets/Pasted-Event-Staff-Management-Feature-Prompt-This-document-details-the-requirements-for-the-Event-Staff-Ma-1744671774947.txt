@@ -1,0 +1,225 @@
+Event Staff Management Feature Prompt
+This document details the requirements for the Event Staff Management module, outlining features, data fields, workflows, and integration points. This module is specifically designed to manage the unique challenges of a temporary, event-driven workforce.
+I. Core Features
+Event Creation & Management: Define event details, staffing requirements, and schedules.
+Skill-Based Staff Matching: Automatically match available staff to event roles based on skills and qualifications.
+Availability Management: Track staff availability and preferences for event assignments.
+Roster Management: Create and manage event rosters, assigning staff to specific roles and shifts.
+Real-Time Deployment Tracking: Monitor staff deployment and attendance at event locations.
+Mobile Check-In/Out: Enable staff to check in and out of events using a mobile app.
+Performance Evaluation: Collect feedback on staff performance after each event.
+Communication Hub: Facilitate communication with event staff via announcements, notifications, and messaging.
+Integration with Payroll: Seamlessly transfer event staff hours and pay rates to the payroll system.
+Qatar Compliance: Ensure compliance with Qatar Labor Law regarding temporary employment and wage payments.
+II. Data Fields & Specifications
+A. Event Details:
+Field Name
+Data Type
+Validation Rules
+Notes
+Event Name
+Text (255)
+
+
+
+
+Event Type
+Dropdown (Conference, Concert, Sports Event, etc.)
+
+
+
+
+Event Date & Time
+Date & Time
+
+
+
+
+Event Location
+Text (255)
+
+
+
+
+Event Description
+Text Area
+
+
+
+
+Event Budget
+Number (Decimal)
+
+
+
+
+Event Manager
+Search Field (Employee Database)
+
+
+
+
+
+B. Role Requirements:
+Field Name
+Data Type
+Validation Rules
+Notes
+Role Name
+Text (255)
+
+
+(e.g., Security Guard, Usher, Registration Staff)
+Number Required
+Number (Integer)
+
+
+
+
+Skills Required
+Multi-select Dropdown (List of Skills)
+
+
+
+
+Qualifications Required
+Text Area
+
+
+(e.g., First Aid Certification, Security License)
+Hourly Rate
+Number (Decimal)
+
+
+
+
+Shift Schedule
+Table (Start Time, End Time, Break Duration)
+
+
+
+
+Uniform Requirements
+Text Area
+
+
+
+
+
+C. Staff Profile (Event-Specific - linked to Employee Database but with additions):
+Field Name
+Data Type
+Validation Rules
+Notes
+Event Availability
+Calendar
+
+
+
+
+Preferred Roles
+Multi-select Dropdown (List of Roles)
+
+
+
+
+Skills (Event-Specific)
+Multi-select Dropdown (List of Skills)
+
+
+
+
+Performance Rating (Average)
+Number (Decimal)
+
+
+Based on past event evaluations
+Notes
+Text Area
+
+
+
+
+
+D. Roster:
+Field Name
+Data Type
+Validation Rules
+Notes
+Event ID
+Auto-Populated
+
+
+
+
+Role ID
+Auto-Populated
+
+
+
+
+Staff ID
+Auto-Populated
+
+
+
+
+Shift ID
+Auto-Populated
+
+
+
+
+Assigned Date
+Date
+
+
+
+
+Status
+Dropdown (Assigned, Confirmed, Checked-In, Checked-Out)
+
+
+
+
+
+III. Workflows
+Event Creation: Event Manager creates event details and defines staffing requirements.
+Staff Matching: System automatically matches available staff to event roles based on skills, availability, and performance ratings.
+Roster Creation: Event Manager reviews and confirms the proposed roster.
+Staff Notification: System notifies selected staff of their event assignments.
+Mobile Check-In/Out: Staff check in and out of events using the mobile app.
+Real-Time Monitoring: Event Manager monitors staff deployment and attendance in real-time.
+Performance Evaluation: Event Manager collects feedback on staff performance after the event.
+Payroll Integration: System transfers event staff hours and pay rates to the payroll system.
+IV. Mobile App Features (Event Staff)
+Event Assignment View: List of assigned events with details.
+Check-In/Check-Out: QR code scanning or GPS-based check-in/out.
+Shift Schedule View: Display assigned shifts and locations.
+Communication: Receive announcements and notifications from Event Managers.
+Performance Feedback: View performance ratings and comments from past events.
+Availability Update: Update availability for future events.
+V. Reporting & Analytics
+Staffing Level Report: Number of staff assigned to each event.
+Attendance Report: Attendance rates for each event.
+Performance Report: Average performance ratings for each staff member.
+Labor Cost Report: Total labor costs for each event.
+Skill Gap Analysis: Identify skills shortages for future events.
+VI. Qatar-Specific Considerations
+Temporary Employment Contracts: Ensure compliance with Qatar Labor Law regarding temporary employment contracts.
+Wage Payment: Ensure timely and accurate wage payments to event staff via WPS.
+QID Verification: Verify the QID and visa status of all event staff.
+Health & Safety: Ensure event staff are provided with appropriate health and safety training.
+Documentation: Maintain accurate records of event staff assignments and payments.
+VII. Integration Points
+Employee Database: Retrieve staff information and update event-specific profiles.
+Payroll Management: Transfer event staff hours and pay rates for payroll processing.
+Attendance & Time Tracking: Integrate with mobile check-in/out functionality.
+Communication Hub: Send announcements and notifications to event staff.
+Event Management Software (Optional): Integrate with external event management systems.
+VIII. Security Considerations
+Access Control: Implement role-based access control to restrict access to event staff data.
+Data Encryption: Encrypt event staff data at rest and in transit.
+Audit Trail: Maintain a detailed audit trail of all event staff activities.
+This detailed feature prompt provides a comprehensive foundation for building a robust and efficient Event Staff Management module. Prioritize automation, mobile accessibility, and compliance with Qatar Labor Law to ensure successful event staffing and a positive experience for both event staff and event organizers.
+

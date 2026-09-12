@@ -1,0 +1,282 @@
+Attendance & Time Tracking Feature Prompt
+This document details the requirements for the Attendance & Time Tracking module, outlining features, data fields, workflows, and Qatar-specific considerations.
+I. Core Features
+Multi-Method Attendance Tracking: Support for various methods including QR Codes, Biometrics, Mobile App Check-in, and Manual Entry.
+Geofencing: Define virtual boundaries around work locations (especially event sites) to automate attendance tracking.
+Real-Time Attendance Monitoring: Dashboards for managers to view employee attendance in real-time.
+Shift Scheduling: Create and manage employee work schedules.
+Overtime Calculation: Automated calculation of overtime based on Qatar Labor Law.
+Leave Integration: Seamless integration with the Leave Management module.
+Reporting & Analytics: Generate reports on attendance patterns, overtime hours, and labor costs.
+Mobile App Integration: Allow employees to clock in/out and view their schedules via a mobile app.
+Qatar Compliance: Adherence to Qatar Labor Law regarding working hours, overtime, and breaks.
+II. Data Fields & Specifications
+A. Attendance Record:
+Field Name
+Data Type
+Validation Rules
+Notes
+Employee ID
+Auto-Populated (Linked to Employee Database)
+
+
+
+
+Date
+Date
+
+
+
+
+Check-In Time
+Time
+
+
+
+
+Check-Out Time
+Time
+
+
+
+
+Check-In Method
+Dropdown (QR Code, Biometric, Mobile App, Manual)
+
+
+
+
+Check-Out Method
+Dropdown (QR Code, Biometric, Mobile App, Manual)
+
+
+
+
+Location
+Dropdown (List of Locations)
+
+
+
+
+Geofence ID
+Text (Unique ID)
+
+
+If Geofencing is used
+Break Start Time
+Time
+
+
+
+
+Break End Time
+Time
+
+
+
+
+Total Work Hours
+Calculated
+
+
+
+
+Overtime Hours
+Calculated
+
+
+Based on Qatar Labor Law
+Attendance Status
+Dropdown (Present, Absent, Late, Early Departure)
+
+
+
+
+Notes
+Text Area
+
+
+
+
+Approved By
+Search Field (Employee Database)
+
+
+For Manual Entries
+Approval Date
+Date
+
+
+For Manual Entries
+
+B. Shift Schedule:
+Field Name
+Data Type
+Validation Rules
+Notes
+Shift ID
+Auto-Generated
+
+
+
+
+Shift Name
+Text (255)
+
+
+
+
+Date
+Date
+
+
+
+
+Start Time
+Time
+
+
+
+
+End Time
+Time
+
+
+
+
+Break Duration
+Number (Minutes)
+
+
+
+
+Employee ID
+Search Field (Employee Database)
+
+
+
+
+Location
+Dropdown (List of Locations)
+
+
+
+
+Assigned Role
+Text (255)
+
+
+
+
+
+C. Geofence:
+Field Name
+Data Type
+Validation Rules
+Notes
+Geofence ID
+Auto-Generated
+
+
+
+
+Geofence Name
+Text (255)
+
+
+
+
+Latitude
+Decimal
+
+
+
+
+Longitude
+Decimal
+
+
+
+
+Radius (Meters)
+Number (Integer)
+
+
+
+
+Start Date
+Date
+
+
+
+
+End Date
+Date
+
+
+
+
+Associated Locations
+Multi-select Dropdown
+
+
+
+
+
+III. Workflows
+Clock-In/Clock-Out:
+Employee uses QR code, biometric device, or mobile app to clock in/out.
+System records timestamp and location.
+Geofencing verifies location if enabled.
+
+
+Shift Scheduling:
+Manager creates shift schedules.
+System notifies employees of their assigned shifts.
+Employees can view their schedules via the mobile app.
+
+
+Manual Entry:
+Manager manually enters attendance for employees who did not use automated methods.
+Requires approval from a designated authority.
+
+
+Overtime Calculation:
+System automatically calculates overtime hours based on Qatar Labor Law (25% for regular overtime, 50% for weekend work).
+Overtime requires manager approval.
+
+
+Attendance Exception Handling:
+System flags attendance exceptions (late arrivals, early departures, absences).
+Manager investigates and resolves exceptions.
+
+
+IV. Mobile App Features
+Clock-In/Clock-Out: QR code scanning, GPS-based check-in.
+Shift Schedule Viewing: Display assigned shifts.
+Time Sheet Submission: Submit timesheets for approval.
+Leave Request: Submit leave requests.
+Notifications: Receive notifications about shift changes, attendance exceptions, and other important updates.
+Offline Functionality: Allow clock-in/out even without internet connectivity (data syncs when connection is restored).
+V. Reporting & Analytics
+Attendance Summary Report: Total hours worked, absences, late arrivals, early departures.
+Overtime Report: Total overtime hours, overtime costs.
+Labor Cost Report: Total labor costs by department, location, or employee.
+Attendance Trend Report: Identify patterns in attendance data.
+Geofence Report: Track attendance within geofenced areas.
+VI. Qatar-Specific Considerations
+Working Hours: Adhere to the maximum working hours allowed by Qatar Labor Law (typically 8 hours per day, 48 hours per week).
+Break Times: Ensure employees are provided with required break times.
+Overtime Regulations: Accurately calculate overtime pay based on Qatar Labor Law.
+Rest Days: Ensure employees receive their required rest days.
+Record Keeping: Maintain accurate attendance records for at least one year as required by Qatar law.
+WPS Integration: Ensure accurate attendance data is used for payroll processing and WPS compliance.
+VII. Integration Points
+Employee Database: Retrieve employee information and update attendance records.
+Payroll Management: Transfer attendance data for payroll processing.
+Leave Management: Integrate with leave requests to adjust attendance records.
+HRIS System: Share attendance data with other HR systems.
+Geofencing Services: Integrate with geolocation services to define and monitor geofences.
+Biometric Device APIs: Connect to biometric devices for attendance tracking.
+This detailed feature prompt provides a comprehensive foundation for building a robust and compliant Attendance & Time Tracking module. Prioritize accuracy, automation, and user experience to ensure efficient attendance management and compliance with Qatar Labor Law.
+

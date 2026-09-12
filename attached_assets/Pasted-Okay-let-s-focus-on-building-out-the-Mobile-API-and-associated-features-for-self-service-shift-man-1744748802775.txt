@@ -1,0 +1,89 @@
+Okay, let's focus on building out the Mobile API and associated features for self-service, shift management, and document submission. This is crucial for accessibility and engagement. We'll assume this API will act as a wrapper around your existing internal APIs, providing a streamlined interface for the mobile app.
+
+Important: These prompts assume you've already established the core backend APIs from previous modules. We're now focusing on creating a mobile-specific API layer.
+
+I. Mobile API Design & Development
+
+Prompt: "Design a RESTful API endpoint (/Mobile/EmployeeProfile) that returns a simplified employee profile for the mobile app. Include only the essential information: name, employee ID, department, position, and profile picture. This endpoint should call the existing /Employee/GetEmployee/{employeeId} API internally."
+
+Expected Response: API endpoint definition and code snippet (Express.js).
+
+AI Type: Code Generation, API Design
+
+Prompt: "Generate an Express.js API endpoint (/Mobile/ShiftSchedule/{employeeId}) that returns the shift schedule for a given employee for the next 7 days. This endpoint should call the existing /Attendance/GetShiftSchedule/{employeeId} API internally and format the data for mobile consumption."
+
+Expected Response: API endpoint definition and code snippet (Express.js).
+
+AI Type: Code Generation, API Design
+
+Prompt: "Generate an Express.js API endpoint (/Mobile/SubmitDocument) that allows employees to upload documents through the mobile app. This endpoint should call the existing /DocumentManagement/UploadDocument API internally and handle mobile-specific error handling."
+
+Expected Response: API endpoint definition and code snippet (Express.js).
+
+AI Type: Code Generation, API Design
+
+Prompt: "Generate an Express.js API endpoint (/Mobile/LeaveRequest) that allows employees to submit leave requests through the mobile app. This endpoint should call the existing /Leave/SubmitLeaveRequest API internally and handle mobile-specific validation."
+
+Expected Response: API endpoint definition and code snippet (Express.js).
+
+AI Type: Code Generation, API Design
+
+II. Shift Management Features
+
+Prompt: "Generate an Express.js API endpoint (/Mobile/AvailableShifts/{employeeId}) that returns a list of available shifts for a given employee, based on their skills and availability. This endpoint should call the existing /Attendance/GetAvailableShifts/{employeeId} API internally."
+
+Expected Response: API endpoint definition and code snippet (Express.js).
+
+AI Type: Code Generation, API Design
+
+Prompt: "Generate an Express.js API endpoint (/Mobile/ClaimShift/{shiftId}) that allows employees to claim an available shift. This endpoint should call the existing /Attendance/ClaimShift/{shiftId} API internally."
+
+Expected Response: API endpoint definition and code snippet (Express.js).
+
+AI Type: Code Generation, API Design
+
+III. Push Notification Integration
+
+Prompt: "Generate an Express.js middleware function that handles sending push notifications to mobile devices using Firebase Cloud Messaging (FCM). The function should accept the FCM registration token and the notification payload as parameters." (Leverage the existing FCM integration from the Communication Hub module).
+
+Expected Response: JavaScript code for the middleware function.
+
+AI Type: Code Generation, Backend Development
+
+Prompt: "Modify the /Mobile/LeaveRequest API endpoint to send a push notification to the employee's manager when a new leave request is submitted. Use the middleware function from the previous prompt."
+
+Expected Response: Modified API endpoint code.
+
+AI Type: Code Modification, Backend Development
+
+Prompt: "Modify the /Mobile/ShiftSchedule/{employeeId} API endpoint to send a push notification to the employee when their shift schedule is updated."
+
+Expected Response: Modified API endpoint code.
+
+AI Type: Code Modification, Backend Development
+
+IV. Security & Authentication
+
+Prompt: "Implement authentication for the Mobile API using JWT (JSON Web Tokens). Generate code for verifying the JWT token in a middleware function and protecting the API endpoints."
+
+Expected Response: JavaScript code for the middleware function and authentication logic.
+
+AI Type: Code Generation, Security Implementation
+
+Key Considerations:
+
+API Versioning: Implement API versioning to ensure backward compatibility.
+
+Rate Limiting: Implement rate limiting to prevent abuse of the Mobile API.
+
+Data Validation: Thoroughly validate all input data to prevent security vulnerabilities.
+
+Error Handling: Provide informative error messages to the mobile app.
+
+Performance Optimization: Optimize API queries to ensure fast response times.
+
+Security: Secure the Mobile API with appropriate authentication and authorization mechanisms.
+
+Mobile-Specific Data Formats: Format the data returned by the Mobile API to be optimized for mobile consumption (e.g., smaller payloads, simplified data structures).
+
+These prompts should provide a solid foundation for building the Mobile API. Remember to adapt the generated code to your specific project structure and coding style. Let me know if you'd like me to refine any of these prompts or generate code for specific components. Consider using a tool like Swagger/OpenAPI to document your Mobile API.

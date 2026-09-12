@@ -1,0 +1,99 @@
+Okay, excellent. Now that we have the Communication Hub defined with its integrations and APIs, here's a set of feature prompts to build it out. These prompts focus on generating code snippets and component structures, leveraging your existing tech stack (React, TypeScript, Express.js, PostgreSQL/Drizzle). I'll categorize them for clarity, and build on the previous prompts where applicable.
+
+Important: These prompts assume you have already set up the basic infrastructure for your APIs and database.
+
+I. Notification Service Setup & API Endpoints
+
+Prompt: "Generate an Express.js API route (/Notification/SendNotification) that accepts the following parameters: userId, message, channel (SMS, Email, Push), and data (optional, for custom data). The route should: 1) Authenticate the user. 2) Validate the parameters. 3) Use the appropriate service (Twilio for SMS, SendGrid for Email, Firebase for Push) to send the notification. 4) Log the notification attempt in the database (using a Notifications table with columns for userId, message, channel, status, timestamp, and data)."
+
+Expected Response: Express.js route code.
+
+AI Type: Code Generation, Backend Development
+
+Prompt: "Design a PostgreSQL table schema (using Drizzle ORM) for storing notification history. Include columns for: id (primary key), userId, message, channel (SMS, Email, Push), status (Sent, Delivered, Failed), timestamp, and data (JSONB for custom data). Add indexes for userId and timestamp."
+
+Expected Response: SQL code for the table.
+
+AI Type: Code Generation, Database Schema Design
+
+Prompt: "Write a TypeScript function that handles the integration with Twilio to send SMS messages. The function should accept the recipient phone number and message text as parameters and return a promise that resolves with the Twilio message SID or rejects with an error."
+
+Expected Response: TypeScript function code.
+
+AI Type: Code Generation, Backend Development
+
+Prompt: "Write a TypeScript function that handles the integration with SendGrid to send email messages. The function should accept the recipient email address, subject, and message text as parameters and return a promise that resolves with the SendGrid response or rejects with an error."
+
+Expected Response: TypeScript function code.
+
+AI Type: Code Generation, Backend Development
+
+Prompt: "Write a TypeScript function that handles the integration with Firebase Cloud Messaging (FCM) to send push notifications. The function should accept the FCM registration token and message payload as parameters and return a promise that resolves with the FCM response or rejects with an error."
+
+Expected Response: TypeScript function code.
+
+AI Type: Code Generation, Backend Development
+
+II. Announcement Features
+
+Prompt: "Generate an Express.js API route (/Announcement/CreateAnnouncement) that allows authorized users to create new announcements. The route should accept the announcement title, content, target audience (e.g., all employees, specific department), and expiry date. Store the announcement in a PostgreSQL table (using Drizzle ORM)."
+
+Expected Response: Express.js route code.
+
+AI Type: Code Generation, Backend Development
+
+Prompt: "Design a PostgreSQL table schema (using Drizzle ORM) for storing announcements. Include columns for: id (primary key), title, content, authorId, targetAudience, expiryDate, and createdAt."
+
+Expected Response: SQL code for the table.
+
+AI Type: Code Generation, Database Schema Design
+
+Prompt: "Generate an Express.js API route (/Announcement/GetAnnouncements) that retrieves a list of active announcements for a given user. The route should filter announcements based on the user's department and role."
+
+Expected Response: Express.js route code.
+
+AI Type: Code Generation, Backend Development
+
+III. Frontend Components
+
+Prompt: "Generate a React component (TypeScript, Tailwind CSS, shadcn/ui) to display a list of announcements. The component should: 1) Fetch announcements from the /Announcement/GetAnnouncements API endpoint. 2) Display the announcement title, content, and author. 3) Highlight announcements that are expiring soon."
+
+Expected Response: React component code.
+
+AI Type: Code Generation, Frontend Development
+
+Prompt: "Generate a React component (TypeScript, Tailwind CSS, shadcn/ui) for creating announcements. The component should include: a title input, a content editor, a dropdown for selecting the target audience, and a date picker for the expiry date. The component should call the /Announcement/CreateAnnouncement API endpoint upon submission."
+
+Expected Response: React component code.
+
+AI Type: Code Generation, Frontend Development
+
+IV. Real-Time Updates & Subscriptions
+
+Prompt: "Implement a WebSocket server (using a library like socket.io) that allows clients to subscribe to real-time updates for new announcements. When a new announcement is created, the server should broadcast the announcement to all connected clients."
+
+Expected Response: JavaScript code for the WebSocket server.
+
+AI Type: Code Generation, Backend Development
+
+Prompt: "Modify the React component for displaying announcements to connect to the WebSocket server and automatically update the list of announcements when a new announcement is received."
+
+Expected Response: React component code.
+
+AI Type: Code Generation, Frontend Development
+
+Key Considerations:
+
+Security: Secure your API endpoints and protect sensitive data.
+
+Scalability: Design your notification service to handle a large volume of notifications.
+
+Error Handling: Implement robust error handling and logging.
+
+Rate Limiting: Implement rate limiting to prevent abuse of the notification service.
+
+Testing: Thoroughly test all features, including the WebSocket integration.
+
+Configuration: Make the integration with Twilio, SendGrid, and Firebase configurable (e.g., using environment variables).
+
+These prompts should provide a solid foundation for building the Communication Hub. Remember to adapt the generated code to your specific project structure and coding style. Let me know if you'd like me to refine any of these prompts or generate code for specific components.

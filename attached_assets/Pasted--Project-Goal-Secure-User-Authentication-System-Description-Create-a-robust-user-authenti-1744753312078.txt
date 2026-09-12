@@ -1,0 +1,54 @@
+## Project Goal: Secure User Authentication System
+
+**Description:** Create a robust user authentication system for a web application. This system will handle user registration, login, and basic account management.  It should be built using Python (Flask preferred) and a database (SQLite for simplicity initially, with consideration for PostgreSQL scalability).
+
+**Core Requirements:**
+
+**1. Registration:**
+
+*   **Required Fields:**
+    *   Full Name (Text)
+    *   Email Address (Text, must be unique)
+    *   Password (Text, securely hashed - use bcrypt or similar)
+    *   User Role (Dropdown: Admin, HR, Finance, Employee, Event Staff - default to 'Employee')
+    *   QID Number (Text, unique - for Qatar-based users, optional for others)
+*   **Validation:** Implement client-side and server-side validation for all fields.  Email must be a valid format. Password must meet complexity requirements (e.g., minimum length, special characters).
+*   **Account Activation:**  (Optional, but recommended) Implement email verification. Send a confirmation email with a link to activate the account.
+*   **Admin Approval:**  New user registrations *must* be approved by an Admin user before the account is fully active.  A flag in the database should indicate 'pending approval'.
+
+**2. Login:**
+
+*   **Authentication:**  Authenticate users based on email address and password.
+*   **Security:**  Use secure password hashing (bcrypt). Protect against common attacks like brute-force and SQL injection.
+*   **Session Management:** Implement secure session management to maintain user login state.
+*   **Role-Based Access:** After successful login, store the user's role in the session. This role will be used to control access to different parts of the application.
+
+**3. Account Management (Basic):**
+
+*   **Password Reset:** Implement a password reset functionality via email.
+*   **Profile Update:** Allow users to update their name and QID (if applicable).  Password changes should require re-authentication.
+
+**4. Database Schema:**
+
+*   **Users Table:**
+    *   `id` (INTEGER, PRIMARY KEY, AUTOINCREMENT)
+    *   `full_name` (TEXT)
+    *   `email` (TEXT, UNIQUE)
+    *   `password_hash` (TEXT)
+    *   `role` (TEXT, DEFAULT 'Employee')
+    *   `qid_number` (TEXT, UNIQUE, NULLABLE)
+    *   `is_active` (BOOLEAN, DEFAULT FALSE)  // Indicates account is approved
+    *   `created_at` (TIMESTAMP, DEFAULT CURRENT_TIMESTAMP)
+
+**5.  Security Considerations:**
+
+*   Use environment variables to store sensitive information (database credentials, secret keys).
+*   Implement proper input sanitization to prevent XSS attacks.
+*   Use HTTPS for all communication.
+
+**Deliverables:**
+
+*   Complete Python code (Flask application)
+*   Database schema (SQLite)
+*   Basic HTML templates for registration and login forms.
+*   Clear instructions on how to run the application.

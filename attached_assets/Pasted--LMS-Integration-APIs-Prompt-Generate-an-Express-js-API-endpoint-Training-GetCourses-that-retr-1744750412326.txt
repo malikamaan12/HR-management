@@ -1,0 +1,51 @@
+ LMS Integration APIs
+Prompt: "Generate an Express.js API endpoint (/Training/GetCourses) that retrieves a list of available courses from the Moodle LMS API. The endpoint should authenticate with the Moodle API and return a list of course IDs and titles." (Adapt "Moodle" to your chosen LMS).
+Expected Response: API endpoint definition and code snippet (Express.js).
+AI Type: Code Generation, API Integration
+
+
+Prompt: "Generate an Express.js API endpoint (/Training/EnrollUserInCourse) that enrolls a user in a specific course on the Moodle LMS API. The endpoint should accept the user ID and course ID as parameters."
+Expected Response: API endpoint definition and code snippet (Express.js).
+AI Type: Code Generation, API Integration
+
+
+Prompt: "Generate an Express.js API endpoint (/Training/GetCourseProgress/{userId}/{courseId}) that retrieves the progress of a user in a specific course from the Moodle LMS API."
+Expected Response: API endpoint definition and code snippet (Express.js).
+AI Type: Code Generation, API Integration
+
+
+II. Skill Gap Analysis APIs
+Prompt: "Generate an Express.js API endpoint (/Skills/AnalyzeSkillGaps/{departmentId}) that analyzes the skill gaps within a specific department. The endpoint should compare the skills required for various roles in the department with the skills possessed by the employees in that department. Return a list of skill gaps and the number of employees affected by each gap." (This assumes you have a database table mapping skills to roles).
+Expected Response: API endpoint definition and code snippet (Express.js).
+AI Type: Code Generation, Data Analysis
+
+
+Prompt: "Design a PostgreSQL database schema (using Drizzle ORM) to store skill data. Include tables for: Skills, Roles, and RoleSkills (a linking table to define the skills required for each role). Include fields for skill name, description, and proficiency level."
+Expected Response: SQL code for the tables.
+AI Type: Code Generation, Database Schema Design
+
+
+Prompt: "Generate an Express.js API endpoint (/Skills/GetEmployeeSkills/{employeeId}) that retrieves a list of skills possessed by a given employee. This should pull data from a database table storing employee skills."
+Expected Response: API endpoint definition and code snippet (Express.js).
+AI Type: Code Generation, API Design
+
+
+III. Training Recommendation APIs
+Prompt: "Generate an Express.js API endpoint (/Training/RecommendCourses/{employeeId}) that recommends courses to an employee based on their skill gaps. The endpoint should call the /Skills/AnalyzeSkillGaps/{employeeId} API to identify skill gaps and then query the LMS API (/Training/GetCourses) to find relevant courses."
+Expected Response: API endpoint definition and code snippet (Express.js).
+AI Type: Code Generation, API Integration
+
+
+IV. Frontend Integration (Conceptual)
+Prompt: "Describe the data format required by a React component to display a list of recommended courses. Include fields for course ID, title, description, and a link to enroll in the course."
+Expected Response: Text description of the data format.
+AI Type: Text Generation
+
+
+Key Considerations:
+LMS API Authentication: Securely store and manage the credentials for the LMS API.
+Data Mapping: Carefully map the data between your system and the LMS.
+Error Handling: Implement robust error handling to handle API failures.
+Skill Taxonomy: Develop a comprehensive skill taxonomy to accurately identify skill gaps.
+Personalized Recommendations: Provide personalized course recommendations based on employee roles, skills, and career goals.
+Reporting: Track training completion rates and the impact of training on employee performance.

@@ -1,0 +1,93 @@
+Okay, let's outline prompts for building the Reports & Analytics module. Given the integration with data visualization tools like Tableau and Power BI, we'll focus on creating robust APIs to serve the data and defining the structure for pre-built reports.
+
+Important: These prompts assume you have a well-defined database schema from the previous modules and a clear understanding of the key performance indicators (KPIs) you want to track.
+
+I. Reporting API Development
+
+Prompt: "Generate an Express.js API route (/Reporting/EmployeeHeadcount) that returns the total number of employees, broken down by department and employment type (permanent, temporary). Return the data as a JSON object."
+
+Expected Response: Express.js route code.
+
+AI Type: Code Generation, Backend Development
+
+Prompt: "Generate an Express.js API route (/Reporting/TurnoverRate) that calculates the employee turnover rate for the last 12 months. The route should accept a department ID as an optional parameter to filter the results. Return the turnover rate as a percentage."
+
+Expected Response: Express.js route code.
+
+AI Type: Code Generation, Backend Development
+
+Prompt: "Generate an Express.js API route (/Reporting/LeaveUtilization) that returns the total number of leave days taken by employees, broken down by leave type (annual, sick, etc.). Return the data as a JSON object."
+
+Expected Response: Express.js route code.
+
+AI Type: Code Generation, Backend Development
+
+Prompt: "Generate an Express.js API route (/Reporting/EventStaffCost) that calculates the total cost of event staff for a given event or a range of events. Include costs for hourly wages, overtime, and any other event-related expenses."
+
+Expected Response: Express.js route code.
+
+AI Type: Code Generation, Backend Development
+
+Prompt: "Generate an Express.js API route (/Reporting/ComplianceStatus) that returns a list of employees who are not compliant with Qatar Labor Law requirements (e.g., expired visas, missing documents). Include the reason for non-compliance."
+
+Expected Response: Express.js route code.
+
+AI Type: Code Generation, Backend Development
+
+II. Analytics API Development
+
+Prompt: "Generate an Express.js API route (/Analytics/PredictiveTurnover) that uses machine learning to predict which employees are most likely to leave the company in the next 6 months. The route should return a list of employee IDs with a risk score." (This assumes you have a machine learning model trained for turnover prediction).
+
+Expected Response: Express.js route code.
+
+AI Type: Code Generation, Backend Development (requires ML integration)
+
+Prompt: "Generate an Express.js API route (/Analytics/SkillGapAnalysis) that identifies skill gaps within the organization based on performance review data and future business needs. The route should return a list of skills with the number of employees who lack proficiency in each skill."
+
+Expected Response: Express.js route code.
+
+AI Type: Code Generation, Backend Development (requires data analysis)
+
+III. Custom Report Builder (Conceptual - More complex)
+
+Prompt: "Design a database schema (using Drizzle ORM) to support a custom report builder. Include tables for: ReportDefinitions, ReportFields, and ReportFilters. Allow users to define their own reports by selecting fields, applying filters, and specifying sorting criteria."
+
+Expected Response: SQL code for the tables.
+
+AI Type: Code Generation, Database Schema Design
+
+Prompt: "Generate an Express.js API route (/Reporting/RunCustomReport) that executes a custom report definition and returns the results as a JSON object. The route should accept a report definition ID as a parameter."
+
+Expected Response: Express.js route code.
+
+AI Type: Code Generation, Backend Development (complex)
+
+IV. Data Visualization Integration
+
+Prompt: "Describe the data format required by Tableau to connect to the Reporting API endpoints. Provide examples of how to create Tableau dashboards to visualize the employee headcount, turnover rate, and leave utilization data."
+
+Expected Response: Text description of data format and Tableau dashboard examples.
+
+AI Type: Text Generation, Data Visualization Guidance
+
+Prompt: "Describe the data format required by Power BI to connect to the Reporting API endpoints. Provide examples of how to create Power BI dashboards to visualize the event staff cost and compliance status data."
+
+Expected Response: Text description of data format and Power BI dashboard examples.
+
+AI Type: Text Generation, Data Visualization Guidance
+
+Key Considerations:
+
+Data Security: Protect sensitive data when exposing it through APIs.
+
+Performance: Optimize API queries to ensure fast response times.
+
+Scalability: Design the APIs to handle a large volume of requests.
+
+Documentation: Provide clear documentation for all API endpoints.
+
+Data Governance: Establish data governance policies to ensure data quality and consistency.
+
+Visualization Tool Integration: Ensure seamless integration with Tableau and Power BI.
+
+These prompts should provide a solid foundation for building the Reports & Analytics module. Remember to adapt the generated code to your specific project structure and coding style. Let me know if you'd like me to refine any of these prompts or generate code for specific components. The custom report builder is a more complex feature and may require significant development effort.

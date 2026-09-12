@@ -1,0 +1,1 @@
+ALTER TABLE "attendance" ADD COLUMN "total_break_minutes" integer DEFAULT 0 NOT NULL;

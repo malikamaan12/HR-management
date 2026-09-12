@@ -1,0 +1,45 @@
+Okay, given the current state of your E3 HR Management System, and focusing on getting a solid start with Compliance & Document Management, here's a phased approach with prompts. I'm prioritizing prompts that will help you define the schema and basic functionality first, given the existing database connection issues. I'll also include prompts geared towards generating React components, leveraging your existing tech stack. I'm assuming you'll be using a powerful AI like GPT-4 or Gemini.
+Phase 1: Schema Design & Core Data Structures (Focus: Database Stability)
+These prompts aim to define the database tables needed for document management. Addressing the database connection errors is paramount.
+Prompt: "Based on the provided HR system description and Qatar Labor Law requirements, design a PostgreSQL database schema for document management. Include tables for: Documents, DocumentTypes, Employees, and a linking table for many-to-many relationships. Specify data types, primary keys, foreign keys, and any necessary constraints. Output as SQL CREATE TABLE statements."
+Expected Response: SQL code to create the tables. This is critical for resolving your database connection issues.
+AI Type: Code Generation, Database Schema Design
+Prompt: "Refine the database schema from the previous response to include fields for document expiry dates, document status (e.g., 'Valid', 'Expired', 'Pending Review'), and a field to indicate if the document is required by Qatar law. Update the SQL CREATE TABLE statements accordingly."
+Expected Response: Updated SQL code.
+AI Type: Code Modification, Database Schema Design
+Prompt: "Considering the existing 'Employees' table in the E3 HR system (described in the project overview), how should the 'Documents' table be linked to it? Provide the SQL code to add the necessary foreign key constraint to the 'Documents' table."
+Expected Response: SQL code for adding the foreign key. This ensures data integrity.
+AI Type: Code Generation, Database Schema Design
+Phase 2: Backend API Route Generation (Focus: Connecting to the Database)
+These prompts focus on creating the API endpoints to interact with the document management schema.
+Prompt: "Generate an Express.js API route to upload a document. The route should: 1) Accept a file upload. 2) Extract metadata from the request (employee ID, document type, issue date, expiry date). 3) Store the file and metadata in the PostgreSQL database using the schema defined in the previous steps. Include error handling. Use Drizzle ORM."
+Expected Response: JavaScript code for the Express.js route.
+AI Type: Code Generation, Backend Development
+Prompt: "Generate an Express.js API route to retrieve a document by ID. The route should: 1) Accept a document ID as a parameter. 2) Query the PostgreSQL database for the document. 3) Return the document file and metadata. Include error handling. Use Drizzle ORM."
+Expected Response: JavaScript code for the Express.js route.
+AI Type: Code Generation, Backend Development
+Prompt: "Generate an Express.js API route to list all documents for a given employee ID. The route should: 1) Accept an employee ID as a parameter. 2) Query the PostgreSQL database for all documents associated with that employee. 3) Return a list of document metadata. Include error handling. Use Drizzle ORM."
+Expected Response: JavaScript code for the Express.js route.
+AI Type: Code Generation, Backend Development
+Phase 3: Frontend Component Generation (Leveraging Your Stack)
+These prompts focus on creating React components using your existing tech stack (React, TypeScript, Tailwind CSS, shadcn/ui).
+Prompt: "Generate a React component using TypeScript, Tailwind CSS, and shadcn/ui components for uploading a document. The component should include: 1) A file input field. 2) A dropdown for selecting the document type. 3) Input fields for issue date and expiry date. 4) A submit button. The component should call the API route generated in step 4 upon submission."
+Expected Response: React component code.
+AI Type: Code Generation, Frontend Development
+Prompt: "Generate a React component using TypeScript, Tailwind CSS, and shadcn/ui components for displaying a list of documents for a given employee. The component should: 1) Fetch the document list from the API route generated in step 6. 2) Display the document metadata in a table. 3) Include a link to download the document file."
+Expected Response: React component code.
+AI Type: Code Generation, Frontend Development
+Phase 4: Compliance Specifics
+Prompt: "Based on Qatar Labor Law, create a function in TypeScript that checks if an employee's visa is expired, given the visa expiry date. Return true if expired, false otherwise."
+Expected Response: TypeScript function.
+AI Type: Code Generation, Logic Implementation
+Prompt: "Generate a report listing all employees with expired visas and work permits. The report should include their name, QID, visa expiry date, and work permit expiry date. Assume the data is available through an API endpoint." (You'll need to adapt this to your specific API).
+Expected Response: Code to generate the report (likely a function that calls your API and formats the data).
+AI Type: Code Generation, Report Generation
+Important Notes:
+Iterative Approach: Don't try to implement everything at once. Start with the schema design and get the database connection working. Then, build the API routes and frontend components incrementally.
+Testing: Thoroughly test each component and API route.
+Error Handling: Pay close attention to error handling in both the backend and frontend.
+Security: Implement proper security measures to protect sensitive document data.
+Adaptation: You'll likely need to adapt the generated code to fit your specific project structure and coding style.
+This phased approach should give you a solid foundation for building the Compliance & Document Management feature in your E3 HR Management System. Let me know if you'd like me to refine any of these prompts or generate code for specific components.
