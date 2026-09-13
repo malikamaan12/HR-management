@@ -1,4 +1,5 @@
 import { getCompanySettings } from '../services/settings';
+import { lockEmployee, assertLeaveCompatible, WorkforceError } from '../services/workforce';
 import { leaveDays } from '@shared/settings';
 import { Router } from 'express';
 import { z } from 'zod';
@@ -45,11 +46,15 @@ router.patch('/:id/status',async(req,res)=>{
       if(!row)return null;
       if(row.leave.status!=='pending')throw new Error('This request has already been decided');
       if(status!=='cancelled' && row.userId===req.user!.userId)throw new Error('You cannot approve or reject your own request');
+      if(status==='approved') {
+        await lockEmployee(tx,row.leave.employeeId);
+        await assertLeaveCompatible(tx,row.leave.employeeId,row.leave.startDate,row.leave.endDate);
+      }
       const [updated]=await tx.update(leaves).set({status,approvedBy:req.user!.userId,approvedAt:new Date(),updatedAt:new Date()}).where(eq(leaves.id,id)).returning();
       await tx.insert(activityLogs).values({userId:req.user!.userId,action:'update',entityType:'leave',entityId:id,details:`Leave request ${status}`});
       return updated;
     });
     if(!result)return res.status(403).json({message:'You cannot decide this request'});return res.json(result);
-  }catch(error){return res.status(400).json({message:error instanceof Error?error.message:'Unable to decide leave request'});}
+  }catch(error){return res.status(error instanceof WorkforceError?error.status:400).json({message:error instanceof Error?error.message:'Unable to decide leave request'});}
 });
 export default router;

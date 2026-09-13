@@ -3,6 +3,8 @@ import multer from 'multer';
 import payrollRoutes from './routes/payroll';
 import userRoutes from './routes/users';
 import settingsRoutes from './routes/settings';
+import workforceRoutes from './routes/workforce';
+import { WorkforceError } from './services/workforce';
 import attendanceRoutes from './routes/attendance';
 import leaveRequestRoutes from './routes/leaveRequests';
 import documentRoutes from './routes/documents';
@@ -83,6 +85,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api', authenticate, logApiAccess);
   app.use('/api/admin/users',userRoutes);
   app.use('/api/settings',settingsRoutes);
+  app.use('/api/workforce',workforceRoutes);
 
   // User Routes
   app.get('/api/users/:id', authorize(['admin', 'super_admin']), async (req: Request, res: Response) => {
@@ -511,6 +514,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: 'Invalid assignment data', error: error.errors });
       }
+      if(error instanceof WorkforceError)return res.status(error.status).json({message:error.message});
       res.status(500).json({ message: 'Server error creating staff assignment', error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
@@ -850,6 +854,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: 'Invalid shift schedule data', error: error.errors });
       }
+      if(error instanceof WorkforceError)return res.status(error.status).json({message:error.message});
       res.status(500).json({ message: 'Server error creating shift schedule', error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
@@ -924,6 +929,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: 'Invalid shift schedule data', error: error.errors });
       }
+      if(error instanceof WorkforceError)return res.status(error.status).json({message:error.message});
       res.status(500).json({ message: 'Server error updating shift schedule', error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });

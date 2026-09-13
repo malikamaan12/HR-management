@@ -136,6 +136,8 @@ export default function Sidebar({ className }: SidebarProps) {
           {/* Navigation Menu */}
           <nav className="flex-1 overflow-y-auto py-4">
             <ul className="space-y-1 px-3">
+              {/* Everyone can view their own offers. Team access is checked by the workforce API. */}
+              <li><Link href="/workforce" className={cn('sidebar-item flex items-center px-3 py-2 rounded-md hover:bg-primary/10',location==='/workforce'&&'border-l-4 border-primary bg-primary/10 font-medium')}><i className="fas fa-people-carry w-6 text-primary"/><span className="ml-3">Workforce</span></Link></li>
               {navItems.map((item, index) => {
                 const isActive = location === item.href;
                 

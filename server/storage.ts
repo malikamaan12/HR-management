@@ -1,3 +1,4 @@
+import { lockEmployee, assertNoWorkforceConflict } from './services/workforce';
 import { 
   users, employees, documents, attendance, leaves, payroll, events, eventStaffAssignments, activityLogs,
   jobRequisitions, candidates, jobApplications, interviews, jobOffers,
@@ -504,17 +505,22 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createEventStaffAssignment(assignment: InsertEventStaffAssignment): Promise<EventStaffAssignment> {
-    try {
-      const [newAssignment] = await db.insert(eventStaffAssignments).values(assignment).returning();
-      return newAssignment;
-    } catch (error) {
-      console.error("Error creating event staff assignment:", error);
-      throw error;
-    }
+    return db.transaction(async tx => {
+      await lockEmployee(tx, assignment.employeeId);
+      if (!['declined','cancelled','no_show'].includes(assignment.status || 'assigned'))
+        await assertNoWorkforceConflict(tx, assignment.employeeId, assignment.startTime, assignment.endTime);
+      const [row] = await tx.insert(eventStaffAssignments).values(assignment).returning(); return row;
+    });
   }
 
   async updateEventStaffAssignment(id: number, assignment: Partial<InsertEventStaffAssignment>): Promise<EventStaffAssignment | undefined> {
-    const [row] = await db.update(eventStaffAssignments).set({...assignment, updatedAt:new Date()}).where(eq(eventStaffAssignments.id,id)).returning(); return row;
+    return db.transaction(async tx => {
+      const [old] = await tx.select().from(eventStaffAssignments).where(eq(eventStaffAssignments.id,id)).for('update');
+      if (!old) return undefined;
+      const next = {...old, ...assignment}; await lockEmployee(tx, next.employeeId);
+      if (!['declined','cancelled','no_show'].includes(next.status)) await assertNoWorkforceConflict(tx,next.employeeId,next.startTime,next.endTime);
+      const [row] = await tx.update(eventStaffAssignments).set({...assignment,updatedAt:new Date()}).where(eq(eventStaffAssignments.id,id)).returning(); return row;
+    });
   }
 
   async getEventRosterAssignments(eventId: number, role?: string): Promise<EventStaffAssignment[]> {
@@ -679,13 +685,21 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createShiftSchedule(shiftSchedule: InsertShiftSchedule): Promise<ShiftSchedule> {
-    const [newShiftSchedule] = await db.insert(shiftSchedules).values(shiftSchedule).returning();
-    return newShiftSchedule;
+    return db.transaction(async tx => {
+      await lockEmployee(tx,shiftSchedule.employeeId);
+      await assertNoWorkforceConflict(tx,shiftSchedule.employeeId,shiftSchedule.startTime,shiftSchedule.endTime);
+      const [row] = await tx.insert(shiftSchedules).values(shiftSchedule).returning(); return row;
+    });
   }
 
   async updateShiftSchedule(id: number, shiftSchedule: Partial<InsertShiftSchedule>): Promise<ShiftSchedule | undefined> {
-    const [updatedShiftSchedule] = await db.update(shiftSchedules).set(shiftSchedule).where(eq(shiftSchedules.id, id)).returning();
-    return updatedShiftSchedule;
+    return db.transaction(async tx => {
+      const [old] = await tx.select().from(shiftSchedules).where(eq(shiftSchedules.id,id)).for('update');
+      if (!old) return undefined;
+      const next = {...old,...shiftSchedule}; await lockEmployee(tx,next.employeeId);
+      await assertNoWorkforceConflict(tx,next.employeeId,next.startTime,next.endTime);
+      const [row] = await tx.update(shiftSchedules).set(shiftSchedule).where(eq(shiftSchedules.id,id)).returning(); return row;
+    });
   }
 
   async deleteShiftSchedule(id: number): Promise<void> {

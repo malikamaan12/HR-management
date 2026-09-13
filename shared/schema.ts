@@ -1,7 +1,50 @@
-import { relations } from "drizzle-orm";
-import { type AnyPgColumn, pgTable, text, serial, integer, boolean, timestamp, pgEnum, varchar, date, json, decimal, jsonb } from "drizzle-orm/pg-core";
+import { relations, sql } from "drizzle-orm";
+import { type AnyPgColumn, pgTable, text, serial, integer, boolean, timestamp, pgEnum, varchar, date, json, decimal, jsonb, check, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+
+// Workforce operations keep employment type on the existing employee profile.
+export const workforceKind = pgEnum('workforce_kind', ['event', 'fec', 'mall_activation']);
+export const workforcePermission = pgEnum('workforce_permission', ['view', 'schedule']);
+export const workforceAssignmentStatus = pgEnum('workforce_assignment_status', ['offered', 'accepted', 'declined', 'cancelled']);
+export const workforceSites = pgTable('workforce_sites', {
+  id: serial('id').primaryKey(), name: text('name').notNull(), timezone: text('timezone').notNull(),
+  createdAt: timestamp('created_at', {withTimezone: true}).defaultNow().notNull(),
+});
+export const workforceTeams = pgTable('workforce_teams', {
+  id: serial('id').primaryKey(), name: text('name').notNull(), kind: workforceKind('kind').notNull(),
+  siteId: integer('site_id').notNull().references(() => workforceSites.id),
+  createdAt: timestamp('created_at', {withTimezone: true}).defaultNow().notNull(),
+});
+export const workforceMembers = pgTable('workforce_members', {
+  id: serial('id').primaryKey(), teamId: integer('team_id').notNull().references(() => workforceTeams.id),
+  employeeId: integer('employee_id').notNull().references((): AnyPgColumn => employees.id),
+  startAt: timestamp('start_at', {withTimezone: true}).notNull(), endAt: timestamp('end_at', {withTimezone: true}).notNull(),
+}, t => [check('workforce_member_dates', sql`${t.endAt} > ${t.startAt}`), index('workforce_member_team_employee').on(t.teamId, t.employeeId)]);
+export const workforceGrants = pgTable('workforce_grants', {
+  id: serial('id').primaryKey(), teamId: integer('team_id').notNull().references(() => workforceTeams.id),
+  userId: integer('user_id').notNull().references((): AnyPgColumn => users.id), permission: workforcePermission('permission').notNull(),
+  startAt: timestamp('start_at', {withTimezone: true}).notNull(), endAt: timestamp('end_at', {withTimezone: true}).notNull(),
+  revokedAt: timestamp('revoked_at', {withTimezone: true}),
+}, t => [check('workforce_grant_dates', sql`${t.endAt} > ${t.startAt}`), index('workforce_grant_user_team').on(t.userId, t.teamId)]);
+export const workforceShifts = pgTable('workforce_shifts', {
+  id: serial('id').primaryKey(), teamId: integer('team_id').notNull().references(() => workforceTeams.id),
+  role: text('role').notNull(), station: text('station'), headcount: integer('headcount').notNull(),
+  startAt: timestamp('start_at', {withTimezone: true}).notNull(), endAt: timestamp('end_at', {withTimezone: true}).notNull(),
+  breakMinutes: integer('break_minutes').notNull().default(0),
+  createdBy: integer('created_by').notNull().references((): AnyPgColumn => users.id),
+}, t => [check('workforce_shift_dates', sql`${t.endAt} > ${t.startAt} AND ${t.endAt} <= ${t.startAt} + interval '24 hours'`),
+  check('workforce_shift_capacity', sql`${t.headcount} BETWEEN 1 AND 500`),
+  check('workforce_shift_break', sql`${t.breakMinutes} >= 0 AND ${t.breakMinutes} < extract(epoch FROM (${t.endAt} - ${t.startAt})) / 60`),
+  index('workforce_shift_team_time').on(t.teamId, t.startAt)]);
+export const workforceAssignments = pgTable('workforce_assignments', {
+  id: serial('id').primaryKey(), shiftId: integer('shift_id').notNull().references(() => workforceShifts.id),
+  employeeId: integer('employee_id').notNull().references((): AnyPgColumn => employees.id),
+  status: workforceAssignmentStatus('status').notNull().default('offered'),
+  createdBy: integer('created_by').notNull().references((): AnyPgColumn => users.id),
+  createdAt: timestamp('created_at', {withTimezone: true}).defaultNow().notNull(),
+  respondedAt: timestamp('responded_at', {withTimezone: true}), cancellationReason: text('cancellation_reason'),
+}, t => [uniqueIndex('workforce_assignment_shift_employee').on(t.shiftId, t.employeeId), index('workforce_assignment_employee').on(t.employeeId)]);
 
 // Enums
 export const employeeTypeEnum = pgEnum('employee_type', ['permanent', 'temporary', 'contract']);

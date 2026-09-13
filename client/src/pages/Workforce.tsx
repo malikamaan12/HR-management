@@ -1,0 +1,116 @@
+import {useEffect, useState, type FormEvent, type ReactNode} from 'react';
+import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
+import {Building2, CalendarDays, Users, ShieldCheck, Plus, RefreshCw} from 'lucide-react';
+import {apiJson} from '@/lib/queryClient';
+import {Button} from '@/components/ui/button';
+import {Input} from '@/components/ui/input';
+import {Card, CardContent, CardHeader, CardTitle} from '@/components/ui/card';
+import {Badge} from '@/components/ui/badge';
+import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle} from '@/components/ui/dialog';
+import {Tabs, TabsContent, TabsList, TabsTrigger} from '@/components/ui/tabs';
+import {useToast} from '@/hooks/use-toast';
+import {kindLabels, workforceKinds, siteTimeToIso, type WorkforceHome, type WorkforceDashboard, type WorkforcePerson, type MyAssignment, type ShiftView} from '@shared/workforce';
+
+const selectClass='w-full rounded-md border border-input bg-background px-3 py-2 text-sm';
+function Field({label,children}:{label:string;children:ReactNode}) {return <label className="grid gap-1.5 text-sm font-medium">{label}{children}</label>;}
+function time(value:string,timezone:string) {return new Intl.DateTimeFormat('en-GB',{timeZone:timezone,day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date(value));}
+function PersonPicker({kind,value,onChange}:{kind:'employees'|'users';value:string;onChange:(id:string)=>void}) {
+  const [search,setSearch]=useState(''),[term,setTerm]=useState('');
+  useEffect(()=>{const timer=setTimeout(()=>setTerm(search.trim()),300);return()=>clearTimeout(timer);},[search]);
+  const people=useQuery<WorkforcePerson[]>({queryKey:['/api/workforce/directory',{kind,q:term}],enabled:term.length>=2});
+  return <div className="space-y-2"><Field label={kind==='employees'?'Find an employee':'Find a team-lead account'}><Input placeholder="Enter at least 2 characters" value={search} onChange={e=>{setSearch(e.target.value);onChange('');}}/></Field>
+    {people.error?<p role="alert" className="text-sm text-destructive">Unable to search the directory.</p>:people.isFetching?<p className="text-sm">Searching…</p>:term.length>=2&&<Field label="Select a result"><select className={selectClass} value={value} onChange={e=>onChange(e.target.value)} required><option value="">Choose…</option>{people.data?.map(p=><option key={p.id} value={p.id}>{p.name} · {p.label}</option>)}</select>{people.data?.length===0&&<span>No matching active records.</span>}</Field>}
+  </div>;
+}
+
+type Modal='site'|'team'|'member'|'grant'|'shift'|null;
+export default function Workforce() {
+  const cache=useQueryClient(),{toast}=useToast();
+  const [teamId,setTeamId]=useState(''),[modal,setModal]=useState<Modal>(null),[form,setForm]=useState<Record<string,string>>({});
+  const [date,setDate]=useState(new Date().toISOString().slice(0,10));
+  const [cancel,setCancel]=useState<{id:number;name:string}|null>(null),[reason,setReason]=useState('');
+  const home=useQuery<WorkforceHome>({queryKey:['/api/workforce/teams']});
+  const queryWindow={from:date+'T00:00:00Z',to:new Date(Date.parse(date+'T00:00:00Z')+14*86400000).toISOString()};
+  const dashboard=useQuery<WorkforceDashboard>({queryKey:[`/api/workforce/teams/${teamId}/dashboard`,queryWindow],enabled:!!teamId,refetchInterval:30000});
+  const mine=useQuery<MyAssignment[]>({queryKey:['/api/workforce/my-assignments',queryWindow],refetchInterval:30000});
+  useEffect(()=>{if(home.data && !home.data.teams.some(t=>String(t.id)===teamId)) setTeamId(home.data.teams[0]?String(home.data.teams[0].id):'');},[home.data,teamId]);
+  const refresh=()=>cache.invalidateQueries({predicate:q=>String(q.queryKey[0]).startsWith('/api/workforce/')});
+  const mutation=useMutation({mutationFn:({url,body}:{url:string;body:unknown})=>apiJson<{id?:number}>(url,{method:'POST',body}),
+    onSuccess:async()=>{await refresh();toast({title:'Saved'});},onError:(error)=>toast({title:'Unable to save',description:error.message,variant:'destructive'})});
+  const team=dashboard.data?.team || home.data?.teams.find(t=>String(t.id)===teamId);
+  const zone=team?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const set=(key:string,value:string)=>setForm(current=>({...current,[key]:value}));
+  const open=(kind:Modal)=>{setForm({timezone:Intl.DateTimeFormat().resolvedOptions().timeZone,kind:'event',headcount:'1',breakMinutes:'0',permission:'view',siteId:String(home.data?.sites[0]?.id||'')});setModal(kind);};
+  async function save(event:FormEvent) {
+    event.preventDefault(); let url='/api/workforce/',body:unknown;
+    try {
+      if(modal==='site') {url+='sites';body={name:form.name,timezone:form.timezone};}
+      else if(modal==='team') {url+='teams';body={name:form.name,kind:form.kind,siteId:Number(form.siteId)};}
+      else {
+        const dates={startAt:siteTimeToIso(form.startAt,zone),endAt:siteTimeToIso(form.endAt,zone)};
+        if(modal==='member') {url+=`teams/${teamId}/members`;body={...dates,employeeId:Number(form.personId)};}
+        else if(modal==='grant') {url+=`teams/${teamId}/grants`;body={...dates,userId:Number(form.personId),permission:form.permission};}
+        else {url+=`teams/${teamId}/shifts`;body={...dates,role:form.role,station:form.station||'',headcount:Number(form.headcount),breakMinutes:Number(form.breakMinutes)};}
+      }
+    } catch(error) {toast({title:'Check the dates',description:(error as Error).message,variant:'destructive'});return;}
+    try {const result=await mutation.mutateAsync({url,body});if(modal==='team'&&result.id)setTeamId(String(result.id));setModal(null);}catch{/* Error shown by mutation. */}
+  }
+  const shifts=dashboard.data?.shifts || [];
+  const futureShifts=shifts.filter(s=>new Date(s.endAt)>new Date());
+  const required=futureShifts.reduce((n,s)=>n+s.headcount,0),accepted=futureShifts.reduce((n,s)=>n+s.assignments.filter(a=>a.status==='accepted').length,0);
+  const pending=futureShifts.filter(s=>new Date(s.startAt)>new Date()).reduce((n,s)=>n+s.assignments.filter(a=>a.status==='offered').length,0);
+  if(home.isLoading) return <p>Loading workforce access…</p>;
+  if(home.error) return <div role="alert" className="space-y-3"><p>Unable to load workforce access.</p><Button onClick={()=>home.refetch()}>Try again</Button></div>;
+  return <div className="space-y-6">
+    <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs font-semibold uppercase tracking-widest text-primary">People & operations</p><h1 className="mt-2 text-3xl font-semibold">Workforce</h1><p className="mt-2 text-muted-foreground">One team workspace for events, FECs and mall activations.</p></div>
+      <Button variant="outline" onClick={()=>void refresh()} disabled={mutation.isPending}><RefreshCw className="mr-2 h-4 w-4"/>Refresh</Button></div>
+    <div className="flex flex-wrap items-end gap-4"><Field label="14-day view starting (UTC)"><Input type="date" value={date} onChange={e=>{if(e.target.value)setDate(e.target.value);}}/></Field><p className="pb-2 text-sm text-muted-foreground">Shift times display in each site's time zone.</p></div>
+    <Tabs defaultValue={home.data?.teams.length || home.data?.isAdmin?'team':'mine'}>
+      <TabsList><TabsTrigger value="team">Team workspace</TabsTrigger><TabsTrigger value="mine">My shifts & offers</TabsTrigger></TabsList>
+      <TabsContent value="team" className="space-y-5 pt-3">
+        <div className="flex flex-wrap items-end gap-3"><div className="min-w-0 flex-1"><Field label="Team"><select className={selectClass} value={teamId} onChange={e=>setTeamId(e.target.value)}><option value="">Select a team…</option>{home.data?.teams.map(t=><option key={t.id} value={t.id}>{t.name} · {kindLabels[t.kind]} · {t.siteName}</option>)}</select></Field></div>
+          {home.data?.isAdmin&&<><Button variant="outline" onClick={()=>open('site')}><Building2 className="mr-2 h-4 w-4"/>Add site</Button><Button onClick={()=>open('team')} disabled={!home.data.sites.length}><Plus className="mr-2 h-4 w-4"/>Add team</Button></>}
+        </div>
+        {!teamId?<Card><CardContent className="py-10"><Users className="mb-3 h-8 w-8 text-primary"/><h2 className="text-lg font-semibold">{home.data?.isAdmin?'Set up your first operational team':'No team-lead access assigned'}</h2><p className="mt-2 text-muted-foreground">{home.data?.isAdmin?'Add a site and its time zone, create a team, then add employees and dated lead access.':'HR can grant you access to a team for specific dates. Your own offers remain available in My shifts & offers.'}</p></CardContent></Card>:
+          dashboard.isLoading?<p>Loading team roster…</p>:dashboard.error?<div role="alert"><p>Unable to load this team. Your access may have expired or been revoked.</p><Button variant="outline" onClick={()=>void refresh()}>Refresh access</Button></div>:dashboard.data&&<>
+            <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-muted-foreground">{team?.siteName} · {zone}</p><div className="flex flex-wrap gap-2">{home.data?.isAdmin&&<><Button variant="outline" onClick={()=>open('member')}>Add team member</Button><Button variant="outline" onClick={()=>open('grant')}><ShieldCheck className="mr-2 h-4 w-4"/>Grant lead access</Button></>}{dashboard.data.canSchedule&&<Button onClick={()=>open('shift')}>Create shift</Button>}</div></div>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{[['Upcoming & live shifts',futureShifts.length],['Accepted places',`${accepted} / ${required}`],['Unfilled places',Math.max(0,required-accepted)],['Awaiting response',pending]].map(([label,value])=><Card key={label}><CardContent className="pt-5"><p className="text-sm text-muted-foreground">{label}</p><p className="mt-2 text-3xl font-semibold">{value}</p></CardContent></Card>)}</div>
+            <p className="text-sm text-muted-foreground">Coverage counts accepted assignments in this view. Offers do not reserve a place. Attendance is recorded separately.</p>
+            {!shifts.length?<Card><CardContent className="py-8"><CalendarDays className="mb-3 h-7 w-7 text-primary"/><h2 className="font-semibold">No shifts in this view</h2><p className="mt-1 text-sm text-muted-foreground">Create a shift or choose another date. Leads see shifts covered by their access dates.</p></CardContent></Card>:shifts.map(shift=><ShiftCard key={shift.id} shift={shift} zone={zone} members={dashboard.data!.members} busy={mutation.isPending}
+              offer={employeeId=>mutation.mutate({url:`/api/workforce/shifts/${shift.id}/offers`,body:{employeeId}})} cancel={(id,name)=>{setCancel({id,name});setReason('');}}/>)}
+            <Card><CardHeader><CardTitle>Team members in this view</CardTitle></CardHeader><CardContent><div className="divide-y">{dashboard.data.members.map(member=><div key={member.id} className="flex flex-wrap justify-between gap-2 py-3"><div className="font-medium">{member.name} <span className="ml-2 text-xs font-normal text-muted-foreground">{member.type}</span></div><p className="text-sm text-muted-foreground">{time(member.startAt,zone)} → {time(member.endAt,zone)}</p></div>)}</div>{!dashboard.data.members.length&&<p className="text-muted-foreground">HR must add dated membership before shifts can be offered.</p>}</CardContent></Card>
+            {home.data?.isAdmin&&<Card><CardHeader><CardTitle>Lead access</CardTitle></CardHeader><CardContent className="space-y-3">{dashboard.data.grants.map(grant=><div key={grant.id} className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-3"><div><p className="font-medium">{grant.name} · {grant.permission==='schedule'?'Schedule & manage offers':'View roster'}</p><p className="text-sm text-muted-foreground">{time(grant.startAt,zone)} → {time(grant.endAt,zone)}</p></div>{grant.revokedAt?<Badge variant="secondary">Revoked</Badge>:<Button variant="outline" disabled={mutation.isPending} onClick={()=>mutation.mutate({url:`/api/workforce/teams/${teamId}/grants/${grant.id}/revoke`,body:{}})}>Revoke access</Button>}</div>)}{!dashboard.data.grants.length&&<p className="text-muted-foreground">No lead access for these dates. Grant view or scheduling access to an approved account.</p>}</CardContent></Card>}
+          </>}
+      </TabsContent>
+      <TabsContent value="mine" className="space-y-4 pt-3"><p className="text-sm text-muted-foreground">Review your role, site, hours and planned break before accepting. Contact your lead to withdraw an accepted assignment.</p>
+        {mine.isLoading?<p>Loading your shifts…</p>:mine.error?<p role="alert">Unable to load your assignments.</p>:!mine.data?.length?<Card><CardContent className="py-8"><h2 className="font-semibold">No assignments in this view</h2><p className="mt-2 text-muted-foreground">Offers appear here when your user account is linked to an employee record and a lead offers you a shift.</p></CardContent></Card>:mine.data.map(a=><Card key={a.id}><CardContent className="flex flex-wrap items-center justify-between gap-4 pt-6"><div><div className="flex items-center gap-3"><h2 className="text-lg font-semibold">{a.role}</h2><Badge variant={a.status==='accepted'?'default':'secondary'}>{a.status==='offered'&&new Date(a.startAt)<=new Date()?'Offer expired':a.status}</Badge></div><p className="mt-2">{a.teamName} · {kindLabels[a.kind]} · {a.siteName}{a.station?` · ${a.station}`:''}</p><p className="mt-1 text-sm">{time(a.startAt,a.timezone)} → {time(a.endAt,a.timezone)}</p><p className="mt-1 text-sm text-muted-foreground">{a.timezone} · {a.breakMinutes} min planned break</p>{a.cancellationReason&&<p className="mt-2 text-sm">Cancellation: {a.cancellationReason}</p>}</div>
+          {a.status==='offered'&&new Date(a.startAt)>new Date()&&<div className="flex gap-2"><Button variant="outline" disabled={mutation.isPending} onClick={()=>mutation.mutate({url:`/api/workforce/assignments/${a.id}/respond`,body:{decision:'declined'}})}>Decline</Button><Button disabled={mutation.isPending} onClick={()=>mutation.mutate({url:`/api/workforce/assignments/${a.id}/respond`,body:{decision:'accepted'}})}>Accept shift</Button></div>}</CardContent></Card>)}
+      </TabsContent>
+    </Tabs>
+
+    <Dialog open={!!modal} onOpenChange={value=>{if(!value&&!mutation.isPending)setModal(null);}}><DialogContent className="max-h-[90vh] overflow-auto"><DialogHeader><DialogTitle>{({site:'Add site',team:'Create team',member:'Add team member',grant:'Grant lead access',shift:'Create shift'})[modal||'site']}</DialogTitle><DialogDescription>{modal==='site'?'Choose the location and time zone used for its schedules.':modal==='team'?'Employment type stays on each employee profile. Choose the kind of work this team handles.':`All times below use ${zone}. Access and membership end at the exact end time.`}</DialogDescription></DialogHeader>
+      <form className="space-y-4" onSubmit={save}>
+        {(modal==='site'||modal==='team')&&<Field label="Name"><Input value={form.name||''} onChange={e=>set('name',e.target.value)} minLength={2} maxLength={120} required autoFocus/></Field>}
+        {modal==='site'&&<Field label="Time zone"><Input value={form.timezone||''} onChange={e=>set('timezone',e.target.value)} placeholder="Asia/Qatar" required/></Field>}
+        {modal==='team'&&<><Field label="Site"><select className={selectClass} value={form.siteId||''} onChange={e=>set('siteId',e.target.value)} required><option value="">Choose site…</option>{home.data?.sites.map(site=><option key={site.id} value={site.id}>{site.name} · {site.timezone}</option>)}</select></Field><Field label="Work type"><select className={selectClass} value={form.kind} onChange={e=>set('kind',e.target.value)}>{workforceKinds.map(kind=><option key={kind} value={kind}>{kindLabels[kind]}</option>)}</select></Field></>}
+        {(modal==='member'||modal==='grant')&&<PersonPicker kind={modal==='member'?'employees':'users'} value={form.personId||''} onChange={id=>set('personId',id)}/>}
+        {modal==='grant'&&<Field label="Permission"><select className={selectClass} value={form.permission} onChange={e=>set('permission',e.target.value)}><option value="view">View roster</option><option value="schedule">Create shifts and manage offers</option></select></Field>}
+        {modal==='shift'&&<><Field label="Role"><Input value={form.role||''} onChange={e=>set('role',e.target.value)} placeholder="Activity host" minLength={2} maxLength={120} required/></Field><Field label="Station (optional)"><Input value={form.station||''} onChange={e=>set('station',e.target.value)} placeholder="Welcome desk" maxLength={120}/></Field><div className="grid grid-cols-2 gap-3"><Field label="People needed"><Input type="number" min={1} max={500} value={form.headcount} onChange={e=>set('headcount',e.target.value)} required/></Field><Field label="Planned break (minutes)"><Input type="number" min={0} max={1439} value={form.breakMinutes} onChange={e=>set('breakMinutes',e.target.value)} required/></Field></div></>}
+        {modal&&['member','grant','shift'].includes(modal)&&<div className="grid gap-3"><Field label="Start"><Input type="datetime-local" value={form.startAt||''} onChange={e=>set('startAt',e.target.value)} required/></Field><Field label="End"><Input type="datetime-local" value={form.endAt||''} onChange={e=>set('endAt',e.target.value)} required/></Field></div>}
+        <div className="flex justify-end gap-2"><Button variant="outline" type="button" disabled={mutation.isPending} onClick={()=>setModal(null)}>Close</Button><Button type="submit" disabled={mutation.isPending||((modal==='member'||modal==='grant')&&!form.personId)}>{mutation.isPending?'Saving…':'Save'}</Button></div>
+      </form></DialogContent></Dialog>
+    <Dialog open={!!cancel} onOpenChange={value=>{if(!value&&!mutation.isPending)setCancel(null);}}><DialogContent><DialogHeader><DialogTitle>Cancel assignment</DialogTitle><DialogDescription>{cancel?.name} will see the cancellation reason in My shifts & offers.</DialogDescription></DialogHeader><form className="space-y-4" onSubmit={async e=>{e.preventDefault();try{await mutation.mutateAsync({url:`/api/workforce/assignments/${cancel!.id}/cancel`,body:{reason}});setCancel(null);}catch{}}}><Field label="Reason"><Input value={reason} onChange={e=>setReason(e.target.value)} minLength={5} maxLength={500} required/></Field><Button type="submit" variant="destructive" disabled={mutation.isPending}>Cancel assignment</Button></form></DialogContent></Dialog>
+  </div>;
+}
+
+function ShiftCard({shift,zone,members,busy,offer,cancel}:{shift:ShiftView;zone:string;members:WorkforceDashboard['members'];busy:boolean;offer:(employeeId:number)=>void;cancel:(id:number,name:string)=>void}) {
+  const [employeeId,setEmployeeId]=useState('');
+  const accepted=shift.assignments.filter(a=>a.status==='accepted').length;
+  const available=members.filter(m=>new Date(m.startAt)<=new Date(shift.startAt)&&new Date(m.endAt)>=new Date(shift.endAt)&&!shift.assignments.some(a=>a.employeeId===m.employeeId));
+  const candidates=available.filter((m,i)=>available.findIndex(p=>p.employeeId===m.employeeId)===i);
+  const future=new Date(shift.startAt)>new Date();
+  return <Card><CardContent className="pt-6"><div className="flex flex-wrap justify-between gap-3"><div><h2 className="text-lg font-semibold">{shift.role}{shift.station&&<span className="font-normal text-muted-foreground"> · {shift.station}</span>}</h2><p className="mt-1 text-sm">{time(shift.startAt,zone)} → {time(shift.endAt,zone)}</p><p className="mt-1 text-sm text-muted-foreground">{shift.breakMinutes} min planned break</p></div><Badge className="h-fit" variant={accepted>=shift.headcount?'default':'secondary'}>{accepted} / {shift.headcount} accepted</Badge></div>
+    <div className="mt-4 divide-y">{shift.assignments.map(a=><div key={a.id} className="flex flex-wrap items-center justify-between gap-3 py-3"><div><span className="font-medium">{a.name}</span><Badge variant="outline" className="ml-3">{a.status==='offered'&&!future?'Offer expired':a.status}</Badge>{a.cancellationReason&&<p className="mt-1 text-sm text-muted-foreground">{a.cancellationReason}</p>}</div>{shift.canSchedule&&future&&['offered','accepted'].includes(a.status)&&<Button size="sm" variant="ghost" disabled={busy} onClick={()=>cancel(a.id,a.name)}>Cancel assignment</Button>}</div>)}</div>
+    {shift.canSchedule&&future&&accepted<shift.headcount&&<form className="mt-4 flex flex-wrap items-end gap-3 border-t pt-4" onSubmit={e=>{e.preventDefault();offer(Number(employeeId));setEmployeeId('');}}><div className="min-w-0 flex-1"><Field label={`Offer ${shift.role} shift to`}><select className={selectClass} value={employeeId} onChange={e=>setEmployeeId(e.target.value)} required><option value="">Choose a team member…</option>{candidates.map(m=><option key={m.employeeId} value={m.employeeId}>{m.name} · {m.type}</option>)}</select></Field></div><Button variant="outline" type="submit" disabled={busy||!employeeId}>Offer shift</Button>{!candidates.length&&<p className="w-full text-sm text-muted-foreground">No remaining members cover the full shift dates. HR can add dated team membership.</p>}</form>}
+  </CardContent></Card>;
+}

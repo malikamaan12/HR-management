@@ -8,6 +8,7 @@ import Attendance from "@/pages/Attendance";
 import Leave from "@/pages/Leave";
 import Documents from "@/pages/Documents";
 import EventStaff from "@/pages/EventStaff";
+import Workforce from "@/pages/Workforce";
 import Settings from "@/pages/Settings";
 import Reports from "@/pages/Reports";
 import Recruitment from "@/pages/Recruitment";
@@ -82,6 +83,7 @@ function App() {
       case '/leave': return 'Leave Management';
       case '/documents': return 'Document Management';
       case '/event-staff': return 'Event Staff Management';
+      case '/workforce': return 'Workforce';
       case '/recruitment': return 'Recruitment Management';
       case '/onboarding': return 'Employee Onboarding';
       case '/communications': return 'Communication Hub';
@@ -127,6 +129,7 @@ function App() {
           <Route path="/leave" component={Leave} />
           <Route path="/documents" component={Documents} />
           <Route path="/event-staff" component={EventStaff} />
+          <Route path="/workforce" component={Workforce} />
           <Route path="/recruitment" component={Recruitment} />
           <Route path="/onboarding" component={Onboarding} />
           <Route path="/communications" component={Communications} />
