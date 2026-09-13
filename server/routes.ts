@@ -4,6 +4,7 @@ import payrollRoutes from './routes/payroll';
 import userRoutes from './routes/users';
 import settingsRoutes from './routes/settings';
 import workforceRoutes from './routes/workforce';
+import helpdeskRoutes from './routes/helpdesk';
 import { WorkforceError } from './services/workforce';
 import attendanceRoutes from './routes/attendance';
 import leaveRequestRoutes from './routes/leaveRequests';
@@ -86,6 +87,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/admin/users',userRoutes);
   app.use('/api/settings',settingsRoutes);
   app.use('/api/workforce',workforceRoutes);
+  app.use('/api/helpdesk',helpdeskRoutes);
 
   // User Routes
   app.get('/api/users/:id', authorize(['admin', 'super_admin']), async (req: Request, res: Response) => {

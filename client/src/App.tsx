@@ -9,6 +9,7 @@ import Leave from "@/pages/Leave";
 import Documents from "@/pages/Documents";
 import EventStaff from "@/pages/EventStaff";
 import Workforce from "@/pages/Workforce";
+import Helpdesk from "@/pages/Helpdesk";
 import Settings from "@/pages/Settings";
 import Reports from "@/pages/Reports";
 import Recruitment from "@/pages/Recruitment";
@@ -75,6 +76,7 @@ function App() {
   
   // Get page title based on current location
   const getPageTitle = () => {
+    if(location==='/helpdesk'||location.startsWith('/helpdesk/'))return 'HR Helpdesk';
     switch (location) {
       case '/': return 'Dashboard';
       case '/employees': return 'Employee Database';
@@ -130,6 +132,8 @@ function App() {
           <Route path="/documents" component={Documents} />
           <Route path="/event-staff" component={EventStaff} />
           <Route path="/workforce" component={Workforce} />
+          <Route path="/helpdesk" component={Helpdesk} />
+          <Route path="/helpdesk/:caseId" component={Helpdesk} />
           <Route path="/recruitment" component={Recruitment} />
           <Route path="/onboarding" component={Onboarding} />
           <Route path="/communications" component={Communications} />

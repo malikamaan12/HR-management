@@ -3,6 +3,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomUUID } from 'node:crypto';
 
 export class StorageUnavailableError extends Error {}
+export function privateStorageConfigured(){try{const {client}=configuration();client.destroy();return true;}catch{return false;}}
 function configuration(){
   const {R2_ACCOUNT_ID,R2_ACCESS_KEY_ID,R2_SECRET_ACCESS_KEY,R2_BUCKET_NAME}=process.env;
   if(!R2_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_BUCKET_NAME)throw new StorageUnavailableError('Document storage is not configured');
@@ -30,5 +31,21 @@ export async function deleteDocumentObject(key:string){
 }
 export async function documentDownloadUrl(key:string){
   if(!/^documents\/\d+\/[a-f0-9-]+\.(pdf|png|jpg)$/.test(key))throw new Error('This legacy document needs to be uploaded again');
+  const {client,bucket}=configuration();try{return await getSignedUrl(client,new GetObjectCommand({Bucket:bucket,Key:key,ResponseContentDisposition:'attachment',ResponseContentType:'application/octet-stream'}),{expiresIn:60});}finally{client.destroy();}
+}
+
+// Case files never share the general employee-document download namespace.
+const caseKey=/^helpdesk\/\d+\/[a-f0-9-]+\.(pdf|png|jpg)$/;
+export async function uploadCaseAttachment(caseId:number,file:Express.Multer.File){
+  const extension=validateDocumentFile(file),{client,bucket}=configuration();
+  const key=`helpdesk/${caseId}/${randomUUID()}.${extension}`;
+  try{await client.send(new PutObjectCommand({Bucket:bucket,Key:key,Body:file.buffer,ContentType:'application/octet-stream',ContentDisposition:'attachment'}));return key;}finally{client.destroy();}
+}
+export async function deleteCaseAttachment(key:string){
+  if(!caseKey.test(key))throw new Error('Invalid case attachment');
+  const {client,bucket}=configuration();try{await client.send(new DeleteObjectCommand({Bucket:bucket,Key:key}));}finally{client.destroy();}
+}
+export async function caseAttachmentUrl(key:string){
+  if(!caseKey.test(key))throw new Error('Invalid case attachment');
   const {client,bucket}=configuration();try{return await getSignedUrl(client,new GetObjectCommand({Bucket:bucket,Key:key,ResponseContentDisposition:'attachment',ResponseContentType:'application/octet-stream'}),{expiresIn:60});}finally{client.destroy();}
 }

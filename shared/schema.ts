@@ -46,6 +46,35 @@ export const workforceAssignments = pgTable('workforce_assignments', {
   respondedAt: timestamp('responded_at', {withTimezone: true}), cancellationReason: text('cancellation_reason'),
 }, t => [uniqueIndex('workforce_assignment_shift_employee').on(t.shiftId, t.employeeId), index('workforce_assignment_employee').on(t.employeeId)]);
 
+// HR helpdesk content is stored separately from organization-wide activity logs.
+export const helpdeskStatus = pgEnum('helpdesk_status', ['open', 'in_progress', 'waiting_employee', 'resolved', 'closed']);
+export const helpdeskCases = pgTable('helpdesk_cases', {
+  id: serial('id').primaryKey(), title: text('title').notNull(), category: text('category').notNull(),
+  confidential: boolean('confidential').notNull().default(false), status: helpdeskStatus('status').notNull().default('open'),
+  requesterId: integer('requester_id').notNull().references((): AnyPgColumn => users.id),
+  assigneeId: integer('assignee_id').references((): AnyPgColumn => users.id),
+  version: integer('version').notNull().default(1),
+  createdAt: timestamp('created_at', {withTimezone:true}).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', {withTimezone:true}).defaultNow().notNull(),
+}, t => [index('helpdesk_requester_updated').on(t.requesterId,t.updatedAt),index('helpdesk_assignee_status').on(t.assigneeId,t.status),
+  check('helpdesk_version_positive',sql`${t.version}>0`)]);
+export const helpdeskMessages = pgTable('helpdesk_messages', {
+  id: serial('id').primaryKey(), caseId: integer('case_id').notNull().references(() => helpdeskCases.id),
+  authorId: integer('author_id').notNull().references((): AnyPgColumn => users.id),
+  body: text('body').notNull(), internal: boolean('internal').notNull().default(false),
+  createdAt: timestamp('created_at', {withTimezone:true}).defaultNow().notNull(),
+}, t => [index('helpdesk_message_case').on(t.caseId,t.id)]);
+export const helpdeskAttachments = pgTable('helpdesk_attachments', {
+  id: serial('id').primaryKey(), messageId: integer('message_id').notNull().references(() => helpdeskMessages.id),
+  filename: text('filename').notNull(), objectKey: text('object_key').notNull().unique(), size: integer('size').notNull(),
+});
+export const helpdeskEvents = pgTable('helpdesk_events', {
+  id: serial('id').primaryKey(), caseId: integer('case_id').notNull().references(() => helpdeskCases.id),
+  actorId: integer('actor_id').notNull().references((): AnyPgColumn => users.id), details: text('details').notNull(),
+  internal: boolean('internal').notNull().default(false),
+  createdAt: timestamp('created_at', {withTimezone:true}).defaultNow().notNull(),
+}, t => [index('helpdesk_event_case').on(t.caseId,t.id)]);
+
 // Enums
 export const employeeTypeEnum = pgEnum('employee_type', ['permanent', 'temporary', 'contract']);
 export const documentStatusEnum = pgEnum('document_status', ['valid', 'expiring_soon', 'expired']);
