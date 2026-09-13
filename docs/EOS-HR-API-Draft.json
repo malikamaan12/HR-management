@@ -1,0 +1,2016 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "E3 HR – EOS integration proposal",
+    "version": "0.1.0-draft",
+    "description": "DESIGN ONLY: these endpoints are not implemented or deployed. EOS details are pending. All credentials are bound to one integration and organization; explicit activation scope applies to every object lookup and aggregate. Unknown or unauthorized resources return 404. Permission extensions document required grants; the implementation must enforce them."
+  },
+  "servers": [
+    {
+      "url": "/api/integrations/v1",
+      "description": "Proposed relative base URL; no live host configured"
+    }
+  ],
+  "security": [
+    {
+      "serviceBearer": []
+    }
+  ],
+  "paths": {
+    "/activations": {
+      "post": {
+        "operationId": "createActivation",
+        "summary": "Register an EOS activation",
+        "description": "Creation establishes a mapping, not authority to read employee data. Duplicate external IDs conflict unless this is an idempotent replay.",
+        "x-required-permission": "activations:write",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 128
+            },
+            "description": "Scope: integration + operation. Same key/body replays original result for at least 7 days; changed body returns 409."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActivationCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created or replayed result",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Activation"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or revoked credential",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found within authorized scope",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Duplicate external ID or incompatible state/idempotency conflict",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server failure; no sensitive diagnostics returned",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/activations/{id}": {
+      "get": {
+        "operationId": "getActivation",
+        "summary": "Read a mapped activation",
+        "description": "",
+        "x-required-permission": "activations:read",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Activation"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or revoked credential",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found within authorized scope",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Duplicate external ID or incompatible state/idempotency conflict",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server failure; no sensitive diagnostics returned",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/staffing-requests": {
+      "post": {
+        "operationId": "createStaffingRequest",
+        "summary": "Request staff for concrete shifts",
+        "description": "Validate role/site mappings, unique line IDs and endAt > startAt. Requests must fall within the activation period when bounded. Creation does not automatically assign staff or authorize payroll.",
+        "x-required-permission": "staffing:write",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 128
+            },
+            "description": "Scope: integration + operation. Same key/body replays original result for at least 7 days; changed body returns 409."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StaffingRequestCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created or replayed result",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffingRequest"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or revoked credential",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found within authorized scope",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Duplicate external ID or incompatible state/idempotency conflict",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server failure; no sensitive diagnostics returned",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/staffing-requests/{id}": {
+      "get": {
+        "operationId": "getStaffingRequest",
+        "summary": "Read staffing fulfillment status",
+        "description": "",
+        "x-required-permission": "staffing:read",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffingRequest"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or revoked credential",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found within authorized scope",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Duplicate external ID or incompatible state/idempotency conflict",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server failure; no sensitive diagnostics returned",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/assignments": {
+      "get": {
+        "operationId": "listAssignments",
+        "summary": "Read confirmed operational assignments",
+        "description": "Only accepted or later-stage assignments for an explicitly authorized activation. Excludes bank details, identity numbers, personal contact details, salaries and ratings.",
+        "x-required-permission": "assignments:read",
+        "parameters": [
+          {
+            "name": "activationId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssignmentPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or revoked credential",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found within authorized scope",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Duplicate external ID or incompatible state/idempotency conflict",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server failure; no sensitive diagnostics returned",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/timesheets": {
+      "get": {
+        "operationId": "listApprovedTimesheets",
+        "summary": "Read approved assignment hours",
+        "description": "EOS cannot approve or alter HR timesheets. Client-billable hours are a separate EOS decision.",
+        "x-required-permission": "timesheets:read",
+        "parameters": [
+          {
+            "name": "assignmentId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimesheetPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or revoked credential",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found within authorized scope",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Duplicate external ID or incompatible state/idempotency conflict",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server failure; no sensitive diagnostics returned",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cost-summaries": {
+      "get": {
+        "operationId": "getActivationCost",
+        "summary": "Read an optional aggregate payable cost",
+        "description": "Separate opt-in permission; disabled by default. Never returns individual pay rates. Excludes client revenue. Unpriced assignments are reported, not treated as free staff.",
+        "x-required-permission": "costs:read",
+        "parameters": [
+          {
+            "name": "activationId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or revoked credential",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found within authorized scope",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Duplicate external ID or incompatible state/idempotency conflict",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server failure; no sensitive diagnostics returned",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/changes": {
+      "get": {
+        "operationId": "readChanges",
+        "summary": "Reconcile resource changes",
+        "description": "Returns only events for resources the integration can currently access. An omitted cursor starts from the earliest retained event; expired cursors return 410 and require scoped reconciliation. Retention and full resync procedure must be agreed with EOS.",
+        "x-required-permission": "changes:read",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangePage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or revoked credential",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found within authorized scope",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Duplicate external ID or incompatible state/idempotency conflict",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Change cursor expired; scoped resynchronization required",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server failure; no sensitive diagnostics returned",
+            "headers": {
+              "X-Correlation-ID": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "serviceBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Dedicated revocable machine credential, separate from employee browser sessions. Issuance, expiry and rotation are to be agreed with EOS. Never place tokens in URLs."
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "correlationId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "correlationId"
+        ]
+      },
+      "ActivationCreate": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "externalId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Unique within this integration; immutable"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "event",
+              "fec",
+              "mall_activation"
+            ]
+          },
+          "siteExternalId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Must resolve to an administrator-approved site mapping"
+          },
+          "timezone": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "IANA timezone"
+          },
+          "startAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "externalId",
+          "name",
+          "kind",
+          "siteExternalId",
+          "timezone",
+          "startAt"
+        ],
+        "description": "endAt is optional for continuing operations; if supplied it must be after startAt."
+      },
+      "Activation": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "externalId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Unique within this integration; immutable"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "event",
+              "fec",
+              "mall_activation"
+            ]
+          },
+          "siteExternalId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Must resolve to an administrator-approved site mapping"
+          },
+          "timezone": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "IANA timezone"
+          },
+          "startAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "planned",
+              "active",
+              "closed",
+              "cancelled"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "externalId",
+          "name",
+          "kind",
+          "siteExternalId",
+          "timezone",
+          "startAt",
+          "version",
+          "state"
+        ]
+      },
+      "StaffingLine": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "externalLineId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "roleCode": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Agreed role catalog code"
+          },
+          "stationCode": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "startAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "headcount": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000
+          }
+        },
+        "required": [
+          "externalLineId",
+          "roleCode",
+          "startAt",
+          "endAt",
+          "headcount"
+        ]
+      },
+      "StaffingRequestCreate": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "externalId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "activationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "lines": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/StaffingLine"
+            }
+          }
+        },
+        "required": [
+          "externalId",
+          "activationId",
+          "lines"
+        ]
+      },
+      "StaffingRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "externalId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "activationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "received",
+              "planning",
+              "offered",
+              "partially_filled",
+              "filled",
+              "cancelled",
+              "closed"
+            ]
+          },
+          "requestedHeadcount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "acceptedHeadcount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StaffingLine"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "externalId",
+          "activationId",
+          "version",
+          "status",
+          "requestedHeadcount",
+          "acceptedHeadcount",
+          "lines"
+        ]
+      },
+      "EmployeeProjection": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "displayName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "id",
+          "displayName"
+        ]
+      },
+      "Assignment": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "activationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "staffingRequestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "externalLineId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "employee": {
+            "$ref": "#/components/schemas/EmployeeProjection"
+          },
+          "roleCode": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "startAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "active",
+              "completed",
+              "cancelled"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "id",
+          "activationId",
+          "staffingRequestId",
+          "externalLineId",
+          "employee",
+          "roleCode",
+          "startAt",
+          "endAt",
+          "status",
+          "version"
+        ]
+      },
+      "Timesheet": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "assignmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "approved",
+              "payroll_locked"
+            ]
+          },
+          "workedMinutes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "payableMinutes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "approvedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "assignmentId",
+          "version",
+          "status",
+          "workedMinutes",
+          "payableMinutes",
+          "approvedAt"
+        ]
+      },
+      "CostSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "activationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^[0-9]+\\.[0-9]{2}$"
+          },
+          "basis": {
+            "type": "string",
+            "enum": [
+              "approved_payable_cost"
+            ]
+          },
+          "unpricedAssignments": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "asOf": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "activationId",
+          "currency",
+          "amount",
+          "basis",
+          "unpricedAssignments",
+          "asOf",
+          "version"
+        ]
+      },
+      "Change": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "sequence": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Opaque monotonically ordered server sequence"
+          },
+          "eventId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "eventType": {
+            "type": "string",
+            "enum": [
+              "staffing.request.updated",
+              "assignment.accepted",
+              "assignment.cancelled",
+              "timesheet.approved",
+              "timesheet.corrected",
+              "cost.summary.updated"
+            ]
+          },
+          "resourceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "resourceVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "sequence",
+          "eventId",
+          "eventType",
+          "resourceId",
+          "resourceVersion",
+          "occurredAt"
+        ]
+      },
+      "AssignmentPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Assignment"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "TimesheetPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Timesheet"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "ChangePage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Change"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      }
+    }
+  }
+}
