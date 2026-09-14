@@ -6,13 +6,20 @@ import { eq } from 'drizzle-orm';
 import express from 'express';
 import type { Server } from 'node:http';
 import bcrypt from 'bcryptjs';
-import { employees, users, activityLogs, type InsertEmployee } from '../shared/schema';
+import { employees, users, activityLogs, employeeLifecycleEvents, documents, documentVersions, type InsertEmployee } from '../shared/schema';
 const context = vi.hoisted(() => ({ db: null as any }));
 vi.mock('../server/db', () => ({ get db() { return context.db; }, pool: {} }));
+const files = vi.hoisted(() => ({ upload: vi.fn(), remove: vi.fn() }));
+vi.mock('../server/services/r2', () => ({
+  uploadDocument: files.upload, deleteDocumentObject: files.remove,
+  validateDocumentFile: vi.fn(), documentDownloadUrl: vi.fn(),
+  StorageUnavailableError: class extends Error {},
+}));
 import router from '../server/routes/employeeRecords';
 import { authService } from '../server/services/auth';
 import settingsRouter from '../server/routes/settings';
 import leaveRouter from '../server/routes/leaveRequests';
+import documentRouter from '../server/routes/documents';
 import {defaultCompanySettings} from '../shared/settings';
 
 let pg: PGlite, server: Server, base: string;
@@ -40,15 +47,89 @@ beforeAll(async () => {
   pg = new PGlite();
   for (const file of readdirSync(new URL('../migrations', import.meta.url)).filter(n => n.endsWith('.sql')).sort()) await pg.exec(readFileSync(new URL('../migrations/' + file, import.meta.url), 'utf8'));
   context.db = drizzle(pg);
-  const app = express(); app.use(express.json()); app.use('/employees', router); app.use('/settings',settingsRouter); app.use('/leaves',leaveRouter);
+  const app = express(); app.use(express.json()); app.use('/employees', router); app.use('/settings',settingsRouter); app.use('/leaves',leaveRouter); app.use('/documents',documentRouter);
   server = app.listen(0, '127.0.0.1'); await new Promise<void>(resolve => server.once('listening', resolve));
   base = 'http://127.0.0.1:' + (server.address() as { port: number }).port;
 });
-beforeEach(async () => { await pg.exec('TRUNCATE users, employees, activity_logs, app_settings RESTART IDENTITY CASCADE'); });
+beforeEach(async () => {
+  await pg.exec('TRUNCATE users, employees, activity_logs, app_settings RESTART IDENTITY CASCADE');
+  files.upload.mockReset().mockResolvedValue('documents/1/test.pdf'); files.remove.mockReset().mockResolvedValue(undefined);
+});
 afterAll(async () => { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); await pg.close(); });
 
 test('employee endpoints require a valid session', async () => {
   for (const path of ['/employees', '/employees/directory', '/employees/1', '/employees/1/activity']) expect((await request('', path)).status).toBe(401);
+});
+
+test('lifecycle form payload records history without an employee ID and protects private notes', async () => {
+  const admin = await account();
+  const manager = await account('manager'); const lead = await create(1, { userId: manager.id });
+  const self = await account('permanent_employee'); const employee = await create(2, { userId: self.id, reportingManagerId: lead.id });
+  const payload = { eventType: 'promotion', effectiveDate: '2026-05-02', reason: 'Approved promotion review', notes: 'Private employment notes', expectedVersion: employee.recordVersion };
+  const result = await request(admin.token, `/employees/${employee.id}/lifecycle`, 'POST', payload);
+  expect(result.status).toBe(201); expect(result.body.employee.recordVersion).toBe(employee.recordVersion + 1);
+  expect((await request(admin.token, `/employees/${employee.id}/lifecycle`, 'POST', payload)).status).toBe(409);
+  expect((await request(manager.token, `/employees/${employee.id}/lifecycle`)).status).toBe(403);
+  expect((await request(self.token, `/employees/${employee.id}/lifecycle`)).body.history[0].notes).toBe(payload.notes);
+  expect((await request(self.token, `/employees/${employee.id}/lifecycle`, 'POST', payload)).status).toBe(403);
+  expect((await context.db.select().from(employeeLifecycleEvents))).toHaveLength(1);
+});
+
+test('termination disables linked login and sessions; future and stale status changes are rejected', async () => {
+  const admin = await account(); const self = await account('permanent_employee');
+  const employee = await create(1, { userId: self.id });
+  const payload = { eventType: 'termination', effectiveDate: '2026-05-03', reason: 'Employment ended by agreement', expectedVersion: employee.recordVersion };
+  const future = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
+  expect((await request(admin.token, `/employees/${employee.id}/lifecycle`, 'POST', { ...payload, effectiveDate: future })).status).toBe(400);
+  expect((await authService.login(self.username, password)).accessToken).toBeTruthy();
+  const ended = await request(admin.token, `/employees/${employee.id}/lifecycle`, 'POST', payload);
+  expect(ended.status).toBe(201); expect(ended.body.employee.status).toBe('inactive');
+  expect((await request(self.token, `/employees/${employee.id}`)).status).toBe(401);
+  await expect(authService.login(self.username, password)).rejects.toThrow(/inactive/);
+  const reactivated = await request(admin.token, `/employees/${employee.id}/lifecycle`, 'POST', { ...payload, eventType: 'reactivation', effectiveDate: '2026-05-04', expectedVersion: ended.body.employee.recordVersion });
+  expect(reactivated.status).toBe(201); expect(reactivated.body.employee.status).toBe('active');
+  await expect(authService.login(self.username, password)).rejects.toThrow(/inactive/);
+});
+
+test('lifecycle history and status changes roll back together when auditing fails', async () => {
+  const admin = await account(); const employee = await create();
+  await pg.exec("CREATE FUNCTION reject_lifecycle_audit() RETURNS trigger AS $$ BEGIN IF NEW.entity_type = 'employee_lifecycle' THEN RAISE EXCEPTION 'test audit failure'; END IF; RETURN NEW; END; $$ LANGUAGE plpgsql; CREATE TRIGGER reject_lifecycle_audit BEFORE INSERT ON activity_logs FOR EACH ROW EXECUTE FUNCTION reject_lifecycle_audit();");
+  try {
+    expect((await request(admin.token, `/employees/${employee.id}/lifecycle`, 'POST', { eventType: 'termination', effectiveDate: '2026-05-03', reason: 'Test rollback guarantee', expectedVersion: employee.recordVersion })).status).toBe(500);
+    expect((await context.db.select().from(employeeLifecycleEvents))).toHaveLength(0);
+    expect((await context.db.select().from(employees).where(eq(employees.id, employee.id)))[0].status).toBe('active');
+  } finally { await pg.exec('DROP TRIGGER reject_lifecycle_audit ON activity_logs; DROP FUNCTION reject_lifecycle_audit();'); }
+});
+
+async function uploadDocumentFor(token: string, employeeId: number) {
+  const body = new FormData();
+  for (const [key, value] of Object.entries({ employeeId: String(employeeId), documentType: 'passport', documentNumber: 'TEST-123', issueDate: '2026-01-01', expiryDate: '2027-01-01' })) body.append(key, value);
+  body.append('document', new Blob(['%PDF-test'], { type: 'application/pdf' }), 'test.pdf');
+  const response = await fetch(base + '/documents', { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body });
+  return { status: response.status, body: await response.json() as any };
+}
+
+test('document upload records an atomic initial snapshot with scoped version access', async () => {
+  const admin = await account(); const self = await account('permanent_employee');
+  const unrelated = await account('permanent_employee', 'unrelated');
+  const employee = await create(1, { userId: self.id }); await create(2, { userId: unrelated.id });
+  const uploaded = await uploadDocumentFor(admin.token, employee.id);
+  expect(uploaded.status).toBe(201);
+  const history = await request(self.token, `/documents/${uploaded.body.id}/versions`);
+  expect(history.status).toBe(200); expect(history.body).toHaveLength(1);
+  expect(history.body[0]).toMatchObject({ version: 1, createdBy: admin.id, snapshot: { documentNumber: 'TEST-123', employeeId: employee.id } });
+  expect((await request(unrelated.token, `/documents/${uploaded.body.id}/versions`)).status).toBe(404);
+});
+
+test('failed snapshot persistence rolls back the document and removes the uploaded object', async () => {
+  const admin = await account(); const employee = await create();
+  await pg.exec("CREATE FUNCTION reject_document_version() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'test version failure'; END; $$ LANGUAGE plpgsql; CREATE TRIGGER reject_document_version BEFORE INSERT ON document_versions FOR EACH ROW EXECUTE FUNCTION reject_document_version();");
+  try {
+    expect((await uploadDocumentFor(admin.token, employee.id)).status).toBe(500);
+    expect((await context.db.select().from(documents))).toHaveLength(0);
+    expect((await context.db.select().from(documentVersions))).toHaveLength(0);
+    expect(files.remove).toHaveBeenCalledWith('documents/1/test.pdf');
+  } finally { await pg.exec('DROP TRIGGER reject_document_version ON document_versions; DROP FUNCTION reject_document_version();'); }
 });
 test('directory searches all records, counts matches, escapes wildcards and applies filters', async () => {
   const admin = await account();

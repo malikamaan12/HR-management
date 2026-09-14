@@ -1,4 +1,12 @@
-# E3 HR status — 14 September 2026
+# E3 HR status — 15 September 2026
+
+## Current publication status
+
+The user selected `malikamaan12/HR-management` as the publication destination. Its `main` branch is currently empty and the repository is public. The configured Git credential belongs to `e3qatech`; GitHub rejected a dry-run push with HTTP 403. No commits were uploaded and Render was not redeployed in this verification pass. The existing Render repository remains `e3qatech/HR-management` until deployment is explicitly reconnected. Source commits remain on `enhance/admin-calculation-rules` locally.
+
+The latest branch passed all 120 tests across 13 files, strict TypeScript checking, and frontend/server production builds. Migrations through 0013 were tested in isolated PGlite databases, including repeat migration execution. The frontend build still reports a large-bundle warning. This supersedes the older local validation counts below; it does not establish that these changes are running in production.
+
+The pre-publication fixes cover lifecycle submissions without redundant employee IDs, optimistic concurrency, private history authorization, future-date rejection for immediate status changes, linked-account deactivation on termination, atomic audit rollback, scoped document snapshot reads and failed-upload cleanup, and qualifications covering the full shift. Reactivating employment requires a separate administrator decision to restore account access. Document snapshots currently preserve the initial upload; renewal/replacement is still pending. Shift skill requirements are available in the API; a skills selector in the roster editor is still pending.
 
 The core application is live at https://e3-hr.onrender.com. Workforce operations, HR helpdesk, assignment timesheets, assignment reviews and team overview are implemented. The employee foundation now has paginated search, field privacy, manager validation, conflict-safe edits, transactional history and working profile actions. Advanced completion work is tracked in [the module checklist](docs/MODULE-COMPLETION-CHECKLIST.md); these foundations do not mean every module is finished.
 
@@ -44,7 +52,7 @@ Strict TypeScript checking and frontend/server production builds pass. The front
 
 ## Remaining completion work
 
-- Migrations through 0010 are live; 0008 adds employee versions, 0009 adds work schedules and 0010 adds immutable calculation-rule versions plus record snapshots. Migrations 0011–0013 are prepared on the enhancement branch for lifecycle history, document versions and shift qualification checks. Complete timed observations linked to assignments, payroll time line items/adjustments, shift revisions/recurrence, advanced helpdesk routing/targets, configurable rating rubrics and review follow-up tasks, and the EOS adapter in subsequent enhancement slices. The EOS contract remains a proposal; it is not a live integration.
+- Migration 0008 adds employee versions, 0009 adds work schedules and 0010 adds immutable calculation-rule versions plus record snapshots. Migrations 0011–0013 are prepared on the enhancement branch for lifecycle history, document versions and shift qualification checks. Production migration state was not reverified during this pass. Complete timed observations linked to assignments, payroll time line items/adjustments, shift revisions/recurrence, advanced helpdesk routing/targets, configurable rating rubrics and review follow-up tasks, and the EOS adapter in subsequent enhancement slices. The EOS contract remains a proposal; it is not a live integration.
 
 - Configure Resend with a verified sender and exercise real password-reset delivery. Complete browser file attachment and manual backup restoration checks. No bank transfers are implemented.
 - Reconcile any existing database and explicitly configure company timezone, weekends, leave types/balances and employee-account links. Automatic accrual, holiday calendars and advanced multi-stage leave balance/workflow rules are not completed.

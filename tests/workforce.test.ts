@@ -59,6 +59,21 @@ test('site time conversion preserves Qatar overnight dates and rejects DST gaps 
   expect(()=>siteTimeToIso('2026-11-01T01:30','America/New_York')).toThrow(/skipped|repeated/);
   expect(()=>siteTimeToIso('2026-02-30T10:00','Asia/Qatar')).toThrow(/valid/);
 });
+
+test('required skills must cover the whole shift and are rechecked when accepting an offer',async()=>{
+  const f=await setup();
+  const [skill]=await context.db.insert(schema.skills).values({name:'First aid'}).returning();
+  await context.db.update(schema.workforceShifts).set({requiredSkills:[skill.id]}).where(eq(schema.workforceShifts.id,f.shiftId));
+  expect((await request(f.lead.token,`/workforce/shifts/${f.shiftId}/offers`,{employeeId:f.a.id})).status).toBe(409);
+  const [qualification]=await context.db.insert(schema.employeeSkills).values({employeeId:f.a.id,skillId:skill.id,proficiencyLevel:3,certificationExpiry:new Date(instant(3,12))}).returning();
+  expect((await request(f.lead.token,`/workforce/shifts/${f.shiftId}/offers`,{employeeId:f.a.id})).status).toBe(409);
+  await context.db.update(schema.employeeSkills).set({certificationExpiry:new Date(instant(4))}).where(eq(schema.employeeSkills.id,qualification.id));
+  const offer=await request(f.lead.token,`/workforce/shifts/${f.shiftId}/offers`,{employeeId:f.a.id}); expect(offer.status).toBe(201);
+  await context.db.update(schema.employeeSkills).set({certificationExpiry:new Date(instant(3,12))}).where(eq(schema.employeeSkills.id,qualification.id));
+  expect((await request(f.alice.token,`/workforce/assignments/${offer.body.id}/respond`,{decision:'accepted'})).status).toBe(409);
+  await context.db.update(schema.employeeSkills).set({certificationExpiry:new Date(instant(3,16))}).where(eq(schema.employeeSkills.id,qualification.id));
+  expect((await request(f.alice.token,`/workforce/assignments/${offer.body.id}/respond`,{decision:'accepted'})).status).toBe(200);
+});
 test('unauthenticated requests and self-granted permissions are denied',async()=>{
   expect((await request('','/workforce/teams')).status).toBe(401);
   const f=await setup();

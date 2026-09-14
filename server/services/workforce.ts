@@ -58,7 +58,7 @@ export async function eligible(tx:WorkforceTransaction, employeeId:number, shift
   if (shift.requiredSkills?.length) {
     const skills = await tx.select({skillId: employeeSkills.skillId, certificationExpiry: employeeSkills.certificationExpiry})
       .from(employeeSkills).where(and(eq(employeeSkills.employeeId, employeeId), inArray(employeeSkills.skillId, shift.requiredSkills)));
-    const valid = new Set(skills.filter(skill => !skill.certificationExpiry || skill.certificationExpiry > shift.startAt).map(skill => skill.skillId));
+    const valid = new Set(skills.filter(skill => !skill.certificationExpiry || skill.certificationExpiry >= shift.endAt).map(skill => skill.skillId));
     if (shift.requiredSkills.some(skillId => !valid.has(skillId))) fail(409,'Employee does not hold all skills required for this shift');
   }
   await assertNoWorkforceConflict(tx,employeeId,shift.startAt,shift.endAt,excludeId);

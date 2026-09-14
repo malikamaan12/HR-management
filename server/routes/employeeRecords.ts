@@ -8,6 +8,7 @@ import { authenticate } from '../middleware/auth';
 import { employeeScope } from '../services/access';
 import type { TokenPayload } from '../services/auth';
 import { hasPermission } from '@shared/permissions';
+import { localDate } from '@shared/workforce';
 
 const router = Router();
 router.use(authenticate);
@@ -102,7 +103,8 @@ router.get('/:id', async (req, res) => {
 });
 
 const patchSchema = employeeWriteFields.partial().extend({ expectedVersion: z.number().int().positive() }).strict();
-const lifecycleSchema = insertEmployeeLifecycleEventSchema.extend({
+const lifecycleSchema = insertEmployeeLifecycleEventSchema.omit({ employeeId: true }).extend({
+  expectedVersion: z.number().int().positive(),
   eventType: z.enum(['hire','transfer','promotion','probation_started','probation_completed','contract_renewal','termination','reactivation','correction']),
   effectiveDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value, 'Invalid effective date'),
   reason: z.string().trim().min(5).max(500),
@@ -113,8 +115,9 @@ const lifecycleSchema = insertEmployeeLifecycleEventSchema.extend({
 router.get('/:id/lifecycle', async (req, res) => {
   try {
     const id = idSchema.parse(req.params.id);
-    const [employee] = await db.select({ id: employees.id }).from(employees).where(and(eq(employees.id, id), employeeScope(req.user!, 'employee_database')));
+    const [employee] = await db.select().from(employees).where(and(eq(employees.id, id), employeeScope(req.user!, 'employee_database')));
     if (!employee) throw new RecordError(404, 'Employee not found');
+    if (!project(employee, req.user!).access.history) throw new RecordError(403, 'Employee history access is required');
     const history = await db.select({ id: employeeLifecycleEvents.id, eventType: employeeLifecycleEvents.eventType,
       effectiveDate: employeeLifecycleEvents.effectiveDate, reason: employeeLifecycleEvents.reason,
       notes: employeeLifecycleEvents.notes, metadata: employeeLifecycleEvents.metadata,
@@ -133,21 +136,32 @@ router.post('/:id/lifecycle', async (req, res) => {
     const result = await db.transaction(async tx => {
       const [employee] = await tx.select().from(employees).where(and(eq(employees.id, id), employeeScope(req.user!, 'employee_database', 'update'))).for('update');
       if (!employee) throw new RecordError(404, 'Employee not found');
-      if (input.eventType === 'termination' && input.effectiveDate < employee.joiningDate) throw new RecordError(400, 'Termination must be on or after joining date');
+      if (employee.recordVersion !== input.expectedVersion) throw new RecordError(409, 'This employee was changed. Reload the profile before recording this event.');
+      if (input.effectiveDate < employee.joiningDate) throw new RecordError(400, 'The effective date must be on or after joining date');
+      const changesStatus = input.eventType === 'termination' || input.eventType === 'reactivation';
+      if (changesStatus && input.effectiveDate > localDate(new Date(), process.env.APP_TIMEZONE || 'Asia/Qatar')) throw new RecordError(400, 'Status changes take effect immediately. Use today or a past effective date.');
+      if (input.eventType === 'termination' && employee.status === 'inactive') throw new RecordError(409, 'This employee is already inactive');
+      if (input.eventType === 'termination' && employee.userId === req.user!.userId) throw new RecordError(400, 'Ask another HR administrator to terminate your employment');
       if (input.eventType === 'reactivation' && employee.status !== 'inactive') throw new RecordError(400, 'Only inactive employees can be reactivated');
+      if (input.eventType === 'reactivation' && employee.terminationDate && input.effectiveDate < employee.terminationDate) throw new RecordError(400, 'Reactivation must be on or after termination');
       const [event] = await tx.insert(employeeLifecycleEvents).values({ employeeId: id, eventType: input.eventType,
         effectiveDate: input.effectiveDate, reason: input.reason, notes: input.notes ?? null,
         metadata: input.metadata ?? null, createdBy: req.user!.userId }).returning();
       let updated = employee;
       if (input.eventType === 'termination') {
         [updated] = await tx.update(employees).set({ status: 'inactive', terminationDate: input.effectiveDate, updatedAt: new Date() }).where(eq(employees.id, id)).returning();
-        if (employee.userId) await tx.update(authSessions).set({ isActive: false, updatedAt: new Date() }).where(eq(authSessions.userId, employee.userId));
+        if (employee.userId) {
+          await tx.update(users).set({ isActive: false }).where(eq(users.id, employee.userId));
+          await tx.update(authSessions).set({ isActive: false, updatedAt: new Date() }).where(eq(authSessions.userId, employee.userId));
+        }
       } else if (input.eventType === 'reactivation') {
         [updated] = await tx.update(employees).set({ status: 'active', terminationDate: null, updatedAt: new Date() }).where(eq(employees.id, id)).returning();
+      } else {
+        [updated] = await tx.update(employees).set({ updatedAt: new Date() }).where(eq(employees.id, id)).returning();
       }
       await tx.insert(activityLogs).values({ userId: req.user!.userId, action: 'update', entityType: 'employee_lifecycle', entityId: id,
         details: `Recorded ${input.eventType} event effective ${input.effectiveDate}` });
-      return { event, employee: updated };
+      return { event, employee: project(updated, req.user!) };
     });
     return res.status(201).json(result);
   } catch (error) { return fail(res, error); }

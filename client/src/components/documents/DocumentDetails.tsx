@@ -42,7 +42,7 @@ export function DocumentDetails({ documentId, isOpen, onClose }: DocumentDetails
     staleTime: 1000 * 60, // 1 minute
     enabled: !!document?.employeeId && isOpen,
   });
-  const { data: versions = [], isLoading: versionsLoading } = useQuery<Array<{ id: number; version: number; snapshot: ApiDocument; createdBy: number; createdAt: string }>>({
+  const { data: versions = [], isLoading: versionsLoading, error: versionsError, refetch: reloadVersions } = useQuery<Array<{ id: number; version: number; snapshot: ApiDocument; createdBy: number; createdAt: string }>>({
     queryKey: ['/api/documents', documentId, 'versions'],
     enabled: !!documentId && isOpen && activeTab === 'versions',
   });
@@ -189,8 +189,8 @@ export function DocumentDetails({ documentId, isOpen, onClose }: DocumentDetails
               </TabsContent>
 
               <TabsContent value="versions" className="space-y-3">
-                <p className="text-sm text-muted-foreground">Each upload is preserved as an immutable snapshot for audit and renewal review.</p>
-                {versionsLoading ? <Skeleton className="h-20 w-full" /> : !versions.length ? <p className="text-sm text-muted-foreground">No version history is available for this document.</p> :
+                <p className="text-sm text-muted-foreground">The original upload snapshot is retained for audit. Document replacement and renewal are pending.</p>
+                {versionsError ? <div role="alert"><p>Unable to load document versions.</p><Button variant="outline" onClick={() => reloadVersions()}>Retry</Button></div> : versionsLoading ? <Skeleton className="h-20 w-full" /> : !versions.length ? <p className="text-sm text-muted-foreground">No version history is available for this document.</p> :
                   <ol className="space-y-3">{versions.map(version => <li className="rounded-md border p-3" key={version.id}>
                     <div className="flex items-center justify-between gap-3"><span className="font-medium">Version {version.version}</span><span className="text-sm text-muted-foreground">{formatDate(version.createdAt)}</span></div>
                     <p className="mt-1 text-sm text-muted-foreground">Recorded by account #{version.createdBy} · expires {formatDate(version.snapshot.expiryDate)}</p>

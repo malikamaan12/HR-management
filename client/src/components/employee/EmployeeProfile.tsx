@@ -34,9 +34,10 @@ export default function EmployeeProfile({ employeeId, onClose }: { employeeId: n
   const docs = useQuery<ApiDocument[]>({ queryKey: [`/api/employees/${employeeId}/documents`], enabled: !!employee?.access.documents && tab === 'documents' });
   const activity = useQuery<{ history: ApiEmployeeHistory[]; total: number }>({ queryKey: [`/api/employees/${employeeId}/activity`, { page: historyPage, limit: 20 }], enabled: !!employee?.access.history && tab === 'activity' });
   const lifecycle = useQuery<{ history: LifecycleEvent[] }>({ queryKey: [`/api/employees/${employeeId}/lifecycle`], enabled: !!employee?.access.history && tab === 'lifecycle' });
-  const lifecycleMutation = useMutation({ mutationFn: (body: typeof lifecycleForm) => apiJson(`/api/employees/${employeeId}/lifecycle`, { method: 'POST', body }), onSuccess: () => {
+  const lifecycleMutation = useMutation({ mutationFn: (body: typeof lifecycleForm) => apiJson(`/api/employees/${employeeId}/lifecycle`, { method: 'POST', body: { ...body, expectedVersion: employee?.recordVersion } }), onSuccess: () => {
     queryClient.invalidateQueries({ queryKey: [`/api/employees/${employeeId}/lifecycle`] });
     queryClient.invalidateQueries({ queryKey: [`/api/employees/${employeeId}`] });
+    queryClient.invalidateQueries({ queryKey: ['/api/employees/directory'] });
     setLifecycleForm(current => ({ ...current, reason: '', notes: '' }));
     toast({ title: 'Lifecycle event recorded' });
   }, onError: (error: Error) => toast({ title: 'Unable to record lifecycle event', description: error.message, variant: 'destructive' }) });
@@ -89,6 +90,7 @@ export default function EmployeeProfile({ employeeId, onClose }: { employeeId: n
           </tr>)}</tbody></table></div>}
       </CardContent></Card></TabsContent>}
       {e.access.history && <TabsContent value="lifecycle" className="space-y-4">
+        <p className="text-sm text-muted-foreground">Events preserve an employment history. Update department, position and contract details using Edit Employee. Termination deactivates the employee and linked account immediately. Reactivation restores employment; an administrator must restore account access in User Management.</p>
         {e.access.canEdit && <Card><CardHeader><CardTitle>Record lifecycle event</CardTitle></CardHeader><CardContent><form className="grid gap-4 sm:grid-cols-2" onSubmit={(event: FormEvent) => { event.preventDefault(); lifecycleMutation.mutate(lifecycleForm); }}>
           <label className="grid gap-1.5 text-sm font-medium">Event type<select className="h-10 rounded-md border border-input bg-background px-3 text-sm" value={lifecycleForm.eventType} onChange={event => setLifecycleForm({ ...lifecycleForm, eventType: event.target.value })}>{lifecycleTypes.map(type => <option key={type} value={type}>{type.replaceAll('_', ' ')}</option>)}</select></label>
           <label className="grid gap-1.5 text-sm font-medium">Effective date<Input type="date" value={lifecycleForm.effectiveDate} onChange={event => setLifecycleForm({ ...lifecycleForm, effectiveDate: event.target.value })} required /></label>
