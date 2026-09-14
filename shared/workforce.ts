@@ -14,7 +14,8 @@ export const teamInput = z.object({name: z.string().trim().min(2).max(120), site
 export const memberInput = z.object({employeeId: positiveId, startAt: instant, endAt: instant}).strict().refine(v => v.endAt > v.startAt, 'End must be after start');
 export const grantInput = z.object({userId: positiveId, permission: z.enum(['view', 'schedule', 'review_time', 'review_performance']), startAt: instant, endAt: instant}).strict().refine(v => v.endAt > v.startAt, 'End must be after start');
 export const shiftInput = z.object({role: z.string().trim().min(2).max(120), station: z.string().trim().max(120).optional(),
-  headcount: z.coerce.number().int().min(1).max(500), breakMinutes: z.coerce.number().int().min(0).max(1439).default(0), startAt: instant, endAt: instant,
+  headcount: z.coerce.number().int().min(1).max(500), breakMinutes: z.coerce.number().int().min(0).max(1439).default(0),
+  requiredSkills: z.array(positiveId).max(30).default([]).refine(values => new Set(values).size === values.length, 'Required skills must be unique'), startAt: instant, endAt: instant,
 }).strict().refine(v => v.endAt > v.startAt && +v.endAt - +v.startAt <= 86400000 && v.breakMinutes * 60000 < +v.endAt - +v.startAt,
   'Shifts must last up to 24 hours, with a break shorter than the shift');
 
@@ -22,7 +23,7 @@ export interface TeamSummary {id: number; name: string; kind: typeof workforceKi
 export interface WorkforceHome {isAdmin: boolean; teams: TeamSummary[]; sites: {id:number;name:string;timezone:string}[]}
 export interface WorkforcePerson {id:number; name:string; label:string}
 export interface AssignmentView {id:number; employeeId:number; name:string; status:'offered'|'accepted'|'declined'|'cancelled'; cancellationReason:string|null}
-export interface ShiftView {id:number; role:string; station:string|null; headcount:number; startAt:string; endAt:string; breakMinutes:number; canSchedule:boolean; assignments:AssignmentView[]}
+export interface ShiftView {id:number; role:string; station:string|null; headcount:number; startAt:string; endAt:string; breakMinutes:number; requiredSkills:number[]; canSchedule:boolean; assignments:AssignmentView[]}
 export interface WorkforceDashboard {
   team: TeamSummary; canSchedule: boolean; from:string; to:string;
   shifts: ShiftView[];

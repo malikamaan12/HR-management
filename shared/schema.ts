@@ -33,6 +33,7 @@ export const workforceShifts = pgTable('workforce_shifts', {
   role: text('role').notNull(), station: text('station'), headcount: integer('headcount').notNull(),
   startAt: timestamp('start_at', {withTimezone: true}).notNull(), endAt: timestamp('end_at', {withTimezone: true}).notNull(),
   breakMinutes: integer('break_minutes').notNull().default(0),
+  requiredSkills: integer('required_skills').array().notNull().default([]),
   createdBy: integer('created_by').notNull().references((): AnyPgColumn => users.id),
 }, t => [check('workforce_shift_dates', sql`${t.endAt} > ${t.startAt} AND ${t.endAt} <= ${t.startAt} + interval '24 hours'`),
   check('workforce_shift_capacity', sql`${t.headcount} BETWEEN 1 AND 500`),
@@ -300,6 +301,21 @@ export const employees = pgTable("employees", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// Effective-dated employee lifecycle events. This append-only history keeps
+// transfers, promotions, renewals and offboarding explainable without
+// overloading the current employee row with historical values.
+export const employeeLifecycleEvents = pgTable("employee_lifecycle_events", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }).notNull(),
+  eventType: text("event_type").notNull(),
+  effectiveDate: date("effective_date").notNull(),
+  reason: text("reason").notNull(),
+  notes: text("notes"),
+  metadata: jsonb("metadata"),
+  createdBy: integer("created_by").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // Documents table (for compliance)
 export const documents = pgTable("documents", {
   id: serial("id").primaryKey(),
@@ -315,6 +331,18 @@ export const documents = pgTable("documents", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+export const documentVersions = pgTable("document_versions", {
+  id: serial("id").primaryKey(),
+  documentId: integer("document_id").references(() => documents.id, { onDelete: "cascade" }).notNull(),
+  version: integer("version").notNull(),
+  snapshot: jsonb("snapshot").notNull(),
+  createdBy: integer("created_by").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, table => ({
+  documentVersionUnique: uniqueIndex("document_versions_document_version").on(table.documentId, table.version),
+  documentVersionLookup: index("document_versions_document_created").on(table.documentId, table.createdAt),
+}));
 
 // Employee Documents (specific document details)
 export const employeeDocuments = pgTable("employee_documents", {
@@ -1034,6 +1062,12 @@ export const insertEmployeeSchema = createInsertSchema(employees).omit({
   recordVersion: true,
   createdAt: true,
   updatedAt: true,
+});
+
+export const insertEmployeeLifecycleEventSchema = createInsertSchema(employeeLifecycleEvents).omit({
+  id: true,
+  createdAt: true,
+  createdBy: true,
 });
 
 export const insertDocumentSchema = createInsertSchema(documents).omit({

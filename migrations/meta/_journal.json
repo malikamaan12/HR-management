@@ -78,6 +78,27 @@
       "when": 1789442400000,
       "tag": "0010_calculation_rules",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1789446000000,
+      "tag": "0011_employee_lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1789449600000,
+      "tag": "0012_document_versions",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1789453200000,
+      "tag": "0013_workforce_shift_skills",
+      "breakpoints": true
     }
   ]
 }

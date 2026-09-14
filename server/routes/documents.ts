@@ -4,7 +4,7 @@ import multer from 'multer';
 import { z } from 'zod';
 import { and, eq, lte, desc } from 'drizzle-orm';
 import { db } from '../db';
-import { documents, employees, insertDocumentSchema } from '@shared/schema';
+import { documents, documentVersions, employees, insertDocumentSchema } from '@shared/schema';
 import { authenticate } from '../middleware/auth';
 import { employeeScope } from '../services/access';
 import { uploadDocument, deleteDocumentObject, documentDownloadUrl, StorageUnavailableError, validateDocumentFile } from '../services/r2';
@@ -26,7 +26,11 @@ export async function createDocument(req:Request,res:Response){
     const policy=await getCompanySettings();
     key=await uploadDocument(employee.id,req.file);
     const today=new Date().toISOString().slice(0,10),soon=new Date(Date.now()+policy.documentExpiryDays*86400000).toISOString().slice(0,10);
-    const [document]=await db.insert(documents).values({...parsed.data,documentFile:key,status:parsed.data.expiryDate<today?'expired':parsed.data.expiryDate<=soon?'expiring_soon':'valid'}).returning();
+    const document=await db.transaction(async tx=>{
+      const [created]=await tx.insert(documents).values({...parsed.data,documentFile:key,status:parsed.data.expiryDate<today?'expired':parsed.data.expiryDate<=soon?'expiring_soon':'valid'}).returning();
+      await tx.insert(documentVersions).values({documentId:created.id,version:1,snapshot:created,createdBy:req.user!.userId});
+      return created;
+    });
     return res.status(201).json(document);
   } catch(error){
     if(key)try{await deleteDocumentObject(key);}catch{console.error('Document upload cleanup failed');}
@@ -46,6 +50,16 @@ async function list(req:Request,res:Response){
   }catch{return res.status(500).json({message:'Unable to load documents'});}
 }
 router.get('/',list);router.get('/expiring',list);
+router.get('/:id/versions',async(req,res)=>{
+  try{
+    const id=z.coerce.number().int().positive().parse(req.params.id);
+    const [visible]=await db.select({id:documents.id}).from(documents).innerJoin(employees,eq(documents.employeeId,employees.id))
+      .where(and(eq(documents.id,id),employeeScope(req.user!,'compliance_documents')));
+    if(!visible)return res.status(404).json({message:'Document not found'});
+    return res.json(await db.select({id:documentVersions.id,version:documentVersions.version,snapshot:documentVersions.snapshot,createdBy:documentVersions.createdBy,createdAt:documentVersions.createdAt})
+      .from(documentVersions).where(eq(documentVersions.documentId,id)).orderBy(desc(documentVersions.version)));
+  }catch{return res.status(400).json({message:'Invalid document request'});}
+});
 router.get('/:id/download',async(req,res)=>{
   try{
     const id=z.coerce.number().int().positive().parse(req.params.id);

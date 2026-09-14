@@ -2,7 +2,7 @@ import { Router, type Response } from 'express';
 import { and, count, desc, eq, ilike, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db';
-import { employees, activityLogs, users, type Employee } from '@shared/schema';
+import { employees, activityLogs, users, authSessions, employeeLifecycleEvents, insertEmployeeLifecycleEventSchema, type Employee } from '@shared/schema';
 import { directoryFields, employeeWriteFields, checkEmploymentDates, type EmployeeRecord } from '@shared/employee-records';
 import { authenticate } from '../middleware/auth';
 import { employeeScope } from '../services/access';
@@ -102,6 +102,57 @@ router.get('/:id', async (req, res) => {
 });
 
 const patchSchema = employeeWriteFields.partial().extend({ expectedVersion: z.number().int().positive() }).strict();
+const lifecycleSchema = insertEmployeeLifecycleEventSchema.extend({
+  eventType: z.enum(['hire','transfer','promotion','probation_started','probation_completed','contract_renewal','termination','reactivation','correction']),
+  effectiveDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value, 'Invalid effective date'),
+  reason: z.string().trim().min(5).max(500),
+  notes: z.string().trim().max(2000).nullable().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+}).strict();
+
+router.get('/:id/lifecycle', async (req, res) => {
+  try {
+    const id = idSchema.parse(req.params.id);
+    const [employee] = await db.select({ id: employees.id }).from(employees).where(and(eq(employees.id, id), employeeScope(req.user!, 'employee_database')));
+    if (!employee) throw new RecordError(404, 'Employee not found');
+    const history = await db.select({ id: employeeLifecycleEvents.id, eventType: employeeLifecycleEvents.eventType,
+      effectiveDate: employeeLifecycleEvents.effectiveDate, reason: employeeLifecycleEvents.reason,
+      notes: employeeLifecycleEvents.notes, metadata: employeeLifecycleEvents.metadata,
+      createdAt: employeeLifecycleEvents.createdAt,
+      actor: sql<string | null>`${users.firstName} || ' ' || ${users.lastName}` })
+      .from(employeeLifecycleEvents).leftJoin(users, eq(employeeLifecycleEvents.createdBy, users.id))
+      .where(eq(employeeLifecycleEvents.employeeId, id)).orderBy(desc(employeeLifecycleEvents.effectiveDate), desc(employeeLifecycleEvents.id));
+    return res.json({ history });
+  } catch (error) { return fail(res, error); }
+});
+
+router.post('/:id/lifecycle', async (req, res) => {
+  try {
+    if (!canWrite(req.user!)) throw new RecordError(403, 'HR administrator access is required to record lifecycle events');
+    const id = idSchema.parse(req.params.id), input = lifecycleSchema.parse(req.body);
+    const result = await db.transaction(async tx => {
+      const [employee] = await tx.select().from(employees).where(and(eq(employees.id, id), employeeScope(req.user!, 'employee_database', 'update'))).for('update');
+      if (!employee) throw new RecordError(404, 'Employee not found');
+      if (input.eventType === 'termination' && input.effectiveDate < employee.joiningDate) throw new RecordError(400, 'Termination must be on or after joining date');
+      if (input.eventType === 'reactivation' && employee.status !== 'inactive') throw new RecordError(400, 'Only inactive employees can be reactivated');
+      const [event] = await tx.insert(employeeLifecycleEvents).values({ employeeId: id, eventType: input.eventType,
+        effectiveDate: input.effectiveDate, reason: input.reason, notes: input.notes ?? null,
+        metadata: input.metadata ?? null, createdBy: req.user!.userId }).returning();
+      let updated = employee;
+      if (input.eventType === 'termination') {
+        [updated] = await tx.update(employees).set({ status: 'inactive', terminationDate: input.effectiveDate, updatedAt: new Date() }).where(eq(employees.id, id)).returning();
+        if (employee.userId) await tx.update(authSessions).set({ isActive: false, updatedAt: new Date() }).where(eq(authSessions.userId, employee.userId));
+      } else if (input.eventType === 'reactivation') {
+        [updated] = await tx.update(employees).set({ status: 'active', terminationDate: null, updatedAt: new Date() }).where(eq(employees.id, id)).returning();
+      }
+      await tx.insert(activityLogs).values({ userId: req.user!.userId, action: 'update', entityType: 'employee_lifecycle', entityId: id,
+        details: `Recorded ${input.eventType} event effective ${input.effectiveDate}` });
+      return { event, employee: updated };
+    });
+    return res.status(201).json(result);
+  } catch (error) { return fail(res, error); }
+});
+
 router.post('/', async (req, res) => {
   try {
     if (!canWrite(req.user!)) throw new RecordError(403, 'HR administrator access is required to create employees');
