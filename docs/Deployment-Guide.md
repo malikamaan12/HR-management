@@ -1,29 +1,48 @@
-# E3 HR deployment
+# E3 HR free deployment
 
-Prepared on 14 September 2026. No hosting resource, live database, production administrator, or public URL has been created by preparing this file.
+Prepared on 14 September 2026. Preparing this configuration does not make the app live. Verify the deployed revision, database, first administrator and HTTPS workflows before announcing launch.
 
-## Deployment target
+## Budget and services
 
-Use the existing React + Express application on Render, with PostgreSQL for records, Cloudflare R2 for private files, and Resend for email. The root `render.yaml` provisions a NEW database; it must not be pointed at an existing HR database without backup and migration reconciliation.
+The budget is **$0**. Use Render Free for the existing React + Express app, Supabase Free for PostgreSQL and private files, and Resend Free for email. Do not add a card, paid add-ons or upgrades. Use Render's assigned HTTPS address and an already-owned verified sender domain. If no sender domain is available, email remains pending; do not buy a domain.
 
-The proposed resources are one `0.5c-512mb` web service ($7/month), one `0.1c-256mb` Postgres instance ($6/month), and 5 GB of database storage ($1.50/month): **$14.50/month for these resources**, plus the selected workspace plan, usage overages, taxes and any R2/Resend charges. This is a small initial deployment and needs capacity monitoring. Confirm the actual dashboard quote before purchase. [Current Render pricing](https://render.com/pricing).
+The root `render.yaml` creates only one Free web service in Frankfurt. It creates no Render database, persistent disk or worker. Migrations run at startup because Free services lack pre-deploy commands and a service shell. Render's free PostgreSQL expires after 30 days and is not used. [Render Free](https://render.com/docs/free), [deploy commands](https://render.com/docs/deploys).
 
-Both resources use Frankfurt. Database public access is disabled; its internal connection string is injected into the web service. Deployments are manual. The database is PostgreSQL 17. Render generates the two JWT signing secrets. No credentials belong in Git. [Blueprint reference](https://render.com/docs/blueprint-spec).
+Free plan limits checked on 14 September 2026:
 
-## Release sequence
+| Service | Allowance or limitation |
+| --- | --- |
+| Render Free | Sleeps after 15 minutes idle; restart can take about a minute. 750 Free instance hours per workspace monthly. No persistent local file storage or service shell. |
+| Supabase Free | 500 MB database, 1 GB files, 5 GB egress plus 5 GB cached egress. Can pause after one week idle; no automatic database backups. |
+| Resend Free | 3,000 emails monthly, at most 100 daily; verified sender domain required. |
 
-1. Authenticate Git for `malikamaan12/HR-management`. Check remote refs again. The prepared local release branch is `release/hr-foundation`; publish it as `main` without force or tags. Never publish the old development branch. If the remote gained unrelated commits, reconcile before pushing.
-2. In the signed-in Render workspace, create a Blueprint from this repository's `main` branch. Review the web service, database, region and total price. Confirm these names do not belong to existing services before applying.
-3. Render builds the frontend/server, then runs `pnpm db:migrate`. All eight migrations through `0007_assignment_reviews` must succeed before serving the release. A failed migration must be investigated; do not replace it with `db:push`.
-4. Wait for a successful deploy and confirm `/readyz` returns 200. Its query verifies access to the users table. The app uses Render's assigned HTTPS origin; set APP_URL explicitly when a custom domain is attached.
-5. In the service shell, set BOOTSTRAP_ADMIN_EMAIL, BOOTSTRAP_ADMIN_USERNAME and BOOTSTRAP_ADMIN_PASSWORD privately, then run `pnpm admin:bootstrap`. Use the owner's real email and a unique password of 12–72 bytes. The script refuses an existing administrator. Remove the bootstrap password from the shell/environment immediately afterward. No default administrator is shipped.
-6. Add R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY and R2_BUCKET_NAME to the service environment. Keep R2 private. Add RESEND_API_KEY and EMAIL_FROM after the sender domain is verified. Redeploy to apply changes. Without these values, uploads and password-reset email remain unavailable.
-7. Validate HTTPS sign-in, refresh/logout, company settings, employee-account links, a disposable shift/timesheet/review workflow, and role restrictions. With explicit approval to send the verification email, test password reset to the owner's address; validate private R2 upload and download. Remove disposable records through supported application flows. Confirm managed database backups and recovery before entering real HR records.
-8. Record the actual live URL, service/database identifiers, exact Git revision and validation results. A successful build or `/healthz` alone is not proof that a usable HR application is live.
+Check dashboards for current limits and usage. Quotas can interrupt service; these plans are not an always-on service commitment. Do not generate artificial traffic to evade sleep or pause policies. [Supabase pricing](https://supabase.com/pricing), [Resend pricing](https://resend.com/pricing).
+
+## Prepare Supabase
+
+1. Create a dedicated project in a Free organization, preferably Frankfurt to match Render. Generate and privately save a strong database password. Keep Free and do not add a card.
+2. **Before migration, disable Enable Data API and Automatically expose new tables.** Enable automatic RLS on new public tables. The app uses its own Express authorization and direct PostgreSQL connection, not Supabase Auth or browser database access. The server's database owner can access its tables with RLS enabled. Do not add anonymous policies or grants on HR tables. Verify Data API stays disabled after creation. [Data API security](https://supabase.com/docs/guides/api/securing-your-api).
+3. In Connect, choose **Session pooler** (port 5432) and copy its exact connection string. This supports IPv4; the direct database endpoint may require IPv6. Substitute the saved password with URL encoding and retain TLS certificate verification, for example `sslmode=verify-full`. If the platform requires its database CA, configure the provided certificate as trusted; do not disable verification. Never put the connection string in Git, chat, frontend variables or logs. [Connection options](https://supabase.com/docs/guides/database/connecting-to-postgres).
+4. Create a **private** Storage bucket such as `private-hr`. Enable S3 access and create server-only S3 credentials. These bypass RLS and access all project buckets, so use a dedicated HR project. Copy the exact endpoint, region, access key ID and secret into Render's server environment. Do not substitute the anonymous/publishable project key. [S3 authentication](https://supabase.com/docs/guides/storage/s3/authentication).
+
+## Publish and deploy
+
+1. Resolve write access to the intended GitHub repository. The local release is `release/hr-foundation`; publish it as `main` without force or tags. Never publish the legacy development branch. Check remote refs again and reconcile unexpected commits first. A different repository destination needs the owner's choice.
+2. Connect the chosen repository's `main` branch in Render using the root `render.yaml`. Confirm the preview contains exactly one Free service and no billable resource. Supply DATABASE_URL from Supabase's session pooler. Render generates distinct JWT secrets; do not use example values.
+3. The build installs locked dependencies and builds client/server. Each start runs `pnpm db:migrate && pnpm start`. All eight migrations through `0007_assignment_reviews` must succeed before serving. The journal has passed a safe-rerun test, but failed real migrations still need investigation. Do not substitute `db:push`. Existing databases need backup and reconciliation first.
+4. Wait for deployment and a 200 response from `/readyz`. The app uses Render's assigned HTTPS origin. Set APP_URL for an existing custom domain; do not copy the localhost value from `.env.example` into production.
+5. After migration, run `pnpm admin:bootstrap` **locally** against the same database. Privately supply DATABASE_URL, BOOTSTRAP_ADMIN_EMAIL, BOOTSTRAP_ADMIN_USERNAME and BOOTSTRAP_ADMIN_PASSWORD for that process. Use the owner's real email and a unique password of 12–72 bytes. The script refuses an existing administrator. Remove the bootstrap password afterward. No default administrator is shipped.
+6. Set STORAGE_PROVIDER=supabase and these server variables: SUPABASE_S3_ENDPOINT, SUPABASE_S3_REGION, SUPABASE_S3_ACCESS_KEY_ID, SUPABASE_S3_SECRET_ACCESS_KEY and SUPABASE_STORAGE_BUCKET. Keep the bucket private. Add RESEND_API_KEY and EMAIL_FROM for the existing verified sender, on Resend Free. Redeploy after environment changes. Missing credentials leave uploads or reset email unavailable.
+7. Verify HTTPS sign-in, refresh/logout, settings, employee-account links and role restrictions. Exercise a disposable shift, timesheet and review workflow. Test private employee/helpdesk uploads and downloads, including denied unauthenticated access. Obtain explicit permission before sending a real password-reset test email to the owner. Remove disposable records through supported app flows.
+8. Record the live URL, service/project identifiers, exact Git revision and test results. A build or `/healthz` alone does not prove a usable app. Test a manual backup and restore before accepting real HR records.
 
 ## Operations
 
-- `/healthz` is process liveness. `/readyz` is uncached database readiness and returns a generic 503 during an outage. It does not check first-admin creation, all migrations, or external vendors.
-- Use a database backup before schema changes. Render's deploy rollback changes application code; it does not reverse PostgreSQL migrations. Review backward compatibility before rollback.
-- Changing JWT secrets signs users out. Change APP_URL when changing domains, and recheck reset links and secure cookies.
-- EOS and WhatsApp remain outside this deployment. Existing feature limitations are listed in `IMPLEMENTATION-STATUS.md`.
+- Keep Free accounts without a payment method. Check quotas before imports or uploads. The app limits files to 10 MB each, but total storage is shared across the project.
+- `/healthz` is process liveness. `/readyz` is uncached database readiness and returns a generic 503 during outages. It does not check all migrations, administrator setup, storage or email. Settings reports configuration presence, not successful vendor connectivity.
+- Resume paused services in their dashboards. Do not upgrade automatically to solve quota or sleep limits.
+- Make private manual database backups and separate file backups. A database dump holds file references rather than file contents. Test restore before depending on backups.
+- Back up before schema changes. Render code rollback does not reverse PostgreSQL migrations; review schema compatibility first.
+- Existing R2 deployments remain supported with STORAGE_PROVIDER=r2 and their R2 variables. Switching providers does not migrate files; verify a controlled file migration before changing a populated deployment. R2 activation is outside this $0 setup.
+- Changing JWT secrets signs users out. Update APP_URL when changing domains and recheck reset links and cookies.
+- EOS, WhatsApp and remaining advanced workflows are listed in `IMPLEMENTATION-STATUS.md`; deployment does not complete them.

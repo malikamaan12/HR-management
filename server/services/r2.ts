@@ -5,6 +5,18 @@ import { randomUUID } from 'node:crypto';
 export class StorageUnavailableError extends Error {}
 export function privateStorageConfigured(){try{const {client}=configuration();client.destroy();return true;}catch{return false;}}
 function configuration(){
+  const provider=process.env.STORAGE_PROVIDER || 'r2';
+  if(provider==='supabase'){
+    const {SUPABASE_S3_ENDPOINT,SUPABASE_S3_REGION,SUPABASE_S3_ACCESS_KEY_ID,SUPABASE_S3_SECRET_ACCESS_KEY,SUPABASE_STORAGE_BUCKET}=process.env;
+    if(!SUPABASE_S3_ENDPOINT || !SUPABASE_S3_REGION || !SUPABASE_S3_ACCESS_KEY_ID || !SUPABASE_S3_SECRET_ACCESS_KEY || !SUPABASE_STORAGE_BUCKET)throw new StorageUnavailableError('Document storage is not configured');
+    let endpoint:URL;
+    try{endpoint=new URL(SUPABASE_S3_ENDPOINT);}catch{throw new StorageUnavailableError('Invalid Supabase storage configuration');}
+    if(endpoint.protocol!=='https:' || !/^[a-z0-9-]+\.(storage\.)?supabase\.co$/.test(endpoint.hostname) || endpoint.port || endpoint.username || endpoint.password || endpoint.search || endpoint.hash || !/^\/storage\/v1\/s3\/?$/.test(endpoint.pathname))throw new StorageUnavailableError('Invalid Supabase storage configuration');
+    return {bucket:SUPABASE_STORAGE_BUCKET,client:new S3Client({region:SUPABASE_S3_REGION,endpoint:endpoint.toString().replace(/\/$/,''),forcePathStyle:true,
+      credentials:{accessKeyId:SUPABASE_S3_ACCESS_KEY_ID,secretAccessKey:SUPABASE_S3_SECRET_ACCESS_KEY},maxAttempts:2,
+      requestChecksumCalculation:'WHEN_REQUIRED',responseChecksumValidation:'WHEN_REQUIRED'})};
+  }
+  if(provider!=='r2')throw new StorageUnavailableError('Unsupported document storage provider');
   const {R2_ACCOUNT_ID,R2_ACCESS_KEY_ID,R2_SECRET_ACCESS_KEY,R2_BUCKET_NAME}=process.env;
   if(!R2_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_BUCKET_NAME)throw new StorageUnavailableError('Document storage is not configured');
   if(!/^[a-f0-9]{32}$/i.test(R2_ACCOUNT_ID))throw new StorageUnavailableError('Invalid R2 account configuration');

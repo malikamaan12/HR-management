@@ -1,16 +1,15 @@
-# Production deployment for a NEW database. Review the paid resources before applying.
-# Never attach an existing database without backup and migration reconciliation.
+# Free deployment. No paid Render database or pre-deploy feature is provisioned.
+# Create a Supabase Free project and disable its Data API before setting DATABASE_URL.
 services:
   - type: web
     name: e3-hr
     runtime: node
     region: frankfurt
-    plan: 0.5c-512mb
+    plan: free
     branch: main
     autoDeployTrigger: "off"
     buildCommand: npm install -g pnpm@11.19.0 && pnpm install --frozen-lockfile --prod=false && pnpm build
-    preDeployCommand: pnpm db:migrate
-    startCommand: pnpm start
+    startCommand: pnpm db:migrate && pnpm start
     healthCheckPath: /readyz
     envVars:
       - key: NODE_VERSION
@@ -21,21 +20,12 @@ services:
         value: Asia/Qatar
       # APP_URL uses Render's assigned HTTPS URL by default. Set it for a custom domain.
       - key: DATABASE_URL
-        fromDatabase:
-          name: e3-hr-db
-          property: connectionString
+        sync: false
       - key: JWT_SECRET
         generateValue: true
       - key: JWT_REFRESH_SECRET
         generateValue: true
-      # Configure Resend and private R2 credentials in the dashboard when available.
-      # Bootstrap the first administrator in the service shell after migrations.
-databases:
-  - name: e3-hr-db
-    region: frankfurt
-    plan: 0.1c-256mb
-    diskSizeGB: 5
-    postgresMajorVersion: "17"
-    databaseName: e3hr
-    user: e3hr
-    ipAllowList: []
+      - key: STORAGE_PROVIDER
+        value: supabase
+      # Set the Supabase S3 and Resend Free credentials in the service environment.
+      # Free Render has no service shell: run admin:bootstrap locally against the database.
