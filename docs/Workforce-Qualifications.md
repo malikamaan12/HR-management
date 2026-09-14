@@ -1,6 +1,8 @@
 # Workforce skills and qualifications
 
-15 September 2026. This enhancement connects skill requirements to the Workforce screens for event, FEC and mall-activation teams. Employment types remain independent of team types.
+Deployed 15 September 2026 as `b4ed66efc7d3dc1d1ba1d7d65db26c1eed771f11` in Render deployment `dep-dak808ou01pc73e510u0`. Live database readiness returned HTTP 200 and the authenticated Workforce screen loaded. Production sites and teams still require real operational setup.
+
+This enhancement connects skill requirements to the Workforce screens for event, FEC and mall-activation teams. Employment types remain independent of team types.
 
 ## HR workflow
 

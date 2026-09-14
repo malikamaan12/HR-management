@@ -1,6 +1,6 @@
 # Workforce enhancement — first implementation
 
-13 September 2026. Implemented locally; staging database migration and deployment are still required.
+Foundation deployed on Render Free with Supabase Free. Updated 15 September 2026: see [Workforce skills and qualifications](Workforce-Qualifications.md) for the new HR catalogue, qualification entry/renewal and shift requirement workflow.
 
 ## What is available
 
@@ -51,16 +51,16 @@ Mutations use transactions, row locks and a unique shift/employee assignment ind
 
 ## Verification and remaining work
 
-42 automated tests pass: the 30 existing regression tests plus 12 workforce tests. New coverage includes authorization and date boundaries, confidential-field exclusion, account-to-employee ownership, acceptance races, overlap/adjacent shifts, leave, contract dates, legacy schedule conflicts, cancellation, audit records and time-zone conversion. Tests run on isolated PGlite; managed PostgreSQL concurrency and migration checks remain part of staging acceptance.
+The current full suite has 124 passing tests across 13 files, including 17 workforce tests. New coverage includes authorization and date boundaries, confidential-field exclusion, account-to-employee ownership, acceptance races, overlap/adjacent shifts, leave, contract dates, legacy schedule conflicts, cancellation, audit records and time-zone conversion. Tests run on isolated PGlite; managed PostgreSQL concurrency and migration checks remain part of staging acceptance.
 
 Strict TypeScript checking and production frontend/server builds pass. The existing large frontend-bundle warning remains. A browser walkthrough with synthetic accounts verified site/team/member/grant setup, lead shift creation and offering, employee acceptance, persistence after reload and updated lead coverage. Synthetic records and preview credentials are not shipped to the application or source repository.
 
-This implementation is the workforce foundation, not the entire operations roadmap. Next slices:
+This implementation is the workforce foundation, not the entire operations roadmap. Remaining operations work:
 
-1. Shift editing/cancellation and membership changes with preserved history and renewed employee consent; recurrence, replacements, qualification checks and staffing requirements.
-2. Assignment-linked attendance, break exceptions, timesheet submission/approval and payroll locking. Employment or compliance changes after acceptance need explicit operational review.
-3. HR helpdesk with confidential participants, assignment, status, internal notes and attachments.
-4. Role-specific employee rating rubrics, evidence, employee responses and review/dispute handling.
+1. Shift editing/cancellation and membership changes with preserved history and renewed employee consent; recurrence, replacements and qualification-change alerts. Skill requirements are now selectable through the roster editor.
+2. Assignment-linked attendance and break exceptions. Timesheet submission/approval and payroll locking are implemented; employment or compliance changes after acceptance still need explicit operational review.
+3. Advanced HR helpdesk routing and response targets; confidential cases, assignment, replies and attachments are implemented.
+4. Full performance cycles and development plans; assignment ratings, evidence, employee responses and disputes are implemented.
 5. Activation lifecycle and explicit legacy-event mapping, followed by EOS machine authentication, external IDs, idempotency, outbox/change feed and contract tests when EOS interfaces are available.
 
-The migration adds six workforce tables; it does not auto-convert historical event assignments or infer employee consent. R2/Resend live configuration, hosting and GitHub publication remain separate setup work. WhatsApp stays deferred.
+The migration adds six workforce tables; it does not auto-convert historical event assignments or infer employee consent. Render Free, Supabase Free and GitHub publication are configured. Resend sender configuration remains pending. WhatsApp stays deferred.
