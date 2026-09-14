@@ -49,7 +49,7 @@ beforeAll(async()=>{
   context.db=drizzle(pg);const app=express();app.use(express.json());app.use('/workforce',router);app.use('/leave',leaveRouter);
   server=app.listen(0,'127.0.0.1');await new Promise<void>(resolve=>server.once('listening',resolve));base='http://127.0.0.1:'+(server.address() as {port:number}).port;
 });
-beforeEach(async()=>{await pg.exec('TRUNCATE workforce_sites, users, employees RESTART IDENTITY CASCADE');});
+beforeEach(async()=>{await pg.exec('TRUNCATE workforce_sites, users, employees, skills RESTART IDENTITY CASCADE');});
 afterAll(async()=>{await new Promise<void>((resolve,reject)=>server.close(error=>error?reject(error):resolve()));await pg.close();});
 
 test('site time conversion preserves Qatar overnight dates and rejects DST gaps and folds',()=>{
@@ -73,6 +73,75 @@ test('required skills must cover the whole shift and are rechecked when acceptin
   expect((await request(f.alice.token,`/workforce/assignments/${offer.body.id}/respond`,{decision:'accepted'})).status).toBe(409);
   await context.db.update(schema.employeeSkills).set({certificationExpiry:new Date(instant(3,16))}).where(eq(schema.employeeSkills.id,qualification.id));
   expect((await request(f.alice.token,`/workforce/assignments/${offer.body.id}/respond`,{decision:'accepted'})).status).toBe(200);
+});
+
+test('skill catalogue is scoped to administrators and current scheduling leads',async()=>{
+  const f=await setup();
+  const input={name:' First aid ',category:'Safety'};
+  expect((await request('', '/workforce/skills')).status).toBe(401);
+  expect((await request(f.lead.token,'/workforce/skills',input)).status).toBe(403);
+  const created=await request(f.admin.token,'/workforce/skills',input);expect(created.status).toBe(201);
+  expect(created.body).toEqual({id:expect.any(Number),name:'First aid',category:'Safety'});
+  expect((await request(f.admin.token,'/workforce/skills',{name:'FIRST AID'})).status).toBe(409);
+  expect((await request(f.admin.token,'/workforce/skills',{name:'X'})).status).toBe(400);
+  expect((await request(f.alice.token,`/workforce/skills?teamId=${f.teamId}`)).status).toBe(404);
+  expect((await request(f.lead.token,`/workforce/skills?teamId=${f.teamId}`)).body).toEqual([created.body]);
+  await context.db.update(schema.workforceGrants).set({permission:'view'}).where(eq(schema.workforceGrants.id,f.grantId));
+  expect((await request(f.lead.token,`/workforce/skills?teamId=${f.teamId}`)).status).toBe(404);
+  await context.db.update(schema.workforceGrants).set({permission:'schedule',revokedAt:new Date()}).where(eq(schema.workforceGrants.id,f.grantId));
+  expect((await request(f.lead.token,`/workforce/skills?teamId=${f.teamId}`)).status).toBe(404);
+});
+
+test('shift creation validates skill references and exposes names only for visible assignments',async()=>{
+  const f=await setup();
+  const skill=(await request(f.admin.token,'/workforce/skills',{name:'First aid'})).body;
+  const input={role:'Safety host',headcount:1,...dates(4),requiredSkills:[skill.id]};
+  expect((await request(f.lead.token,`/workforce/teams/${f.teamId}/shifts`,{...input,requiredSkills:[99999]})).status).toBe(400);
+  expect((await request(f.lead.token,`/workforce/teams/${f.teamId}/shifts`,{...input,requiredSkills:[skill.id,skill.id]})).status).toBe(400);
+  const shift=await request(f.lead.token,`/workforce/teams/${f.teamId}/shifts`,input);expect(shift.status).toBe(201);
+  expect(shift.body.requiredSkills).toEqual([skill.id]);
+  const roster=await request(f.lead.token,`/workforce/teams/${f.teamId}/dashboard`);expect(roster.body.skills).toEqual([skill]);
+  expect((await request(f.admin.token,`/workforce/employees/${f.a.id}/qualifications`,{skillId:skill.id,proficiencyLevel:3,certificationExpiry:null,expectedUpdatedAt:null})).status).toBe(200);
+  expect((await request(f.lead.token,`/workforce/shifts/${shift.body.id}/offers`,{employeeId:f.a.id})).status).toBe(201);
+  expect((await request(f.alice.token,'/workforce/my-assignments')).body[0].requiredSkills).toEqual([skill]);
+  expect((await request(f.bob.token,'/workforce/my-assignments')).body).toEqual([]);
+});
+
+test('qualification changes require HR, reject stale writes, and control full-shift eligibility',async()=>{
+  const f=await setup();const skill=(await request(f.admin.token,'/workforce/skills',{name:'First aid'})).body;
+  const url=`/workforce/employees/${f.a.id}/qualifications`;
+  const input={skillId:skill.id,proficiencyLevel:3,certificationExpiry:instant(3,12),expectedUpdatedAt:null};
+  for(const user of [f.lead,f.alice]) {
+    expect((await request(user.token,url)).status).toBe(403);
+    expect((await request(user.token,url,input)).status).toBe(403);
+  }
+  expect((await request(f.admin.token,url,{...input,skillId:99999})).status).toBe(400);
+  expect((await request(f.admin.token,url,{...input,proficiencyLevel:6})).status).toBe(400);
+  expect((await request(f.admin.token,url,{...input,certified:true})).status).toBe(400);
+  expect((await request(f.admin.token,url,input)).status).toBe(200);
+  expect((await request(f.admin.token,url,input)).status).toBe(409);
+  await context.db.update(schema.workforceShifts).set({requiredSkills:[skill.id]}).where(eq(schema.workforceShifts.id,f.shiftId));
+  expect((await request(f.lead.token,`/workforce/shifts/${f.shiftId}/offers`,{employeeId:f.a.id})).status).toBe(409);
+  const record=(await request(f.admin.token,url)).body[0];
+  expect(Object.keys(record).sort()).toEqual(['id','skillId','name','proficiencyLevel','certificationExpiry','updatedAt'].sort());
+  const renewal={...input,certificationExpiry:instant(3,16),expectedUpdatedAt:record.updatedAt};
+  expect((await request(f.admin.token,url,renewal)).status).toBe(200);
+  expect((await request(f.admin.token,url,renewal)).status).toBe(409);
+  const offer=await request(f.lead.token,`/workforce/shifts/${f.shiftId}/offers`,{employeeId:f.a.id});expect(offer.status).toBe(201);
+  const current=(await request(f.admin.token,url)).body[0];
+  expect((await request(f.admin.token,url,{...input,expectedUpdatedAt:current.updatedAt})).status).toBe(200);
+  expect((await request(f.alice.token,`/workforce/assignments/${offer.body.id}/respond`,{decision:'accepted'})).status).toBe(409);
+});
+
+test('qualification and catalogue writes roll back when the audit cannot be stored',async()=>{
+  const f=await setup();const skill=(await request(f.admin.token,'/workforce/skills',{name:'First aid'})).body;
+  await pg.exec("CREATE FUNCTION reject_workforce_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'audit unavailable'; END; $$; CREATE TRIGGER reject_workforce_audit BEFORE INSERT ON activity_logs FOR EACH ROW EXECUTE FUNCTION reject_workforce_audit();");
+  try {
+    expect((await request(f.admin.token,`/workforce/employees/${f.a.id}/qualifications`,{skillId:skill.id,proficiencyLevel:3,certificationExpiry:null,expectedUpdatedAt:null})).status).toBe(500);
+    expect((await request(f.admin.token,`/workforce/employees/${f.a.id}/qualifications`)).body).toEqual([]);
+    expect((await request(f.admin.token,'/workforce/skills',{name:'Evacuation'})).status).toBe(500);
+    expect((await request(f.admin.token,'/workforce/skills')).body).toEqual([skill]);
+  } finally {await pg.exec('DROP TRIGGER reject_workforce_audit ON activity_logs; DROP FUNCTION reject_workforce_audit();');}
 });
 test('unauthenticated requests and self-granted permissions are denied',async()=>{
   expect((await request('','/workforce/teams')).status).toBe(401);

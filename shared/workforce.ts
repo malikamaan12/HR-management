@@ -22,15 +22,21 @@ export const shiftInput = z.object({role: z.string().trim().min(2).max(120), sta
 export interface TeamSummary {id: number; name: string; kind: typeof workforceKinds[number]; siteId: number; siteName: string; timezone: string}
 export interface WorkforceHome {isAdmin: boolean; teams: TeamSummary[]; sites: {id:number;name:string;timezone:string}[]}
 export interface WorkforcePerson {id:number; name:string; label:string}
+export interface WorkforceSkill {id:number; name:string; category:string|null}
+export interface WorkforceQualification {id:number;skillId:number;name:string;proficiencyLevel:number;certificationExpiry:string|null;updatedAt:string}
+export const workforceSkillInput=z.object({name:z.string().trim().min(2).max(120),category:z.string().trim().max(80).default('')}).strict();
+export const workforceQualificationInput=z.object({skillId:positiveId,proficiencyLevel:z.number().int().min(1).max(5),
+  certificationExpiry:z.string().datetime({offset:true}).nullable(),expectedUpdatedAt:z.string().datetime({offset:true}).nullable()}).strict();
 export interface AssignmentView {id:number; employeeId:number; name:string; status:'offered'|'accepted'|'declined'|'cancelled'; cancellationReason:string|null}
 export interface ShiftView {id:number; role:string; station:string|null; headcount:number; startAt:string; endAt:string; breakMinutes:number; requiredSkills:number[]; canSchedule:boolean; assignments:AssignmentView[]}
 export interface WorkforceDashboard {
   team: TeamSummary; canSchedule: boolean; from:string; to:string;
   shifts: ShiftView[];
+  skills: WorkforceSkill[];
   members: {id:number;employeeId:number;name:string;type:string;startAt:string;endAt:string}[];
   grants: {id:number;name:string;permission:string;startAt:string;endAt:string;revokedAt:string|null}[];
 }
-export interface MyAssignment {id:number; status:AssignmentView['status']; cancellationReason:string|null; role:string;station:string|null;startAt:string;endAt:string;breakMinutes:number;teamName:string;siteName:string;timezone:string;kind:TeamSummary['kind']}
+export interface MyAssignment {requiredSkills:WorkforceSkill[];id:number; status:AssignmentView['status']; cancellationReason:string|null; role:string;station:string|null;startAt:string;endAt:string;breakMinutes:number;teamName:string;siteName:string;timezone:string;kind:TeamSummary['kind']}
 
 // Calendar-day checks use the site's time zone, including overnight shifts.
 export function localDate(instant: Date, timezone: string) {
