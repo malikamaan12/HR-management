@@ -42,6 +42,10 @@ export function DocumentDetails({ documentId, isOpen, onClose }: DocumentDetails
     staleTime: 1000 * 60, // 1 minute
     enabled: !!document?.employeeId && isOpen,
   });
+  const { data: versions = [], isLoading: versionsLoading } = useQuery<Array<{ id: number; version: number; snapshot: ApiDocument; createdBy: number; createdAt: string }>>({
+    queryKey: ['/api/documents', documentId, 'versions'],
+    enabled: !!documentId && isOpen && activeTab === 'versions',
+  });
 
   // Function to refresh document
   const refreshDocument = () => {
@@ -114,9 +118,10 @@ export function DocumentDetails({ documentId, isOpen, onClose }: DocumentDetails
             </div>
             
             <Tabs defaultValue="details" onValueChange={setActiveTab}>
-              <TabsList className="grid grid-cols-2 mb-4">
+              <TabsList className="grid grid-cols-3 mb-4">
                 <TabsTrigger value="details">Details</TabsTrigger>
                 <TabsTrigger value="preview">Document Preview</TabsTrigger>
+                <TabsTrigger value="versions">Versions</TabsTrigger>
               </TabsList>
               
               <TabsContent value="details" className="space-y-4">
@@ -181,6 +186,15 @@ export function DocumentDetails({ documentId, isOpen, onClose }: DocumentDetails
                   <p>{document.documentFile ? 'This file is stored privately. Download it to view its contents.' : 'No document file available'}</p>
                   {document.documentFile && <Button className="mt-4" onClick={downloadDocument}>Download document</Button>}
                 </div>
+              </TabsContent>
+
+              <TabsContent value="versions" className="space-y-3">
+                <p className="text-sm text-muted-foreground">Each upload is preserved as an immutable snapshot for audit and renewal review.</p>
+                {versionsLoading ? <Skeleton className="h-20 w-full" /> : !versions.length ? <p className="text-sm text-muted-foreground">No version history is available for this document.</p> :
+                  <ol className="space-y-3">{versions.map(version => <li className="rounded-md border p-3" key={version.id}>
+                    <div className="flex items-center justify-between gap-3"><span className="font-medium">Version {version.version}</span><span className="text-sm text-muted-foreground">{formatDate(version.createdAt)}</span></div>
+                    <p className="mt-1 text-sm text-muted-foreground">Recorded by account #{version.createdBy} · expires {formatDate(version.snapshot.expiryDate)}</p>
+                  </li>)}</ol>}
               </TabsContent>
             </Tabs>
           </div>
