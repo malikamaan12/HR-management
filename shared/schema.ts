@@ -1,3 +1,4 @@
+import type {CalculationSnapshot,CalculationRules} from './calculation-rules';
 import { relations, sql } from "drizzle-orm";
 import { type AnyPgColumn, pgTable, text, serial, integer, boolean, timestamp, pgEnum, varchar, date, json, decimal, jsonb, check, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
@@ -48,6 +49,7 @@ export const workforceAssignments = pgTable('workforce_assignments', {
 
 export const timesheetStatus = pgEnum('timesheet_status', ['draft', 'submitted', 'returned', 'approved', 'payroll_locked']);
 export const workforceTimesheets = pgTable('workforce_timesheets', {
+  calculationSnapshot: jsonb("calculation_snapshot").$type<CalculationSnapshot>(),
   id: serial('id').primaryKey(), assignmentId: integer('assignment_id').notNull().unique().references(() => workforceAssignments.id),
   status: timesheetStatus('status').notNull().default('draft'), version: integer('version').notNull().default(1),
   actualStartAt: timestamp('actual_start_at', {withTimezone:true}).notNull(), actualEndAt: timestamp('actual_end_at', {withTimezone:true}).notNull(),
@@ -399,6 +401,7 @@ export const clockMethodEnum = pgEnum('clock_method', ['qr_code', 'biometric', '
 
 // Attendance table
 export const attendance = pgTable("attendance", {
+  calculationSnapshot: jsonb("calculation_snapshot").$type<CalculationSnapshot>(),
   totalBreakMinutes: integer("total_break_minutes").notNull().default(0),
   id: serial("id").primaryKey(),
   employeeId: integer("employee_id").references(() => employees.id).notNull(),
@@ -423,6 +426,7 @@ export const attendance = pgTable("attendance", {
 
 // Leave table
 export const leaves = pgTable("leaves", {
+  calculationSnapshot: jsonb("calculation_snapshot").$type<CalculationSnapshot>(),
   id: serial("id").primaryKey(),
   employeeId: integer("employee_id").references(() => employees.id).notNull(),
   leaveType: text("leave_type").notNull(), // annual, sick, emergency, etc.
@@ -502,6 +506,8 @@ export const leaveApprovals = pgTable("leave_approvals", {
 
 // Payroll table
 export const payroll = pgTable("payroll", {
+  roundingAdjustmentCents: integer("rounding_adjustment_cents").notNull().default(0),
+  calculationSnapshot: jsonb("calculation_snapshot").$type<CalculationSnapshot>(),
   id: serial("id").primaryKey(),
   employeeId: integer("employee_id").references(() => employees.id).notNull(),
   month: integer("month").notNull(),
@@ -2426,3 +2432,9 @@ export type InsertBulkImportJob = z.infer<typeof insertBulkImportJobSchema>;
 export type SelectBulkImportJob = typeof bulkImportJobs.$inferSelect;
 
 export const appSettings = pgTable("app_settings", {key:text("key").primaryKey(),value:jsonb("value").notNull(),updatedAt:timestamp("updated_at").defaultNow().notNull()});
+
+export const calculationRuleVersions=pgTable('calculation_rule_versions',{
+ id:serial('id').primaryKey(),scope:text('scope').notNull(),effectiveFrom:date('effective_from').notNull(),
+ rules:jsonb('rules').$type<CalculationRules>().notNull(),reason:text('reason').notNull(),
+ createdBy:integer('created_by').notNull().references(()=>users.id),createdAt:timestamp('created_at').notNull().defaultNow(),
+});

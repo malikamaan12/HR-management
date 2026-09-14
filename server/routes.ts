@@ -1041,6 +1041,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Role & Permission Management Routes
   app.use('/api/role-management', roleManagementRoutes);
+
   
   // Training & Skills Routes
   app.use('/api/training', trainingRoutes);

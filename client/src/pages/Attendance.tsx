@@ -738,7 +738,7 @@ function ClockInOut() {
                 <div className="p-4 bg-green-50 rounded-lg">
                   <div className="flex items-center gap-2">
                     <CalendarCheck className="h-5 w-5 text-green-600" />
-                    <span className="font-medium">Total Hours</span>
+                    <span className="font-medium">Calculated Hours</span>
                   </div>
                   <p className="text-xl font-bold text-green-600 mt-2">
                     {attendanceData.checkIn ? 

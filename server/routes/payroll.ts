@@ -5,11 +5,23 @@ import { db } from '../db';
 import { employees,payroll,activityLogs } from '@shared/schema';
 import { employeeScope } from '../services/access';
 import { authenticate } from '../middleware/auth';
-import { calculatePayroll } from '@shared/money';
+import {calculatePolicyPayroll} from '@shared/calculation-rules';
+import {calculationSnapshot} from '../services/calculation-rules';
 const router=Router();router.use(authenticate);
 const amount=z.union([z.string(),z.number()]);
 const inputSchema=z.object({employeeId:z.coerce.number().int().positive(),month:z.coerce.number().int().min(1).max(12),year:z.coerce.number().int().min(2000).max(2200),basicSalary:amount,
   allowances:z.record(amount).default({}),deductions:z.record(amount).default({})});
+const periodDate=(input:{year:number;month:number})=>`${input.year}-${String(input.month).padStart(2,'0')}-01`;
+router.post('/preview',async(req,res)=>{
+ try{const input=inputSchema.parse(req.body),id=req.body.id?z.number().int().positive().parse(req.body.id):null;
+  const [employee]=await db.select({id:employees.id,workSchedule:employees.workSchedule}).from(employees).where(and(eq(employees.id,input.employeeId),employeeScope(req.user!,'payroll_management',id?'update':'create')));
+  if(!employee)return res.status(403).json({message:'Payroll access required'});
+  const [existing]=id?await db.select().from(payroll).where(and(eq(payroll.id,id),eq(payroll.employeeId,employee.id))):[];
+  if(id&&!existing)return res.status(404).json({message:'Payroll not found'});
+  const snapshot=existing?.calculationSnapshot||await calculationSnapshot(employee,periodDate(existing||input),db,!!existing);
+  return res.json({...calculatePolicyPayroll(input.basicSalary,input.allowances,input.deductions,snapshot.rules.payroll),version:snapshot.version});
+ }catch(error){return res.status(400).json({message:error instanceof Error?error.message:'Unable to preview payroll'});}
+});
 router.get('/month/:month/year/:year',async(req,res)=>{
   try{const month=z.coerce.number().int().min(1).max(12).parse(req.params.month),year=z.coerce.number().int().min(2000).max(2200).parse(req.params.year);
     const rows=await db.select({record:payroll,firstName:employees.firstName,lastName:employees.lastName}).from(payroll).innerJoin(employees,eq(payroll.employeeId,employees.id))
@@ -18,23 +30,28 @@ router.get('/month/:month/year/:year',async(req,res)=>{
   }catch{return res.status(400).json({message:'Unable to load payroll'});}
 });
 router.post('/',async(req,res)=>{
-  try{const input=inputSchema.parse(req.body),amounts=calculatePayroll(input.basicSalary,input.allowances,input.deductions);
+  try{const input=inputSchema.parse(req.body);
     const record=await db.transaction(async tx=>{
-      const [employee]=await tx.select({id:employees.id}).from(employees).where(and(eq(employees.id,input.employeeId),employeeScope(req.user!,'payroll_management','create'))).for('update');
+      const [employee]=await tx.select({id:employees.id,workSchedule:employees.workSchedule}).from(employees).where(and(eq(employees.id,input.employeeId),employeeScope(req.user!,'payroll_management','create'))).for('update');
       if(!employee)throw new Error('You cannot create payroll for this employee');
       const [existing]=await tx.select({id:payroll.id}).from(payroll).where(and(eq(payroll.employeeId,input.employeeId),eq(payroll.month,input.month),eq(payroll.year,input.year)));
       if(existing)throw new Error('Payroll already exists for this employee and period');
-      const [created]=await tx.insert(payroll).values({...input,...amounts,status:'pending'}).returning();
+      const snapshot=await calculationSnapshot(employee,periodDate(input),tx);
+      const {unroundedNetSalary,...amounts}=calculatePolicyPayroll(input.basicSalary,input.allowances,input.deductions,snapshot.rules.payroll);
+      const [created]=await tx.insert(payroll).values({...input,...amounts,calculationSnapshot:snapshot,status:'pending'}).returning();
       await tx.insert(activityLogs).values({userId:req.user!.userId,action:'create',entityType:'payroll',entityId:created.id,details:'Created payroll draft'});return created;
     });return res.status(201).json(record);
   }catch(error){return res.status(400).json({message:error instanceof Error?error.message:'Unable to create payroll'});}
 });
 router.patch('/:id',async(req,res)=>{
-  try{const id=z.coerce.number().int().positive().parse(req.params.id),input=inputSchema.omit({employeeId:true,month:true,year:true}).parse(req.body),amounts=calculatePayroll(input.basicSalary,input.allowances,input.deductions);
+  try{const id=z.coerce.number().int().positive().parse(req.params.id),input=inputSchema.omit({employeeId:true,month:true,year:true}).parse(req.body);
     const record=await db.transaction(async tx=>{
       const [row]=await tx.select({record:payroll}).from(payroll).innerJoin(employees,eq(payroll.employeeId,employees.id)).where(and(eq(payroll.id,id),employeeScope(req.user!,'payroll_management','update'))).for('update',{of:payroll});
       if(!row)throw new Error('Payroll not found');if(row.record.status!=='pending')throw new Error('Only pending payroll can be edited');
-      const [updated]=await tx.update(payroll).set({...amounts,updatedAt:new Date()}).where(eq(payroll.id,id)).returning();return updated;
+      const snapshot=row.record.calculationSnapshot||await calculationSnapshot({},periodDate(row.record),tx,true);
+      const {unroundedNetSalary,...amounts}=calculatePolicyPayroll(input.basicSalary,input.allowances,input.deductions,snapshot.rules.payroll);
+      const [updated]=await tx.update(payroll).set({...amounts,calculationSnapshot:snapshot,updatedAt:new Date()}).where(eq(payroll.id,id)).returning();
+      await tx.insert(activityLogs).values({userId:req.user!.userId,action:'update',entityType:'payroll',entityId:id,details:'Edited payroll draft using its original calculation rules'});return updated;
     });return res.json(record);
   }catch(error){return res.status(400).json({message:error instanceof Error?error.message:'Unable to update payroll'});}
 });

@@ -1,6 +1,8 @@
 import { and, eq } from 'drizzle-orm';
 import { attendance, employees } from '@shared/schema';
 import { db } from '../db';
+import {calculationSnapshot} from './calculation-rules';
+import {calculateTime,managementLate} from '@shared/calculation-rules';
 
 export function attendanceDate(now=new Date()):string {
   return new Intl.DateTimeFormat('en-CA',{timeZone:process.env.APP_TIMEZONE || 'UTC',year:'numeric',month:'2-digit',day:'2-digit'}).format(now);
@@ -12,9 +14,10 @@ export async function clockAttendance(userId:number,action:'in'|'out'|'break_sta
     const [employee]=await tx.select().from(employees).where(eq(employees.userId,userId)).for('update');
     if(!employee)throw new Error('Your account needs to be linked to an employee record');
     const [record]=await tx.select().from(attendance).where(and(eq(attendance.employeeId,employee.id),eq(attendance.date,date)));
+    const snapshot=record?.calculationSnapshot||await calculationSnapshot(employee,date,tx,!!record?.checkIn);
     if(action==='in'){
       if(record?.checkIn)throw new Error('Already clocked in today');
-      const value={checkIn:now,status:'present' as const,checkInMethod:'mobile_app' as const,location:location || null,notes:notes || null};
+      const value={checkIn:now,status:managementLate(now,snapshot)?'late' as const:'present' as const,calculationSnapshot:snapshot,checkInMethod:'mobile_app' as const,location:location || null,notes:notes || null};
       const [saved]=record ? await tx.update(attendance).set(value).where(eq(attendance.id,record.id)).returning():await tx.insert(attendance).values({...value,date,employeeId:employee.id}).returning();return saved;
     }
     if(!record?.checkIn)throw new Error('Clock in first');
@@ -30,8 +33,9 @@ export async function clockAttendance(userId:number,action:'in'|'out'|'break_sta
       const [saved]=await tx.update(attendance).set({breakEndTime:now,totalBreakMinutes:record.totalBreakMinutes+activeMinutes,updatedAt:now}).where(eq(attendance.id,record.id)).returning();return saved;
     }
     const breaks=record.totalBreakMinutes+activeMinutes;
-    const worked=Math.max(0,Math.round((now.getTime()-record.checkIn.getTime())/60000)-breaks);
-    const [saved]=await tx.update(attendance).set({checkOut:now,checkOutMethod:'mobile_app',totalWorkHours:worked,totalBreakMinutes:breaks,
+    const elapsed=Math.max(breaks,Math.round((now.getTime()-record.checkIn.getTime())/60000));
+    const worked=calculateTime(elapsed,breaks,snapshot.rules.attendance).calculatedMinutes;
+    const [saved]=await tx.update(attendance).set({checkOut:now,checkOutMethod:'mobile_app',totalWorkHours:worked,totalBreakMinutes:breaks,calculationSnapshot:snapshot,
       breakEndTime:activeBreak?now:record.breakEndTime,location:location || record.location,notes:notes || record.notes,updatedAt:now}).where(eq(attendance.id,record.id)).returning();return saved;
   });
 }

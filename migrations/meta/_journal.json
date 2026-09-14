@@ -71,6 +71,13 @@
       "when": 1789438800000,
       "tag": "0009_management_office_schedule",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789442400000,
+      "tag": "0010_calculation_rules",
+      "breakpoints": true
     }
   ]
 }

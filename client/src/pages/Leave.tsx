@@ -1,4 +1,3 @@
-import { leaveDays, employeeWeekendDays, defaultCompanySettings, type CompanySettings } from '@shared/settings';
 import { format } from 'date-fns';
 import type { ApiEmployee } from '@/lib/api-types';
 import { useAuth } from '@/contexts/AuthContext';
@@ -57,6 +56,7 @@ interface LeaveRequest {
   id: number;
   employeeId: number;
   leaveTypeId: number;
+  totalDays: number;
   startDate: string;
   endDate: string;
   halfDayOption?: string | null;
@@ -91,7 +91,7 @@ const leaveRequestSchema = z.object({
   }),
   endDate: z.date({
     required_error: "End date is required",
-  }).refine(data => data >= new Date(), {
+  }).refine(data => format(data,'yyyy-MM-dd') >= format(new Date(),'yyyy-MM-dd'), {
     message: "End date must be today or in the future",
   }),
   halfDayOption: z.string().optional().nullable(),
@@ -111,7 +111,6 @@ export default function Leave() {
   const { user: currentUser } = useAuth();
   
   const userRole = currentUser?.role || 'employee';
-  const { data: policy } = useQuery<CompanySettings>({queryKey:['/api/settings/company']});
   const { data: selfEmployee } = useQuery<ApiEmployee>({queryKey:['/api/employee/profile']});
   
   // Fetch all leave types
@@ -136,20 +135,16 @@ export default function Leave() {
     },
   });
   
-  // Calculate total leave days
-  const calculateDays = (startDate: Date, endDate: Date) => {
-    try{return leaveDays(format(startDate,'yyyy-MM-dd'),format(endDate,'yyyy-MM-dd'),employeeWeekendDays(selfEmployee || {},policy || defaultCompanySettings));}
-    catch{return 0;}
-  };
-  
+  const startDate=form.watch('startDate'),endDate=form.watch('endDate');
+  const quoteStart=startDate?format(startDate,'yyyy-MM-dd'):'',quoteEnd=endDate?format(endDate,'yyyy-MM-dd'):'';
+  const quote=useQuery<{totalDays:number;version:number}>({queryKey:[`/api/leaves/quote?employeeId=${selfEmployee?.id||0}&start=${quoteStart}&end=${quoteEnd}`],enabled:openRequestDialog&&!!selfEmployee&&!!quoteStart&&!!quoteEnd});
+
   // Mutations
   const createLeaveMutation = useMutation({
     mutationFn: async (data: LeaveRequestFormValues) => {
       // Find the selected leave type
       const selectedLeaveType = leaveTypes?.find(lt => lt.id === data.leaveTypeId);
       
-      // Calculate total days
-      const totalDays = calculateDays(data.startDate,data.endDate);
       
       // Transform the data to match backend schema
       const leaveData = {
@@ -157,7 +152,6 @@ export default function Leave() {
         leaveType: selectedLeaveType?.name || 'Annual Leave',
         startDate: format(data.startDate,'yyyy-MM-dd'),
         endDate: format(data.endDate,'yyyy-MM-dd'),
-        totalDays: totalDays,
         reason: data.reason
       };
       
@@ -214,6 +208,7 @@ export default function Leave() {
   // Handle form submission
   const onSubmit = (data: LeaveRequestFormValues) => {
     if(!selfEmployee){toast({title:'Employee profile required',description:'Ask HR to link your account to an employee record.',variant:'destructive'});return;}
+    if(!quote.data?.totalDays||quote.error||quote.isFetching){toast({title:'Check the leave dates',description:'A valid duration must be calculated before submitting.',variant:'destructive'});return;}
     // Use the linked employee record, not the account ID
     const submitData = {
       ...data,
@@ -231,14 +226,6 @@ export default function Leave() {
     updateLeaveMutation.mutate({ id, status: 'rejected' });
   };
 
-  // Calculate total days between start and end date
-  const getTotalDays = (startDate: string, endDate: string) => {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    const diffTime = Math.abs(end.getTime() - start.getTime());
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-  };
-  
   // Filter leaves based on active tab
   const filteredLeaves = Array.isArray(leaveRequests) 
     ? leaveRequests.filter(leave => {
@@ -327,7 +314,7 @@ export default function Leave() {
                             {formatDate(leave.startDate)} - {formatDate(leave.endDate)}
                           </td>
                           <td className="px-4 py-3 text-sm text-neutral-800">
-                            {getTotalDays(leave.startDate, leave.endDate)}
+                            {leave.totalDays}
                           </td>
                           <td className="px-4 py-3 text-sm">
                             <Badge variant={
@@ -482,7 +469,7 @@ export default function Leave() {
                         mode="single"
                         selected={field.value}
                         onSelect={field.onChange}
-                        disabled={(date) => date < new Date()}
+                        disabled={(date) => format(date,'yyyy-MM-dd') < format(new Date(),'yyyy-MM-dd')}
                         className="rounded-md border"
                       />
                       <FormMessage />
@@ -530,11 +517,12 @@ export default function Leave() {
               <div className="mt-2 text-sm text-neutral-500">
                 {form.watch("startDate") && form.watch("endDate") && (
                   <p>
-                    Total days: <span className="font-medium">{calculateDays(form.watch("startDate"), form.watch("endDate"))}</span>
+                    Total days: <span className="font-medium">{quote.isFetching?'Calculating…':quote.error?'Unavailable':quote.data?.totalDays??'—'}</span>
                   </p>
                 )}
               </div>
               
+              {quote.error&&<p role="alert" className="text-sm text-destructive">{quote.error.message}</p>}
               <DialogFooter className="sm:justify-end">
                 <Button
                   variant="outline"
@@ -545,7 +533,7 @@ export default function Leave() {
                 </Button>
                 <Button
                   type="submit"
-                  disabled={createLeaveMutation.isPending}
+                  disabled={createLeaveMutation.isPending||quote.isFetching||!quote.data?.totalDays||!!quote.error}
                 >
                   {createLeaveMutation.isPending ? "Submitting..." : "Submit Request"}
                 </Button>
@@ -599,7 +587,7 @@ export default function Leave() {
                 </div>
                 <div>
                   <p className="text-sm text-neutral-500">Total Days</p>
-                  <p className="font-medium">{getTotalDays(selectedLeave.startDate, selectedLeave.endDate)}</p>
+                  <p className="font-medium">{selectedLeave.totalDays}</p>
                 </div>
                 <div>
                   <p className="text-sm text-neutral-500">Submitted On</p>

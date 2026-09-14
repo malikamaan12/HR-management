@@ -12,6 +12,7 @@ vi.mock('../server/db',()=>({get db(){return context.db;},pool:{}}));
 import router from '../server/routes/timesheets';
 import workforce from '../server/routes/workforce';
 import {authService} from '../server/services/auth';
+import {defaultCalculationRules} from '../shared/calculation-rules';
 let pg:PGlite,server:Server,base:string;
 const password='TimesheetTestPass8!';
 const instant=(day=-2,hour=8)=>{const d=new Date();d.setUTCDate(d.getUTCDate()+day);d.setUTCHours(hour,0,0,0);return d.toISOString();};
@@ -49,6 +50,16 @@ beforeAll(async()=>{
 });
 beforeEach(async()=>{await pg.exec('TRUNCATE workforce_sites,users,employees RESTART IDENTITY CASCADE');});
 afterAll(async()=>{await new Promise<void>((r,j)=>server.close(e=>e?j(e):r()));await pg.close();});
+
+test('admin calculation policy is pinned to the shift and overrides submitted payable minutes only in calculated mode',async()=>{
+ const f=await setup(),rules=structuredClone(defaultCalculationRules);rules.timesheets={payableMethod:'calculated',breakTreatment:'paid',roundingMinutes:15,roundingMode:'nearest'};
+ await context.db.update(schema.employees).set({workSchedule:'shift_based'}).where(eq(schema.employees.id,f.a.id));
+ const [policy]=await context.db.insert(schema.calculationRuleVersions).values({scope:'shift_based',effectiveFrom:instant(-3).slice(0,10),rules,reason:'Synthetic fixture policy',createdBy:f.admin.id}).returning();
+ const row=await submit(f);
+ await context.db.insert(schema.calculationRuleVersions).values({scope:'shift_based',effectiveFrom:instant(-3).slice(0,10),rules:defaultCalculationRules,reason:'Changed after record was created',createdBy:f.admin.id});
+ const result=await request(f.lead.token,`/timesheets/${row.id}/review`,{...approval(row.version),payableMinutes:1,policyReference:'Client cannot override the calculation'});expect(result.status).toBe(200);
+ const detail=await request(f.alice.token,`/timesheets/${row.id}`);expect(detail.body.sheet.workedMinutes).toBe(450);expect(detail.body.sheet.payableMinutes).toBe(480);expect(detail.body.sheet.calculationSnapshot.version).toBe(policy.id);expect(detail.body.sheet.policyReference).toBe(`Calculation rules v${policy.id}`);
+});
 
 test('authentication and explicit employee linking protect drafts and assignment ownership',async()=>{
   expect((await request('','/timesheets/')).status).toBe(401);const f=await setup();expect(f.a.id).not.toBe(f.alice.id);

@@ -10,7 +10,7 @@ import {
   employeeFeedback,
   skillAssessments
 } from '@shared/schema';
-import { eq, and, desc, sql, asc } from 'drizzle-orm';
+import { eq, and, desc, sql, asc, inArray } from 'drizzle-orm';
 
 const criterionWriteSchema=insertReviewCriteriaSchema.omit({sectionId:true,criteriaOrder:true});
 const sectionWriteSchema=insertReviewSectionSchema.omit({reviewId:true,sectionOrder:true}).extend({criteria:z.array(criterionWriteSchema).optional()});
@@ -144,8 +144,12 @@ export const performanceService = {
     });
   },
 
-  async getDashboardStats() {
+  async getDashboardStats(employeeIds?: number[]) {
     try {
+      if (employeeIds && employeeIds.length === 0) {
+        return { avgRating: 0, totalReviews: 0, upcomingReviews: 0, performanceTrends: [] };
+      }
+      const reviewScope = employeeIds ? inArray(performanceReviews.employeeId, employeeIds) : undefined;
       // Calculate average rating across all completed reviews
       const overallRatingResult = await db
         .select({
@@ -160,7 +164,7 @@ export const performanceService = {
           count: sql`COUNT(*)`.as('count') 
         })
         .from(performanceReviews)
-        .where(eq(performanceReviews.status, 'completed'));
+        .where(and(eq(performanceReviews.status, 'completed'), reviewScope));
       
       const avgRating = Math.round(Number(overallRatingResult[0]?.avgRating) || 0);
       const totalReviews = Number(overallRatingResult[0]?.count) || 0;
@@ -169,12 +173,15 @@ export const performanceService = {
       const upcomingReviewsResult = await db
         .select({ count: sql`COUNT(*)` })
         .from(performanceReviews)
-        .where(eq(performanceReviews.status, 'draft'));
+        .where(and(eq(performanceReviews.status, 'draft'), employeeIds ? inArray(performanceReviews.employeeId, employeeIds) : undefined));
       
       const upcomingReviews = Number(upcomingReviewsResult[0]?.count) || 0;
       
       // Calculate performance trends across different categories (from review sections)
-      const ratings=await db.select({category:reviewSections.sectionName,rating:reviewSections.sectionRating}).from(reviewSections);
+      const ratings=await db.select({category:reviewSections.sectionName,rating:reviewSections.sectionRating})
+        .from(reviewSections)
+        .innerJoin(performanceReviews, eq(reviewSections.reviewId, performanceReviews.id))
+        .where(reviewScope);
       const scores:Record<string,number>={exceptional:5,exceeds:4,meets:3,needs_improvement:2,unsatisfactory:1};
       const grouped=new Map<string,number[]>();
       for(const row of ratings){if(row.rating && scores[row.rating])grouped.set(row.category,[...(grouped.get(row.category)||[]),scores[row.rating]]);}

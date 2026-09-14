@@ -276,7 +276,7 @@ router.get('/execution-history', async (req: Request, res: Response) => {
 router.post('/execute/:reportId', authenticate, async (req: Request, res: Response) => {
   try {
     const reportId = parseInt(req.params.reportId);
-    const userId = (req as any).user?.id; // Assuming auth middleware adds user to request
+    const userId = req.user?.userId;
     const parameters = req.body.parameters || {};
     const format = req.body.format as string | undefined;
     

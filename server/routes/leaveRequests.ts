@@ -1,6 +1,6 @@
-import { getCompanySettings } from '../services/settings';
+import {calculationSnapshot} from '../services/calculation-rules';
+import {calculateLeave,civilDate} from '@shared/calculation-rules';
 import { lockEmployee, assertLeaveCompatible, WorkforceError } from '../services/workforce';
-import { leaveDays, employeeWeekendDays } from '@shared/settings';
 import { Router } from 'express';
 import { z } from 'zod';
 import { and, eq, desc } from 'drizzle-orm';
@@ -11,15 +11,22 @@ import { authenticate } from '../middleware/auth';
 const router=Router();router.use(authenticate);
 const statusSchema=z.enum(['pending','approved','rejected','cancelled']);
 const idSchema=z.coerce.number().int().positive();
+router.get('/quote',async(req,res)=>{
+ try{const employeeId=idSchema.parse(req.query.employeeId),start=civilDate.parse(req.query.start),end=civilDate.parse(req.query.end);
+  const [employee]=await db.select({workSchedule:employees.workSchedule}).from(employees).where(and(eq(employees.id,employeeId),employeeScope(req.user!,'leave_absence_management','create')));
+  if(!employee)return res.status(403).json({message:'You cannot request leave for this employee'});
+  const snapshot=await calculationSnapshot(employee,start);
+  return res.json({...calculateLeave(start,end,snapshot),version:snapshot.version,scope:snapshot.scope});
+ }catch(error){return res.status(400).json({message:error instanceof Error?error.message:'Check the leave dates'});}
+});
 router.post('/',async(req,res)=>{
   try{
-    const policy=await getCompanySettings();
     const employeeId=idSchema.parse(req.body.employeeId);
     const [employee]=await db.select({id:employees.id,workSchedule:employees.workSchedule}).from(employees).where(and(eq(employees.id,employeeId),employeeScope(req.user!,'leave_absence_management','create')));
     if(!employee)return res.status(403).json({message:'You cannot request leave for this employee'});
-    let totalDays:number;
-    try{totalDays=leaveDays(req.body.startDate,req.body.endDate,employeeWeekendDays(employee,policy));}catch{return res.status(400).json({message:'Choose valid leave dates within a period of at most one year'});}
-    const input=insertLeaveSchema.parse({...req.body,employeeId,totalDays,status:'pending',approvedBy:null,approvedAt:null});
+    let totalDays:number,snapshot;
+    try{civilDate.parse(req.body.startDate);snapshot=await calculationSnapshot(employee,req.body.startDate);totalDays=calculateLeave(req.body.startDate,req.body.endDate,snapshot).totalDays;}catch(error){return res.status(400).json({message:error instanceof Error?error.message:'Choose valid leave dates'});}
+    const input=insertLeaveSchema.parse({...req.body,employeeId,totalDays,calculationSnapshot:snapshot,status:'pending',approvedBy:null,approvedAt:null});
     if(input.endDate<input.startDate || !Number.isInteger(input.totalDays) || input.totalDays<1)return res.status(400).json({message:'Check the leave dates and duration'});
     const [leave]=await db.insert(leaves).values(input).returning();return res.status(201).json(leave);
   }catch(error){return res.status(error instanceof z.ZodError?400:500).json({message:'Unable to create leave request'});}

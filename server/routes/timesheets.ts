@@ -2,6 +2,8 @@ import {Router,type Request,type Response} from 'express';
 import {z} from 'zod';
 import {and,desc,eq,gt,gte,isNull,lt,lte,ne,sql} from 'drizzle-orm';
 import {db} from '../db';
+import {calculationSnapshot} from '../services/calculation-rules';
+import {calculateTime,ruleDate} from '@shared/calculation-rules';
 import {authenticate} from '../middleware/auth';
 import {workforceTimesheets as sheets,timesheetRevisions as revisions,workforceAssignments as assignments,workforceShifts as shifts,workforceTeams as teams,workforceSites as sites,workforceGrants as grants,employees,users,payroll} from '@shared/schema';
 import {positiveId,workforceAdmin} from '@shared/workforce';
@@ -47,7 +49,9 @@ router.post('/',handle(async(req,res)=>{
     const [assignment]=await tx.select({...assignmentFields,status:assignments.status}).from(assignments).innerJoin(employees,eq(assignments.employeeId,employees.id)).innerJoin(shifts,eq(assignments.shiftId,shifts.id)).innerJoin(teams,eq(shifts.teamId,teams.id)).innerJoin(sites,eq(teams.siteId,sites.id)).where(and(eq(assignments.id,input.assignmentId),ownScope(req.user!))).for('update',{of:assignments});
     if(!assignment)fail(404,'Assignment not found');if(assignment.status!=='accepted')fail(409,'Only accepted assignments can have a timesheet');
     const [existing]=await tx.select({id:sheets.id}).from(sheets).where(eq(sheets.assignmentId,input.assignmentId));if(existing)fail(409,'This assignment already has a timesheet');
-    const workedMinutes=validateActuals(input,assignment),[row]=await tx.insert(sheets).values({...input,workedMinutes}).returning();
+    const [employee]=await tx.select({workSchedule:employees.workSchedule}).from(employees).where(eq(employees.id,assignment.employeeId));
+    const snapshot=await calculationSnapshot(employee,ruleDate(assignment.startAt,assignment.timezone),tx);
+    const workedMinutes=validateActuals(input,assignment),[row]=await tx.insert(sheets).values({...input,workedMinutes,calculationSnapshot:snapshot}).returning();
     await recordRevision(tx,req.user!,row,'Created','Employee reported actual time');return {id:row.id,version:row.version};
   });res.status(201).json(result);
 }));
@@ -76,8 +80,11 @@ router.post('/:id/submit',handle(async(req,res)=>{
 router.post('/:id/review',handle(async(req,res)=>{
   const input=reviewInput.parse(req.body);res.json(await db.transaction(async tx=>{const row=await readSheet(tx,req.user!,positiveId.parse(req.params.id),true);checkVersion(row,input.version);await requireReviewer(tx,req.user!,row);
     if(row.status!=='submitted')fail(409,'Only submitted timesheets can be reviewed');
-    if(input.decision==='approved'){if(input.payableMinutes>row.workedMinutes+row.breakMinutes)fail(400,'Payable time cannot exceed the reported duration');await assertTimeOverlap(tx,row);}
-    return changeSheet(tx,req.user!,row,{status:input.decision,reviewerId:req.user!.userId,reviewedAt:new Date(),reviewNote:input.reason,payableMinutes:input.decision==='approved'?input.payableMinutes:null,policyReference:input.decision==='approved'?input.policyReference:null},input.decision==='approved'?'Approved':'Returned',input.reason);
+    const snapshot=row.calculationSnapshot||await calculationSnapshot({},ruleDate(row.startAt,row.timezone),tx,true);
+    const calculated=snapshot.rules.timesheets.payableMethod==='calculated';
+    const payable=input.decision==='approved'?(calculated?calculateTime(row.workedMinutes+row.breakMinutes,row.breakMinutes,snapshot.rules.timesheets).calculatedMinutes:input.payableMinutes):null;
+    if(input.decision==='approved'){if(!calculated&&input.payableMinutes>row.workedMinutes+row.breakMinutes)fail(400,'Payable time cannot exceed the reported duration');await assertTimeOverlap(tx,row);}
+    return changeSheet(tx,req.user!,row,{status:input.decision,calculationSnapshot:snapshot,reviewerId:req.user!.userId,reviewedAt:new Date(),reviewNote:input.reason,payableMinutes:payable,policyReference:input.decision==='approved'?(calculated?`Calculation rules v${snapshot.version}`:input.policyReference):null},input.decision==='approved'?'Approved':'Returned',input.reason);
   }));
 }));
 router.post('/:id/reopen',handle(async(req,res)=>{
