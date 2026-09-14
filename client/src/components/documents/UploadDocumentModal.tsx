@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -59,9 +59,10 @@ type DocumentFormValues = z.infer<typeof documentSchema>;
 interface UploadDocumentModalProps {
   isOpen: boolean;
   onClose: () => void;
+  employee?: { id: number; firstName: string; lastName: string };
 }
 
-export function UploadDocumentModal({ isOpen, onClose }: UploadDocumentModalProps) {
+export function UploadDocumentModal({ isOpen, onClose, employee }: UploadDocumentModalProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -69,6 +70,7 @@ export function UploadDocumentModal({ isOpen, onClose }: UploadDocumentModalProp
   const form = useForm<DocumentFormValues>({
     resolver: zodResolver(documentSchema),
     defaultValues: {
+      employeeId: employee ? String(employee.id) : "",
       documentType: "",
       documentNumber: "",
       status: "valid",
@@ -76,6 +78,8 @@ export function UploadDocumentModal({ isOpen, onClose }: UploadDocumentModalProp
       notes: "",
     },
   });
+
+  useEffect(() => { if (isOpen && employee) form.setValue('employeeId', String(employee.id)); }, [isOpen, employee?.id, form]);
 
   async function onSubmit(data: DocumentFormValues) {
     setIsSubmitting(true);
@@ -103,6 +107,7 @@ export function UploadDocumentModal({ isOpen, onClose }: UploadDocumentModalProp
       form.reset();
       queryClient.invalidateQueries({ queryKey: ['/api/documents'] });
       queryClient.invalidateQueries({ queryKey: ['/api/documents/expiring'] });
+      queryClient.invalidateQueries({ queryKey: [`/api/employees/${data.employeeId}/documents`] });
       
       // Close modal
       onClose();
@@ -126,10 +131,13 @@ interface Employee {
 }
 
 // Fetch employees for the dropdown
-  const { data: employees } = useQuery<Employee[]>({
+  const { data: availableEmployees } = useQuery<Employee[]>({
     queryKey: ['/api/employees'],
+    enabled: isOpen && !employee,
     staleTime: 1000 * 60, // 1 minute
   });
+
+  const employees = employee ? [employee] : availableEmployees;
 
   const documentTypes = [
     "Passport",
@@ -161,7 +169,8 @@ interface Employee {
                   <FormLabel>Employee</FormLabel>
                   <Select 
                     onValueChange={field.onChange} 
-                    defaultValue={field.value}
+                    disabled={!!employee}
+                    value={field.value}
                   >
                     <FormControl>
                       <SelectTrigger>

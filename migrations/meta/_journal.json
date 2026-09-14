@@ -57,6 +57,13 @@
       "when": 1789375059614,
       "tag": "0007_assignment_reviews",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789423200000,
+      "tag": "0008_employee_record_versions",
+      "breakpoints": true
     }
   ]
 }

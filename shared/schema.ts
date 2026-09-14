@@ -292,6 +292,7 @@ export const employees = pgTable("employees", {
   status: text("status").notNull().default("active"), // active, inactive, on_leave
   
   // System fields
+  recordVersion: integer("record_version").default(1).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -1023,6 +1024,7 @@ export const insertUserSchema = createInsertSchema(users).omit({
 
 export const insertEmployeeSchema = createInsertSchema(employees).omit({
   id: true,
+  recordVersion: true,
   createdAt: true,
   updatedAt: true,
 });

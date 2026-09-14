@@ -22,6 +22,7 @@ export default function AddEditEmployeeModal({ open, onOpenChange, employee, onS
         </DialogHeader>
         <EmployeeForm 
           employee={employee} 
+          onCancel={() => onOpenChange(false)}
           onSuccess={() => {
             onSuccess();
             onOpenChange(false);

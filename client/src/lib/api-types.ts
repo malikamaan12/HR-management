@@ -1,6 +1,9 @@
 import type * as Schema from '@shared/schema';
 export type Jsonify<T> = T extends Date ? string : T extends (infer U)[] ? Jsonify<U>[] : T extends object ? {[K in keyof T]:Jsonify<T[K]>} : T;
 export type ApiEmployee = Jsonify<Schema.Employee>;
+export type ApiEmployeeRecord = Jsonify<import('@shared/employee-records').EmployeeRecord>;
+export type ApiEmployeeDirectory = Jsonify<import('@shared/employee-records').EmployeeDirectory>;
+export type ApiEmployeeHistory = Jsonify<import('@shared/employee-records').EmployeeHistory>;
 export type ApiDocument = Jsonify<Schema.Document> & { employeeName?: string };
 export type ApiAttendance = Jsonify<Schema.Attendance> & { employeeName?: string; breakDurationMinutes?: number };
 export type ApiShift = Jsonify<Schema.ShiftSchedule> & { employeeName?: string };

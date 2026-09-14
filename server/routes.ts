@@ -1,3 +1,4 @@
+import employeeRecordsRouter from './routes/employeeRecords';
 import { moduleAccess } from './middleware/moduleAccess';
 import multer from 'multer';
 import payrollRoutes from './routes/payroll';
@@ -113,78 +114,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.use('/api/users', userRoutes);
 
-  // Employee Routes
-  app.get('/api/employees',async(req,res)=>{
-    try{const page=z.coerce.number().int().min(1).default(1).parse(req.query.page),limit=z.coerce.number().int().min(1).max(1000).default(100).parse(req.query.limit);
-      const type=req.query.type ? z.enum(['permanent','temporary','contract']).parse(req.query.type):undefined;
-      const rows=await db.select().from(employees).where(and(employeeScope(req.user!,'employee_database'),type?eq(employees.type,type):undefined)).orderBy(employees.id).limit(limit).offset((page-1)*limit);
-      return res.json(rows);
-    }catch{return res.status(400).json({message:'Unable to load employees'});}
-  });
-  app.get('/api/employees/:id',async(req,res)=>{
-    try{const id=z.coerce.number().int().positive().parse(req.params.id);const [employee]=await db.select().from(employees).where(and(eq(employees.id,id),employeeScope(req.user!,'employee_database')));
-      if(!employee)return res.status(404).json({message:'Employee not found'});return res.json(employee);
-    }catch{return res.status(400).json({message:'Unable to load employee'});}
-  });
-
-  app.post('/api/employees', authorize(['admin', 'super_admin', 'hr', 'hr_director']), async (req: Request, res: Response) => {
-    try {
-      const employeeData = insertEmployeeSchema.omit({userId:true}).parse(req.body);
-      const newEmployee = await storage.createEmployee(employeeData);
-      
-      // Log activity
-      await storage.createActivityLog({
-        userId: req.user!.userId,
-        action: 'create',
-        details: `Created employee record for ${newEmployee.firstName} ${newEmployee.lastName}`,
-        entityType: 'employee',
-        entityId: newEmployee.id
-      });
-      
-      res.status(201).json(newEmployee);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: 'Invalid employee data', error: error.errors });
-      }
-      res.status(500).json({ message: 'Server error creating employee', error: error instanceof Error ? error.message : 'Unknown error' });
-    }
-  });
-
-  // Update employee
-  app.patch('/api/employees/:id', authorize(['admin', 'super_admin', 'hr', 'hr_director']), async (req: Request, res: Response) => {
-    try {
-      const employeeId = parseInt(req.params.id);
-      if (isNaN(employeeId)) {
-        return res.status(400).json({ message: 'Invalid employee ID' });
-      }
-      
-      // For PATCH, we only validate the fields that are being updated
-      // Use partial schema for updates
-      const updateSchema = insertEmployeeSchema.omit({userId:true}).partial();
-      const employeeData = updateSchema.parse(req.body);
-      const updatedEmployee = await storage.updateEmployee(employeeId, employeeData);
-      
-      if (!updatedEmployee) {
-        return res.status(404).json({ message: 'Employee not found' });
-      }
-      
-      // Log activity
-      await storage.createActivityLog({
-        userId: req.user!.userId,
-        action: 'update',
-        details: `Updated employee: ${updatedEmployee.firstName} ${updatedEmployee.lastName}`,
-        entityType: 'employee',
-        entityId: updatedEmployee.id
-      });
-      
-      res.status(200).json(updatedEmployee);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: 'Invalid employee data', error: error.errors });
-      }
-      res.status(500).json({ message: 'Server error updating employee', error: error instanceof Error ? error.message : 'Unknown error' });
-    }
-  });
+  app.use('/api/employees', employeeRecordsRouter);
 
   app.use('/api/documents',documentRoutes);
   app.get('/api/employees/:id/documents',async(req,res)=>{
