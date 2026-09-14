@@ -5,7 +5,7 @@ import { z } from "zod";
 
 // Workforce operations keep employment type on the existing employee profile.
 export const workforceKind = pgEnum('workforce_kind', ['event', 'fec', 'mall_activation']);
-export const workforcePermission = pgEnum('workforce_permission', ['view', 'schedule', 'review_time']);
+export const workforcePermission = pgEnum('workforce_permission', ['view', 'schedule', 'review_time', 'review_performance']);
 export const workforceAssignmentStatus = pgEnum('workforce_assignment_status', ['offered', 'accepted', 'declined', 'cancelled']);
 export const workforceSites = pgTable('workforce_sites', {
   id: serial('id').primaryKey(), name: text('name').notNull(), timezone: text('timezone').notNull(),
@@ -67,6 +67,28 @@ export const timesheetRevisions = pgTable('timesheet_revisions', {
   actorId: integer('actor_id').notNull().references(():AnyPgColumn => users.id), action: text('action').notNull(), reason: text('reason').notNull(),
   snapshot: jsonb('snapshot').notNull(), createdAt: timestamp('created_at', {withTimezone:true}).defaultNow().notNull(),
 }, t => [uniqueIndex('timesheet_revision_version').on(t.timesheetId,t.version)]);
+
+export const assignmentReviewStatus = pgEnum('assignment_review_status', ['published', 'disputed', 'resolved', 'withdrawn']);
+export const assignmentReviews = pgTable('assignment_reviews', {
+  id: serial('id').primaryKey(), assignmentId: integer('assignment_id').notNull().unique().references(() => workforceAssignments.id),
+  authorId: integer('author_id').notNull().references(():AnyPgColumn => users.id),
+  status: assignmentReviewStatus('status').notNull().default('published'), version: integer('version').notNull().default(1),
+  rubricVersion: integer('rubric_version').notNull(), rubric: jsonb('rubric').notNull(),
+  punctuality: integer('punctuality'), service: integer('service'), teamwork: integer('teamwork'), roleSkill: integer('role_skill'),
+  evidence: jsonb('evidence').$type<Record<'punctuality'|'service'|'teamwork'|'roleSkill',string>>().notNull(),
+  roleExpectation: text('role_expectation').notNull(), summary: text('summary').notNull(), improvementActions: text('improvement_actions').notNull(),
+  responseKind: text('response_kind'), employeeResponse: text('employee_response'), respondedAt: timestamp('responded_at', {withTimezone:true}),
+  resolution: text('resolution'), resolutionReason: text('resolution_reason'), resolvedBy: integer('resolved_by').references(():AnyPgColumn => users.id), resolvedAt: timestamp('resolved_at', {withTimezone:true}),
+  createdAt: timestamp('created_at', {withTimezone:true}).defaultNow().notNull(), updatedAt: timestamp('updated_at', {withTimezone:true}).defaultNow().notNull(),
+}, t => [check('assignment_review_scores',sql`(${t.punctuality} IS NULL OR ${t.punctuality} BETWEEN 1 AND 5) AND (${t.service} IS NULL OR ${t.service} BETWEEN 1 AND 5) AND (${t.teamwork} IS NULL OR ${t.teamwork} BETWEEN 1 AND 5) AND (${t.roleSkill} IS NULL OR ${t.roleSkill} BETWEEN 1 AND 5) AND coalesce(${t.punctuality},${t.service},${t.teamwork},${t.roleSkill}) IS NOT NULL`),
+  check('assignment_review_versions',sql`${t.version}>0 AND ${t.rubricVersion}>0`),
+  check('assignment_review_dispute',sql`${t.status}<>'disputed' OR (${t.responseKind}='dispute' AND ${t.employeeResponse} IS NOT NULL)`),
+  index('assignment_review_status_updated').on(t.status,t.updatedAt)]);
+export const assignmentReviewHistory = pgTable('assignment_review_history', {
+  id: serial('id').primaryKey(), reviewId: integer('review_id').notNull().references(() => assignmentReviews.id), version: integer('version').notNull(),
+  actorId: integer('actor_id').notNull().references(():AnyPgColumn => users.id), action: text('action').notNull(), reason: text('reason').notNull(), snapshot: jsonb('snapshot').notNull(),
+  createdAt: timestamp('created_at', {withTimezone:true}).defaultNow().notNull(),
+}, t => [uniqueIndex('assignment_review_history_version').on(t.reviewId,t.version)]);
 
 // HR helpdesk content is stored separately from organization-wide activity logs.
 export const helpdeskStatus = pgEnum('helpdesk_status', ['open', 'in_progress', 'waiting_employee', 'resolved', 'closed']);

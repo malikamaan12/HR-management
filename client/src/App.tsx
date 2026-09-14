@@ -11,6 +11,8 @@ import EventStaff from "@/pages/EventStaff";
 import Workforce from "@/pages/Workforce";
 import Helpdesk from "@/pages/Helpdesk";
 import Timesheets from "@/pages/Timesheets";
+import AssignmentReviews from "@/pages/AssignmentReviews";
+import TeamOverview from "@/pages/TeamOverview";
 import Settings from "@/pages/Settings";
 import Reports from "@/pages/Reports";
 import Recruitment from "@/pages/Recruitment";
@@ -77,6 +79,8 @@ function App() {
   
   // Get page title based on current location
   const getPageTitle = () => {
+    if(location.startsWith('/assignment-reviews'))return 'Assignment reviews';
+    if(location.startsWith('/team-overview'))return 'Team overview';
     if(location.startsWith('/timesheets'))return 'Timesheets';
     if(location==='/helpdesk'||location.startsWith('/helpdesk/'))return 'HR Helpdesk';
     switch (location) {
@@ -134,6 +138,9 @@ function App() {
           <Route path="/documents" component={Documents} />
           <Route path="/event-staff" component={EventStaff} />
           <Route path="/workforce" component={Workforce} />
+          <Route path="/assignment-reviews" component={AssignmentReviews} />
+          <Route path="/assignment-reviews/:id" component={AssignmentReviews} />
+          <Route path="/team-overview" component={TeamOverview} />
           <Route path="/timesheets" component={Timesheets} />
           <Route path="/timesheets/:id" component={Timesheets} />
           <Route path="/helpdesk" component={Helpdesk} />

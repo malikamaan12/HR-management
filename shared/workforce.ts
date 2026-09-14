@@ -12,7 +12,7 @@ export const siteInput = z.object({name: z.string().trim().min(2).max(120), time
 }, 'Use a valid IANA time zone, such as Asia/Qatar')}).strict();
 export const teamInput = z.object({name: z.string().trim().min(2).max(120), siteId: positiveId, kind: z.enum(workforceKinds)}).strict();
 export const memberInput = z.object({employeeId: positiveId, startAt: instant, endAt: instant}).strict().refine(v => v.endAt > v.startAt, 'End must be after start');
-export const grantInput = z.object({userId: positiveId, permission: z.enum(['view', 'schedule', 'review_time']), startAt: instant, endAt: instant}).strict().refine(v => v.endAt > v.startAt, 'End must be after start');
+export const grantInput = z.object({userId: positiveId, permission: z.enum(['view', 'schedule', 'review_time', 'review_performance']), startAt: instant, endAt: instant}).strict().refine(v => v.endAt > v.startAt, 'End must be after start');
 export const shiftInput = z.object({role: z.string().trim().min(2).max(120), station: z.string().trim().max(120).optional(),
   headcount: z.coerce.number().int().min(1).max(500), breakMinutes: z.coerce.number().int().min(0).max(1439).default(0), startAt: instant, endAt: instant,
 }).strict().refine(v => v.endAt > v.startAt && +v.endAt - +v.startAt <= 86400000 && v.breakMinutes * 60000 < +v.endAt - +v.startAt,

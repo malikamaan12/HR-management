@@ -2,7 +2,7 @@
 
 Implementation design v0.1 · 13 September 2026 · Roadmap with a first implementation
 
-The site/team/membership/grant and shift-offer foundation, initial HR helpdesk and assignment timesheets with review and payroll linking are now implemented. See [Workforce-Enhancement-Guide.md](Workforce-Enhancement-Guide.md) and [HR-Helpdesk-Guide.md](HR-Helpdesk-Guide.md) and [Timesheet-Enhancement-Guide.md](Timesheet-Enhancement-Guide.md) for exact scope. The broader activation lifecycle, advanced assignment terms, timed attendance observations, payroll time line items/adjustments, advanced helpdesk routing, ratings and EOS adapter below remain proposed.
+The site/team/membership/grant and shift-offer foundation, initial HR helpdesk, assignment timesheets with review and payroll linking, assignment performance reviews and the team overview are now implemented. See [Workforce-Enhancement-Guide.md](Workforce-Enhancement-Guide.md) and [HR-Helpdesk-Guide.md](HR-Helpdesk-Guide.md) and [Timesheet-Enhancement-Guide.md](Timesheet-Enhancement-Guide.md) and [Assignment-Reviews-Guide.md](Assignment-Reviews-Guide.md) for exact scope. The broader activation lifecycle, advanced assignment terms, timed attendance observations, payroll time line items/adjustments, advanced helpdesk routing, configurable review rubrics/follow-up tasks and EOS adapter below remain proposed.
 
 EOS is the confirmed name of the Event Operating System. Its repository and API contract are not available for review yet. This document defines the proposed HR boundary, not an assertion of compatibility with a deployed EOS API. FEC is provisionally treated as Family Entertainment Centre; the model also supports other recurring venue operations.
 

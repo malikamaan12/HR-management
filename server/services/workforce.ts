@@ -12,7 +12,7 @@ export function requireWorkforceAdmin(user:TokenPayload) {
   if (!workforceAdmin(user.role)) fail(403, 'HR administrator access is required');
 }
 export const currentGrants = (user:TokenPayload, now = new Date()) => and(eq(grants.userId,user.userId),isNull(grants.revokedAt),lte(grants.startAt,now),gt(grants.endAt,now));
-export async function teamAccess(tx:WorkforceTransaction, user:TokenPayload, teamId:number, permission:'view'|'schedule'|'review_time', window?:{startAt:Date;endAt:Date}) {
+export async function teamAccess(tx:WorkforceTransaction, user:TokenPayload, teamId:number, permission:'view'|'schedule'|'review_time'|'review_performance', window?:{startAt:Date;endAt:Date}) {
   const [team] = await tx.select({id:teams.id,name:teams.name,kind:teams.kind,siteId:teams.siteId,siteName:sites.name,timezone:sites.timezone})
     .from(teams).innerJoin(sites,eq(teams.siteId,sites.id)).where(eq(teams.id,teamId));
   if (!team) return fail(404,'Team not found');
