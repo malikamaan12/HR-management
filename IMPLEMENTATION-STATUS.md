@@ -1,8 +1,10 @@
-# E3 HR status — 13 September 2026
+# E3 HR status — 14 September 2026
 
-Core application repairs, the first workforce enhancement and the HR helpdesk are implemented and ready for staging verification. This is not a claim that every advanced workflow is production-ready.
+Core application repairs, the first workforce enhancement, HR helpdesk and assignment timesheets are implemented and ready for staging verification. This is not a claim that every advanced workflow is production-ready.
 
 ## Implemented
+
+- Assignment-linked timesheets for event/FEC/mall teams: employee actual hours, explicit dated reviewer grants, approve/return/correct flow, separate policy-based payable minutes, revision snapshots, overlap/self-approval prevention and confirmed links to processed payroll that lock the time record. Pay calculation remains separate. See [the timesheet guide](docs/Timesheet-Enhancement-Guide.md).
 
 - HR Helpdesk with employee requests, scoped HR queues, confidential cases, assignment to HR responders, public replies/internal notes, private attachments, versioned status transitions, close/reopen and case-specific audit history. See [the helpdesk guide](docs/HR-Helpdesk-Guide.md).
 
@@ -22,13 +24,13 @@ Core application repairs, the first workforce enhancement and the HR helpdesk ar
 
 ## Verification
 
-55 automated tests pass using an isolated PGlite PostgreSQL-compatible database and all schema migrations. Coverage includes authentication/session/reset attacks, employee ownership with differing account/employee IDs, event persistence, attendance breaks, payroll calculations and state restrictions, leave self-approval and duplicate decisions, settings authorization, account linking/deactivation, employee dashboard, request construction, CSV escaping and mocked R2/Resend calls. Workforce tests cover dated scope, roster privacy, acceptance capacity/overlap, leave and contract checks, legacy scheduling conflicts and time zones. Helpdesk tests cover confidential queues and files, internal notes, assignment/revocation, transitions, concurrent changes and upload rollback.
+68 automated tests pass using an isolated PGlite PostgreSQL-compatible database and all schema migrations. Coverage includes authentication/session/reset attacks, employee ownership with differing account/employee IDs, event persistence, attendance breaks, payroll calculations and state restrictions, leave self-approval and duplicate decisions, settings authorization, account linking/deactivation, employee dashboard, request construction, CSV escaping and mocked R2/Resend calls. Workforce tests cover dated scope, roster privacy, acceptance capacity/overlap, leave and contract checks, legacy scheduling conflicts and time zones. Helpdesk tests cover confidential queues and files, internal notes, assignment/revocation, transitions, concurrent changes and upload rollback. Timesheet tests cover private drafts, actual-time bounds, dated review grants, correction snapshots, overlapping claims, competing decisions, payroll permissions/inclusion locks and atomic revision rollback.
 
-Strict TypeScript checking and frontend/server production builds pass. The frontend still emits a large-bundle warning. Browser checks with disposable records covered sign-in/session reload, employee list, payroll draft save/reload, report generation, company settings save, attendance/event screens, workforce setup/offer/acceptance/coverage and confidential helpdesk request/assignment/reply/resolution/closure. These checks do not replace complete role-by-role acceptance testing against managed PostgreSQL.
+Strict TypeScript checking and frontend/server production builds pass. The frontend still emits a large-bundle warning. Browser checks with disposable records covered sign-in/session reload, employee list, payroll draft save/reload, report generation, company settings save, attendance/event screens, workforce setup/offer/acceptance/coverage confidential helpdesk request/assignment/reply/resolution/closure, and timesheet submission/reload/reviewer approval/payroll linking/lock persistence. These checks do not replace complete role-by-role acceptance testing against managed PostgreSQL.
 
 ## Remaining before production
 
-- Apply/reconcile the workforce and helpdesk migrations in staging. Complete assignment-linked timesheets, shift revisions/recurrence, qualification checks, advanced helpdesk routing/targets, evidence-based ratings and the EOS adapter in subsequent enhancement slices. The EOS contract remains a proposal; it is not a live integration.
+- Apply/reconcile workforce, helpdesk and timesheet migrations through 0006 in staging. Complete timed observations linked to assignments, payroll time line items/adjustments, shift revisions/recurrence, qualification checks, advanced helpdesk routing/targets, evidence-based ratings and the EOS adapter in subsequent enhancement slices. The EOS contract remains a proposal; it is not a live integration.
 
 - Connect a staging PostgreSQL database, Resend verified sender, private R2 bucket and hosting environment; exercise real uploads/downloads, password-reset delivery and backup restore. No real emails, cloud buckets, deployments or bank transfers were performed.
 - Verify the deployed Git revision and complete staging checks before promoting this source snapshot to production.

@@ -43,6 +43,13 @@
       "when": 1789260689009,
       "tag": "0005_hr_helpdesk",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789268219834,
+      "tag": "0006_workforce_timesheets",
+      "breakpoints": true
     }
   ]
 }

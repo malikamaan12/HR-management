@@ -12,16 +12,16 @@ export function requireWorkforceAdmin(user:TokenPayload) {
   if (!workforceAdmin(user.role)) fail(403, 'HR administrator access is required');
 }
 export const currentGrants = (user:TokenPayload, now = new Date()) => and(eq(grants.userId,user.userId),isNull(grants.revokedAt),lte(grants.startAt,now),gt(grants.endAt,now));
-export async function teamAccess(tx:WorkforceTransaction, user:TokenPayload, teamId:number, permission:'view'|'schedule', window?:{startAt:Date;endAt:Date}) {
+export async function teamAccess(tx:WorkforceTransaction, user:TokenPayload, teamId:number, permission:'view'|'schedule'|'review_time', window?:{startAt:Date;endAt:Date}) {
   const [team] = await tx.select({id:teams.id,name:teams.name,kind:teams.kind,siteId:teams.siteId,siteName:sites.name,timezone:sites.timezone})
     .from(teams).innerJoin(sites,eq(teams.siteId,sites.id)).where(eq(teams.id,teamId));
   if (!team) return fail(404,'Team not found');
   if (!workforceAdmin(user.role)) {
     // Lock grants for writes so revocation and a scheduling action have a definite order.
     const query = tx.select().from(grants).where(and(eq(grants.teamId,teamId),currentGrants(user),
-      permission==='schedule'?eq(grants.permission,'schedule'):undefined,
+      permission!=='view'?eq(grants.permission,permission):undefined,
       window?lte(grants.startAt,window.startAt):undefined, window?gte(grants.endAt,window.endAt):undefined));
-    const rows = permission==='schedule'?await query.for('update'):await query;
+    const rows = permission!=='view'?await query.for('update'):await query;
     if (!rows.length) return fail(404,'Team or shift is outside your current access');
   }
   return team;

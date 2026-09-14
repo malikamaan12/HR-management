@@ -137,6 +137,7 @@ export default function Sidebar({ className }: SidebarProps) {
           <nav className="flex-1 overflow-y-auto py-4">
             <ul className="space-y-1 px-3">
               {/* Everyone can view their own offers. Team access is checked by the workforce API. */}
+              <li><Link href="/timesheets" className={cn('sidebar-item flex items-center px-3 py-2 rounded-md hover:bg-primary/10',location.startsWith('/timesheets')&&'border-l-4 border-primary bg-primary/10 font-medium')}><i className="fas fa-clock w-6 text-primary"/><span className="ml-3">Timesheets</span></Link></li>
               <li><Link href="/helpdesk" className={cn('sidebar-item flex items-center px-3 py-2 rounded-md hover:bg-primary/10',location.startsWith('/helpdesk')&&'border-l-4 border-primary bg-primary/10 font-medium')}><i className="fas fa-life-ring w-6 text-primary"/><span className="ml-3">HR Helpdesk</span></Link></li>
               <li><Link href="/workforce" className={cn('sidebar-item flex items-center px-3 py-2 rounded-md hover:bg-primary/10',location==='/workforce'&&'border-l-4 border-primary bg-primary/10 font-medium')}><i className="fas fa-people-carry w-6 text-primary"/><span className="ml-3">Workforce</span></Link></li>
               {navItems.map((item, index) => {

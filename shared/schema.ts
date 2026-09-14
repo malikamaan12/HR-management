@@ -5,7 +5,7 @@ import { z } from "zod";
 
 // Workforce operations keep employment type on the existing employee profile.
 export const workforceKind = pgEnum('workforce_kind', ['event', 'fec', 'mall_activation']);
-export const workforcePermission = pgEnum('workforce_permission', ['view', 'schedule']);
+export const workforcePermission = pgEnum('workforce_permission', ['view', 'schedule', 'review_time']);
 export const workforceAssignmentStatus = pgEnum('workforce_assignment_status', ['offered', 'accepted', 'declined', 'cancelled']);
 export const workforceSites = pgTable('workforce_sites', {
   id: serial('id').primaryKey(), name: text('name').notNull(), timezone: text('timezone').notNull(),
@@ -45,6 +45,28 @@ export const workforceAssignments = pgTable('workforce_assignments', {
   createdAt: timestamp('created_at', {withTimezone: true}).defaultNow().notNull(),
   respondedAt: timestamp('responded_at', {withTimezone: true}), cancellationReason: text('cancellation_reason'),
 }, t => [uniqueIndex('workforce_assignment_shift_employee').on(t.shiftId, t.employeeId), index('workforce_assignment_employee').on(t.employeeId)]);
+
+export const timesheetStatus = pgEnum('timesheet_status', ['draft', 'submitted', 'returned', 'approved', 'payroll_locked']);
+export const workforceTimesheets = pgTable('workforce_timesheets', {
+  id: serial('id').primaryKey(), assignmentId: integer('assignment_id').notNull().unique().references(() => workforceAssignments.id),
+  status: timesheetStatus('status').notNull().default('draft'), version: integer('version').notNull().default(1),
+  actualStartAt: timestamp('actual_start_at', {withTimezone:true}).notNull(), actualEndAt: timestamp('actual_end_at', {withTimezone:true}).notNull(),
+  breakMinutes: integer('break_minutes').notNull(), workedMinutes: integer('worked_minutes').notNull(), employeeNote: text('employee_note').notNull(),
+  submittedAt: timestamp('submitted_at', {withTimezone:true}), reviewerId: integer('reviewer_id').references(():AnyPgColumn => users.id),
+  reviewedAt: timestamp('reviewed_at', {withTimezone:true}), reviewNote: text('review_note'), payableMinutes: integer('payable_minutes'), policyReference: text('policy_reference'),
+  payrollId: integer('payroll_id').references(():AnyPgColumn => payroll.id), lockedBy: integer('locked_by').references(():AnyPgColumn => users.id), lockedAt: timestamp('locked_at', {withTimezone:true}),
+  createdAt: timestamp('created_at', {withTimezone:true}).defaultNow().notNull(), updatedAt: timestamp('updated_at', {withTimezone:true}).defaultNow().notNull(),
+}, t => [check('timesheet_actual_dates',sql`${t.actualEndAt}>${t.actualStartAt} AND ${t.actualEndAt}<=${t.actualStartAt}+interval '24 hours'`),
+  check('timesheet_minutes',sql`${t.version}>0 AND ${t.breakMinutes}>=0 AND ${t.workedMinutes}>0 AND ${t.workedMinutes}+${t.breakMinutes}=extract(epoch FROM (${t.actualEndAt}-${t.actualStartAt}))/60`),
+  check('timesheet_payable_minutes',sql`${t.payableMinutes} IS NULL OR (${t.payableMinutes}>=0 AND ${t.payableMinutes}<=${t.workedMinutes}+${t.breakMinutes})`),
+  check('timesheet_approval_fields',sql`${t.status} NOT IN ('approved','payroll_locked') OR (${t.reviewerId} IS NOT NULL AND ${t.reviewedAt} IS NOT NULL AND ${t.payableMinutes} IS NOT NULL AND ${t.policyReference} IS NOT NULL)`),
+  check('timesheet_lock_fields',sql`(${t.status}='payroll_locked') = (${t.payrollId} IS NOT NULL AND ${t.lockedBy} IS NOT NULL AND ${t.lockedAt} IS NOT NULL)`),
+  index('timesheet_status_updated').on(t.status,t.updatedAt)]);
+export const timesheetRevisions = pgTable('timesheet_revisions', {
+  id: serial('id').primaryKey(), timesheetId: integer('timesheet_id').notNull().references(() => workforceTimesheets.id), version: integer('version').notNull(),
+  actorId: integer('actor_id').notNull().references(():AnyPgColumn => users.id), action: text('action').notNull(), reason: text('reason').notNull(),
+  snapshot: jsonb('snapshot').notNull(), createdAt: timestamp('created_at', {withTimezone:true}).defaultNow().notNull(),
+}, t => [uniqueIndex('timesheet_revision_version').on(t.timesheetId,t.version)]);
 
 // HR helpdesk content is stored separately from organization-wide activity logs.
 export const helpdeskStatus = pgEnum('helpdesk_status', ['open', 'in_progress', 'waiting_employee', 'resolved', 'closed']);
