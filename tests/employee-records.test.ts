@@ -9,10 +9,10 @@ import bcrypt from 'bcryptjs';
 import { employees, users, activityLogs, employeeLifecycleEvents, documents, documentVersions, type InsertEmployee } from '../shared/schema';
 const context = vi.hoisted(() => ({ db: null as any }));
 vi.mock('../server/db', () => ({ get db() { return context.db; }, pool: {} }));
-const files = vi.hoisted(() => ({ upload: vi.fn(), remove: vi.fn() }));
+const files = vi.hoisted(() => ({ upload: vi.fn(), remove: vi.fn(), download:vi.fn() }));
 vi.mock('../server/services/r2', () => ({
   uploadDocument: files.upload, deleteDocumentObject: files.remove,
-  validateDocumentFile: vi.fn(), documentDownloadUrl: vi.fn(),
+  validateDocumentFile: vi.fn(), documentDownloadUrl: files.download,
   StorageUnavailableError: class extends Error {},
 }));
 import router from '../server/routes/employeeRecords';
@@ -54,6 +54,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   await pg.exec('TRUNCATE users, employees, activity_logs, app_settings RESTART IDENTITY CASCADE');
   files.upload.mockReset().mockResolvedValue('documents/1/test.pdf'); files.remove.mockReset().mockResolvedValue(undefined);
+  files.download.mockReset().mockResolvedValue('https://files.example.test/signed');
 });
 afterAll(async () => { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); await pg.close(); });
 
@@ -130,6 +131,82 @@ test('failed snapshot persistence rolls back the document and removes the upload
     expect((await context.db.select().from(documentVersions))).toHaveLength(0);
     expect(files.remove).toHaveBeenCalledWith('documents/1/test.pdf');
   } finally { await pg.exec('DROP TRIGGER reject_document_version ON document_versions; DROP FUNCTION reject_document_version();'); }
+});
+
+async function replaceDocumentFor(token:string,id:number,overrides:Record<string,string>={},includeFile=true) {
+  const body=new FormData();
+  for(const [key,value] of Object.entries({documentNumber:'RENEWED-456',issueDate:'2027-01-01',expiryDate:'2028-01-01',reason:'Passport renewed by authority',expectedVersion:'1',...overrides}))body.append(key,value);
+  if(includeFile)body.append('document',new Blob(['%PDF-new'],{type:'application/pdf'}),'renewed.pdf');
+  const response=await fetch(base+`/documents/${id}/replace`,{method:'POST',headers:{Authorization:`Bearer ${token}`},body});
+  return {status:response.status,body:await response.json() as any};
+}
+test('document replacement preserves files and scopes current and historical downloads',async()=>{
+  const admin=await account(),self=await account('permanent_employee'),other=await account('permanent_employee','other');
+  const employee=await create(1,{userId:self.id});await create(2,{userId:other.id});
+  const uploaded=await uploadDocumentFor(admin.token,employee.id),id=uploaded.body.id;
+  expect((await request(self.token,`/documents/${id}`)).body).toMatchObject({currentVersion:1,canReplace:true});
+  files.upload.mockResolvedValue('documents/1/renewed.pdf');
+  const renewed=await replaceDocumentFor(self.token,id);expect(renewed.status).toBe(200);
+  expect(renewed.body).toMatchObject({id,employeeId:employee.id,documentType:'passport',documentNumber:'RENEWED-456',currentVersion:2});
+  const history=(await request(self.token,`/documents/${id}/versions`)).body;
+  expect(history.map((v:any)=>v.version)).toEqual([2,1]);
+  expect(history[1].snapshot.documentFile).toBe('documents/1/test.pdf');
+  expect(history[0].snapshot).toMatchObject({documentFile:'documents/1/renewed.pdf',changeReason:'Passport renewed by authority'});
+  for(const [path,key] of [[`/documents/${id}/download`,'documents/1/renewed.pdf'],[`/documents/${id}/versions/1/download`,'documents/1/test.pdf']]){
+    const response=await fetch(base+path,{headers:{Authorization:`Bearer ${self.token}`},redirect:'manual'});
+    expect(response.status).toBe(302);expect(response.headers.get('cache-control')).toBe('no-store');expect(files.download).toHaveBeenLastCalledWith(key);
+  }
+  const calls=files.download.mock.calls.length;
+  expect((await request(other.token,`/documents/${id}/versions/1/download`)).status).toBe(404);
+  expect((await request(self.token,`/documents/${id}/versions/999/download`)).status).toBe(404);
+  expect(files.download).toHaveBeenCalledTimes(calls);expect(files.remove).not.toHaveBeenCalled();
+});
+test('replacement rejects unauthorized callers, protected metadata, invalid dates and stale versions before uploading',async()=>{
+  const admin=await account(),other=await account('permanent_employee'),reader=await account('finance');
+  const employee=await create(),uploaded=await uploadDocumentFor(admin.token,employee.id),id=uploaded.body.id;
+  expect((await request(reader.token,`/documents/${id}`)).body.canReplace).toBe(false);
+  files.upload.mockClear();
+  for(const token of [other.token,reader.token])expect((await replaceDocumentFor(token,id)).status).toBe(404);
+  for(const fields of [{employeeId:'999'},{documentType:'visa'},{expiryDate:'2026-02-30'},{issueDate:'2029-01-01'},{reason:'x'}])expect((await replaceDocumentFor(admin.token,id,fields)).status).toBe(400);
+  expect((await replaceDocumentFor(admin.token,id,{},false)).status).toBe(400);
+  expect((await replaceDocumentFor(admin.token,id,{expectedVersion:'0'})).status).toBe(409);
+  expect(files.upload).not.toHaveBeenCalled();
+});
+test('late replacement conflict cleans only its new object and preserves the winning version',async()=>{
+  const admin=await account(),employee=await create(),uploaded=await uploadDocumentFor(admin.token,employee.id),id=uploaded.body.id;
+  let release!:(key:string)=>void,started!:()=>void;
+  const began=new Promise<void>(resolve=>{started=resolve;});
+  files.upload.mockImplementationOnce(()=>{started();return new Promise<string>(resolve=>{release=resolve;});}).mockResolvedValueOnce('documents/1/winner.pdf');
+  const first=replaceDocumentFor(admin.token,id);await began;
+  const second=await replaceDocumentFor(admin.token,id);expect(second.status).toBe(200);
+  release('documents/1/loser.pdf');expect((await first).status).toBe(409);
+  expect(files.remove).toHaveBeenCalledExactlyOnceWith('documents/1/loser.pdf');
+  expect((await request(admin.token,`/documents/${id}`)).body.documentFile).toBe('documents/1/winner.pdf');
+  expect((await request(admin.token,`/documents/${id}/versions`)).body).toHaveLength(2);
+});
+test('failed replacement history rolls back metadata and cleans the replacement file',async()=>{
+  const admin=await account(),employee=await create(),uploaded=await uploadDocumentFor(admin.token,employee.id),id=uploaded.body.id;
+  files.upload.mockResolvedValue('documents/1/failed.pdf');
+  await pg.exec("CREATE FUNCTION reject_replacement() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'test'; END; $$ LANGUAGE plpgsql; CREATE TRIGGER reject_replacement BEFORE INSERT ON document_versions FOR EACH ROW EXECUTE FUNCTION reject_replacement();");
+  try{
+    expect((await replaceDocumentFor(admin.token,id)).status).toBe(500);
+    expect((await request(admin.token,`/documents/${id}`)).body).toMatchObject({documentNumber:'TEST-123',currentVersion:1,documentFile:'documents/1/test.pdf'});
+    expect(files.remove).toHaveBeenCalledExactlyOnceWith('documents/1/failed.pdf');
+  }finally{await pg.exec('DROP TRIGGER reject_replacement ON document_versions; DROP FUNCTION reject_replacement();');}
+});
+test('first replacement of a legacy document preserves the prior metadata as version one',async()=>{
+  const admin=await account(),employee=await create();
+  const [legacy]=await context.db.insert(documents).values({employeeId:employee.id,documentType:'passport',documentNumber:'LEGACY',issueDate:'2025-01-01',expiryDate:'2026-01-01',status:'expired',documentFile:'legacy.pdf'}).returning();
+  expect((await request(admin.token,`/documents/${legacy.id}`)).body.currentVersion).toBe(0);
+  expect((await replaceDocumentFor(admin.token,legacy.id,{expectedVersion:'0'})).status).toBe(200);
+  const history=(await request(admin.token,`/documents/${legacy.id}/versions`)).body;
+  expect(history.map((v:any)=>v.version)).toEqual([2,1]);expect(history[1].snapshot).toMatchObject({documentNumber:'LEGACY',documentFile:'legacy.pdf',changeReason:'Legacy document preserved before replacement'});
+});
+test('oversized renewal files return a useful error before private storage is called',async()=>{
+  const admin=await account(),employee=await create(),uploaded=await uploadDocumentFor(admin.token,employee.id);
+  files.upload.mockClear();const body=new FormData();body.append('document',new Blob([new Uint8Array(10*1024*1024+1)]),'large.pdf');
+  const response=await fetch(base+`/documents/${uploaded.body.id}/replace`,{method:'POST',headers:{Authorization:`Bearer ${admin.token}`},body});
+  expect(response.status).toBe(413);expect((await response.json()).message).toMatch(/10 MB/);expect(files.upload).not.toHaveBeenCalled();
 });
 test('directory searches all records, counts matches, escapes wildcards and applies filters', async () => {
   const admin = await account();

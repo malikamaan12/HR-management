@@ -1,8 +1,8 @@
 import { getCompanySettings } from '../services/settings';
-import { Router, type Request, type Response } from 'express';
+import { Router, type Request, type Response, type NextFunction } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
-import { and, eq, lte, desc } from 'drizzle-orm';
+import { and, eq, lte, desc, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { documents, documentVersions, employees, insertDocumentSchema } from '@shared/schema';
 import { authenticate } from '../middleware/auth';
@@ -10,7 +10,13 @@ import { employeeScope } from '../services/access';
 import { uploadDocument, deleteDocumentObject, documentDownloadUrl, StorageUnavailableError, validateDocumentFile } from '../services/r2';
 
 export const documentUpload=multer({storage:multer.memoryStorage(),limits:{fileSize:10*1024*1024,files:1,fields:12}});
+const receiveDocument=(req:Request,res:Response,next:NextFunction)=>documentUpload.single('document')(req,res,error=>{
+  if(error instanceof multer.MulterError)return res.status(error.code==='LIMIT_FILE_SIZE'?413:400).json({message:error.code==='LIMIT_FILE_SIZE'?'Document files must not exceed 10 MB':'Upload one document with the required fields'});
+  if(error)return next(error);next();
+});
 const router=Router();router.use(authenticate);
+const versionNumber=sql<number>`coalesce((select max(version) from document_versions where document_id = ${documents.id}), 0)`;
+class DocumentError extends Error {constructor(public status:number,message:string){super(message);}}
 const date=z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value=>!isNaN(Date.parse(value)) && new Date(value).toISOString().slice(0,10)===value,'Invalid date');
 const metadata=insertDocumentSchema.omit({documentFile:true,status:true}).extend({employeeId:z.coerce.number().int().positive(),issueDate:date,expiryDate:date})
   .refine(value=>value.expiryDate>=value.issueDate,'Expiry must be on or after the issue date');
@@ -38,7 +44,57 @@ export async function createDocument(req:Request,res:Response){
     return res.status(500).json({message:'Document upload failed'});
   }
 }
-router.post('/',documentUpload.single('document'),createDocument);
+router.post('/',receiveDocument,createDocument);
+const replacementMetadata=z.object({documentNumber:z.string().trim().min(1).max(200),issueDate:date,expiryDate:date,
+  issueAuthority:z.string().trim().max(200).default(''),notes:z.string().trim().max(5000).default(''),
+  reason:z.string().trim().min(5).max(500),expectedVersion:z.coerce.number().int().min(0)}).strict()
+  .refine(value=>value.expiryDate>=value.issueDate,'Expiry must be on or after the issue date');
+router.post('/:id/replace',receiveDocument,async(req,res)=>{
+  let key:string|undefined;
+  try {
+    const id=z.coerce.number().int().positive().parse(req.params.id),input=replacementMetadata.parse(req.body);
+    if(!req.file)throw new DocumentError(400,'A new PDF, PNG, or JPEG file is required');
+    try{validateDocumentFile(req.file);}catch(error){throw new DocumentError(400,(error as Error).message);}
+    const [allowed]=await db.select({employeeId:documents.employeeId,currentVersion:versionNumber}).from(documents).innerJoin(employees,eq(documents.employeeId,employees.id))
+      .where(and(eq(documents.id,id),employeeScope(req.user!,'compliance_documents','update')));
+    if(!allowed)throw new DocumentError(404,'Document not found or replacement is not permitted');
+    if(allowed.currentVersion!==input.expectedVersion)throw new DocumentError(409,'Document changed; reload before replacing it');
+    const policy=await getCompanySettings();key=await uploadDocument(allowed.employeeId,req.file);
+    const result=await db.transaction(async tx=>{
+      const [current]=await tx.select().from(documents).where(eq(documents.id,id)).for('update');
+      if(!current)throw new DocumentError(404,'Document not found');
+      const [employee]=await tx.select({id:employees.id}).from(employees).where(and(eq(employees.id,current.employeeId),employeeScope(req.user!,'compliance_documents','update')));
+      if(!employee||employee.id!==allowed.employeeId)throw new DocumentError(404,'Document access changed');
+      const [latest]=await tx.select({version:documentVersions.version}).from(documentVersions).where(eq(documentVersions.documentId,id)).orderBy(desc(documentVersions.version)).limit(1);
+      if((latest?.version??0)!==input.expectedVersion)throw new DocumentError(409,'Document changed; reload before replacing it');
+      // Preserve legacy records before the first replacement, without claiming an original uploader.
+      if(!latest)await tx.insert(documentVersions).values({documentId:id,version:1,snapshot:{...current,changeReason:'Legacy document preserved before replacement'},createdBy:req.user!.userId});
+      const {expectedVersion,reason,...metadata}=input;
+      const today=new Date().toISOString().slice(0,10),soon=new Date(Date.now()+policy.documentExpiryDays*86400000).toISOString().slice(0,10);
+      const [updated]=await tx.update(documents).set({...metadata,documentFile:key,updatedAt:new Date(),status:input.expiryDate<today?'expired':input.expiryDate<=soon?'expiring_soon':'valid'}).where(eq(documents.id,id)).returning();
+      const next=(latest?.version??1)+1;
+      await tx.insert(documentVersions).values({documentId:id,version:next,snapshot:{...updated,changeReason:reason},createdBy:req.user!.userId});
+      return {...updated,currentVersion:next};
+    });
+    return res.status(200).json(result);
+  }catch(error){
+    if(key)try{await deleteDocumentObject(key);}catch{console.error('Replacement upload cleanup failed');}
+    if(error instanceof DocumentError)return res.status(error.status).json({message:error.message});
+    if(error instanceof z.ZodError)return res.status(400).json({message:'Check document fields, dates and replacement reason'});
+    if(error instanceof StorageUnavailableError)return res.status(503).json({message:error.message});
+    return res.status(500).json({message:'Document replacement failed'});
+  }
+});
+router.get('/:id/versions/:version/download',async(req,res)=>{
+  try{
+    const id=z.coerce.number().int().positive().parse(req.params.id),version=z.coerce.number().int().positive().parse(req.params.version);
+    const [row]=await db.select({snapshot:documentVersions.snapshot}).from(documentVersions).innerJoin(documents,eq(documentVersions.documentId,documents.id)).innerJoin(employees,eq(documents.employeeId,employees.id))
+      .where(and(eq(documents.id,id),eq(documentVersions.version,version),employeeScope(req.user!,'compliance_documents')));
+    const snapshot=row?.snapshot as {documentFile?:string;employeeId?:number}|undefined;
+    if(!snapshot?.documentFile)return res.status(404).json({message:'Document version file not found'});
+    const url=await documentDownloadUrl(snapshot.documentFile);res.set('Cache-Control','no-store');return res.redirect(url);
+  }catch(error){return res.status(error instanceof StorageUnavailableError?503:400).json({message:error instanceof Error?error.message:'Download unavailable'});}
+});
 async function list(req:Request,res:Response){
   try{
     const policy=await getCompanySettings();
@@ -72,10 +128,11 @@ router.get('/:id/download',async(req,res)=>{
 router.get('/:id',async(req,res)=>{
   try{
     const id=z.coerce.number().int().positive().parse(req.params.id);
-    const [row]=await db.select({document:documents,firstName:employees.firstName,lastName:employees.lastName}).from(documents).innerJoin(employees,eq(documents.employeeId,employees.id))
+    const [row]=await db.select({document:documents,currentVersion:versionNumber,firstName:employees.firstName,lastName:employees.lastName}).from(documents).innerJoin(employees,eq(documents.employeeId,employees.id))
       .where(and(eq(documents.id,id),employeeScope(req.user!,'compliance_documents')));
     if(!row)return res.status(404).json({message:'Document not found'});
-    return res.json({...row.document,employeeName:`${row.firstName} ${row.lastName}`});
+    const [writable]=await db.select({id:employees.id}).from(employees).where(and(eq(employees.id,row.document.employeeId),employeeScope(req.user!,'compliance_documents','update')));
+    return res.json({...row.document,currentVersion:row.currentVersion,canReplace:!!writable,employeeName:`${row.firstName} ${row.lastName}`});
   }catch{return res.status(400).json({message:'Invalid document request'});}
 });
 export default router;
