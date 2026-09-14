@@ -11,7 +11,8 @@
     "db:push": "drizzle-kit push",
     "test": "vitest run",
     "db:migrate": "node scripts/migrate.mjs",
-    "admin:bootstrap": "node scripts/bootstrap-admin.mjs"
+    "admin:bootstrap": "node scripts/bootstrap-admin.mjs",
+    "storage:verify": "node scripts/verify-supabase-storage.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.37.0",
