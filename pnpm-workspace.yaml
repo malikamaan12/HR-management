@@ -1,0 +1,9 @@
+# pnpm 11 requires a decision for every dependency install script in CI.
+# Only the esbuild versions in the frozen lockfile may install their binaries.
+strictDepBuilds: true
+allowBuilds:
+  'esbuild@0.18.20 || 0.19.12 || 0.21.5 || 0.25.12 || 0.28.2': true
+  # Optional WebSocket native acceleration; the JavaScript implementation remains available.
+  bufferutil: false
+  # This dependency's postinstall notification is not required by the application.
+  es5-ext: false

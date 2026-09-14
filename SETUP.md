@@ -1,6 +1,6 @@
 # E3 HR development and deployment setup
 
-Use Node.js 24 (minimum 22.16) and pnpm 11.19.0. Install with `pnpm install --frozen-lockfile`.
+Use Node.js 24 (minimum 22.16) and pnpm 11.19.0. Install with `pnpm install --frozen-lockfile`. The checked-in `pnpm-workspace.yaml` allows only the locked esbuild install scripts and explicitly skips optional bufferutil compilation and the es5-ext notification script. Unknown dependency scripts still fail in CI; review the policy when updating dependencies. See [pnpm build settings](https://pnpm.io/settings/builds#allowbuilds).
 
 1. Copy `.env.example` to `.env`. Set DATABASE_URL to an isolated PostgreSQL database, APP_URL to the app origin and APP_TIMEZONE to the company timezone (for example Asia/Qatar). Use separate random JWT_SECRET and JWT_REFRESH_SECRET values of at least 32 characters.
 2. For a NEW empty database, run `pnpm db:migrate`. Existing databases require backup and schema reconciliation first; do not apply the initial migration or `db:push` blindly. Reconcile any previously applied manual SQL with the migration journal.
