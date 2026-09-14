@@ -1,4 +1,5 @@
 import { useAuth } from '@/contexts/AuthContext';
+import { officeScheduleSummary, type CompanySettings } from '@shared/settings';
 import type { ApiAttendance, ApiEmployee, ApiShift, ApiGeofence } from '@/lib/api-types';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -49,6 +50,8 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Attendance() {
+  const {data:self}=useQuery<ApiEmployee>({queryKey:['/api/employee/profile']});
+  const {data:policy}=useQuery<CompanySettings>({queryKey:['/api/settings/company'],enabled:self?.workSchedule==='management_office'});
   const [activeTab, setActiveTab] = useState("time-clock"); // Start with clock in/out tab
   return (
     <div className="space-y-6">
@@ -61,6 +64,7 @@ export default function Attendance() {
         </div>
       </div>
 
+      {self?.workSchedule==='management_office' && policy && <p className="rounded-md border bg-muted p-3 text-sm">Your management office schedule: {officeScheduleSummary(policy.managementOfficeSchedule)}</p>}
       <Tabs defaultValue="time-clock" value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList className="grid grid-cols-5 w-full">
           <TabsTrigger value="daily-records" className="flex items-center gap-2">

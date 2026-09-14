@@ -1,4 +1,5 @@
-import { leaveDays, type CompanySettings } from '@shared/settings';
+import { leaveDays, employeeWeekendDays, defaultCompanySettings, type CompanySettings } from '@shared/settings';
+import { format } from 'date-fns';
 import type { ApiEmployee } from '@/lib/api-types';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -137,23 +138,8 @@ export default function Leave() {
   
   // Calculate total leave days
   const calculateDays = (startDate: Date, endDate: Date) => {
-    const oneDay = 24 * 60 * 60 * 1000;
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    const diffDays = Math.round(Math.abs((end.getTime() - start.getTime()) / oneDay)) + 1;
-    
-    // Exclude weekends (assuming Saturday and Sunday are weekends)
-    let totalDays = 0;
-    for (let i = 0; i < diffDays; i++) {
-      const day = new Date(start);
-      day.setDate(start.getDate() + i);
-      const dayOfWeek = day.getDay();
-      if (dayOfWeek !== 0 && dayOfWeek !== 6) { // 0 = Sunday, 6 = Saturday
-        totalDays++;
-      }
-    }
-    
-    return totalDays;
+    try{return leaveDays(format(startDate,'yyyy-MM-dd'),format(endDate,'yyyy-MM-dd'),employeeWeekendDays(selfEmployee || {},policy || defaultCompanySettings));}
+    catch{return 0;}
   };
   
   // Mutations
@@ -163,14 +149,14 @@ export default function Leave() {
       const selectedLeaveType = leaveTypes?.find(lt => lt.id === data.leaveTypeId);
       
       // Calculate total days
-      const totalDays = leaveDays(data.startDate.toISOString().slice(0,10),data.endDate.toISOString().slice(0,10),policy?.weekendDays || [0,6]);
+      const totalDays = calculateDays(data.startDate,data.endDate);
       
       // Transform the data to match backend schema
       const leaveData = {
         employeeId: data.employeeId,
         leaveType: selectedLeaveType?.name || 'Annual Leave',
-        startDate: data.startDate.toISOString().split('T')[0],
-        endDate: data.endDate.toISOString().split('T')[0],
+        startDate: format(data.startDate,'yyyy-MM-dd'),
+        endDate: format(data.endDate,'yyyy-MM-dd'),
         totalDays: totalDays,
         reason: data.reason
       };

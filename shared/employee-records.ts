@@ -17,6 +17,7 @@ export const employeeWriteFields = insertEmployeeSchema.omit({ userId: true, rol
   probationPeriod: z.number().int().min(0).max(120).nullable().optional(),
   noticePeriod: z.number().int().min(0).max(3650).nullable().optional(),
   status: z.enum(['active', 'inactive', 'on_leave']).default('active'),
+  workSchedule: z.enum(['unassigned','management_office','shift_based']).default('unassigned'),
 }).strict();
 
 export function checkEmploymentDates(value: Pick<Employee, 'dateOfBirth' | 'joiningDate'> & Partial<Pick<Employee, 'contractEndDate' | 'terminationDate'>>) {
@@ -27,7 +28,7 @@ export function checkEmploymentDates(value: Pick<Employee, 'dateOfBirth' | 'join
 
 // Directory fields are deliberately separate from personal and payroll records.
 export const directoryFields = ['id', 'employeeId', 'firstName', 'lastName', 'fullNameArabic', 'type',
-  'eventStaffEligible', 'department', 'position', 'location', 'workLocation', 'workEmail', 'workPhone',
+  'eventStaffEligible', 'workSchedule', 'department', 'position', 'location', 'workLocation', 'workEmail', 'workPhone',
   'reportingManagerId', 'secondaryManagerId', 'joiningDate', 'status'] as const;
 export type EmployeeDirectoryEntry = Pick<Employee, typeof directoryFields[number]>;
 export type EmployeeRecord = EmployeeDirectoryEntry & Partial<Employee> & {

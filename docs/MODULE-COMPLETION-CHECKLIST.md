@@ -36,7 +36,7 @@ Each section must support its main workflow end to end, enforce server-side reco
 
 ## Inputs needed for subsequent phases
 
-- Working week, company timezone, holiday policy and leave rules.
+- Management working week confirmed: Sunday–Thursday, 09:00–17:00, Asia/Qatar; Friday/Saturday off. The scoped policy and employee assignment are implemented; see [the management schedule guide](Management-Office-Schedule.md). Holiday policy, leave rules and other employee calendars still need confirmation.
 - Payroll cycle, time rounding, approved rate structure and who signs off pay.
 - EOS API/repository when available; EOS is still under development.
 - Resend sender domain and configuration. No email or WhatsApp delivery is represented as live yet.

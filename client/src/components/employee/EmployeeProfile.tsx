@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatDate } from '@/lib/utils';
 import AddEditEmployeeModal from './AddEditEmployeeModal';
 import { UploadDocumentModal } from '@/components/documents/UploadDocumentModal';
+import { officeScheduleSummary, type CompanySettings } from '@shared/settings';
 
 function Info({ title, fields }: { title: string; fields: [string, unknown][] }) {
   return <Card><CardHeader><CardTitle className="text-lg">{title}</CardTitle></CardHeader><CardContent><dl className="grid gap-5 sm:grid-cols-2">
@@ -19,6 +20,7 @@ export default function EmployeeProfile({ employeeId, onClose }: { employeeId: n
   const [tab, setTab] = useState('employment');
   const [historyPage, setHistoryPage] = useState(1);
   const { data: employee, isLoading, error, refetch } = useQuery<ApiEmployeeRecord>({ queryKey: [`/api/employees/${employeeId}`] });
+  const {data:policy}=useQuery<CompanySettings>({queryKey:['/api/settings/company'],enabled:employee?.workSchedule==='management_office'});
   const docs = useQuery<ApiDocument[]>({ queryKey: [`/api/employees/${employeeId}/documents`], enabled: !!employee?.access.documents && tab === 'documents' });
   const activity = useQuery<{ history: ApiEmployeeHistory[]; total: number }>({ queryKey: [`/api/employees/${employeeId}/activity`, { page: historyPage, limit: 20 }], enabled: !!employee?.access.history && tab === 'activity' });
   if (isLoading) return <p className="p-8">Loading employee…</p>;
@@ -40,11 +42,13 @@ export default function EmployeeProfile({ employeeId, onClose }: { employeeId: n
       <TabsContent value="employment" className="space-y-4">
         <Info title="Employment details" fields={[
           ['Employee ID', e.employeeId], ['Type', e.type], ['Status', e.status], ['Event staff eligible', e.eventStaffEligible],
+          ['Work schedule', e.workSchedule==='management_office' ? 'Management office' : e.workSchedule==='shift_based' ? 'Assigned shifts' : 'Not assigned'],
           ['Department', e.department], ['Position', e.position], ['Location', e.location], ['Work location', e.workLocation],
           ['Joining date', formatDate(e.joiningDate)], ['Work email', e.workEmail], ['Work phone', e.workPhone],
           ['Primary manager', e.reportingManagerId ? `Employee record #${e.reportingManagerId}` : null], ['Secondary manager', e.secondaryManagerId ? `Employee record #${e.secondaryManagerId}` : null],
           ...(e.access.personal ? [['Contract end', e.contractEndDate ? formatDate(e.contractEndDate) : null], ['Category', e.employeeCategory], ['Cost center', e.costCenter], ['Job grade', e.jobGrade], ['Probation (months)', e.probationPeriod], ['Notice (days)', e.noticePeriod]] as [string, unknown][] : []),
         ]} />
+        {e.workSchedule==='management_office' && policy && <p className="rounded-md bg-muted p-3 text-sm">Office schedule: {officeScheduleSummary(policy.managementOfficeSchedule)}</p>}
         <p className="text-sm text-muted-foreground">FEC, mall activation and event team assignments are managed in Workforce Operations.</p>
       </TabsContent>
       {e.access.personal && <TabsContent value="personal" className="space-y-4">

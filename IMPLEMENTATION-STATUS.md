@@ -8,6 +8,8 @@ Render Free runs the application against Supabase Free PostgreSQL with the Data 
 
 ## Implemented
 
+- Management office calendar confirmed and implemented: Sunday–Thursday, 09:00–17:00, Asia/Qatar. HR explicitly assigns the calendar to an employee; profile/attendance show it and leave requests count its working days. Other calendars and event/FEC shifts are preserved. Migration 0009 adds the employee selector. See [the management schedule guide](docs/Management-Office-Schedule.md). All 105 tests and TypeScript/build checks pass for this release; payroll cycle, breaks and overtime rules remain unconfirmed.
+
 - Employee module completion pass: server-side search/count/pagination, role-appropriate field projection, manager search and cycle prevention, versioned updates, atomic audit history, shared frontend/backend validation, civil dates, optional personal details without guessed defaults, and employee-linked document actions. Migration 0008 adds a record-version trigger covering every employee write path. Existing employee PATCH clients must supply `expectedVersion`.
 
 - Assignment reviews with versioned rubrics, criterion evidence, improvement actions, employee acknowledgement/comments/disputes and independent HR amendment/upholding/withdrawal. Team overview combines scoped staffing gaps, pending time approvals, missing reviews and criterion trends with sample counts. See [the review guide](docs/Assignment-Reviews-Guide.md).

@@ -11,6 +11,9 @@ const context = vi.hoisted(() => ({ db: null as any }));
 vi.mock('../server/db', () => ({ get db() { return context.db; }, pool: {} }));
 import router from '../server/routes/employeeRecords';
 import { authService } from '../server/services/auth';
+import settingsRouter from '../server/routes/settings';
+import leaveRouter from '../server/routes/leaveRequests';
+import {defaultCompanySettings} from '../shared/settings';
 
 let pg: PGlite, server: Server, base: string;
 const password = 'EmployeeTest8!';
@@ -37,11 +40,11 @@ beforeAll(async () => {
   pg = new PGlite();
   for (const file of readdirSync(new URL('../migrations', import.meta.url)).filter(n => n.endsWith('.sql')).sort()) await pg.exec(readFileSync(new URL('../migrations/' + file, import.meta.url), 'utf8'));
   context.db = drizzle(pg);
-  const app = express(); app.use(express.json()); app.use('/employees', router);
+  const app = express(); app.use(express.json()); app.use('/employees', router); app.use('/settings',settingsRouter); app.use('/leaves',leaveRouter);
   server = app.listen(0, '127.0.0.1'); await new Promise<void>(resolve => server.once('listening', resolve));
   base = 'http://127.0.0.1:' + (server.address() as { port: number }).port;
 });
-beforeEach(async () => { await pg.exec('TRUNCATE users, employees, activity_logs RESTART IDENTITY CASCADE'); });
+beforeEach(async () => { await pg.exec('TRUNCATE users, employees, activity_logs, app_settings RESTART IDENTITY CASCADE'); });
 afterAll(async () => { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); await pg.close(); });
 
 test('employee endpoints require a valid session', async () => {
@@ -152,4 +155,26 @@ test('simultaneous edits accept only one version and preserve the losing editor 
   const results = await Promise.all(['Editor A', 'Editor B'].map(position => request(hr.token, `/employees/${person.id}`, 'PATCH', {expectedVersion: 1, position})));
   expect(results.map(result => result.status).sort()).toEqual([200, 409]);
   expect((await request(hr.token, `/employees/${person.id}/activity`)).body.total).toBe(1);
+});
+
+test('management calendar counts Sunday and excludes Friday/Saturday only for assigned office staff', async () => {
+  const admin=await account();const office=await create(1,{workSchedule:'management_office'});const shift=await create(2,{workSchedule:'shift_based'});
+  expect((await request(admin.token,`/employees/${office.id}`)).body.workSchedule).toBe('management_office');
+  const leave={leaveType:'annual',startDate:'2026-09-13',endDate:'2026-09-13',reason:'Test leave',totalDays:999,workSchedule:'management_office'};
+  const sunday=await request(admin.token,'/leaves','POST',{...leave,employeeId:office.id});
+  expect(sunday.status).toBe(201);expect(sunday.body.totalDays).toBe(1);
+  expect((await request(admin.token,'/leaves','POST',{...leave,employeeId:office.id,startDate:'2026-09-18',endDate:'2026-09-19'})).status).toBe(400);
+  expect((await request(admin.token,'/leaves','POST',{...leave,employeeId:shift.id})).status).toBe(400);
+  expect((await request(admin.token,'/leaves','POST',{...leave,employeeId:shift.id,startDate:'2026-09-18',endDate:'2026-09-18'})).status).toBe(201);
+});
+
+test('office settings persist, require admin and survive a legacy settings update',async()=>{
+  const admin=await account(),employee=await account('employee');
+  const value={...defaultCompanySettings,managementOfficeSchedule:{...defaultCompanySettings.managementOfficeSchedule,startTime:'09:30'}};
+  expect((await request(employee.token,'/settings/company','PUT',value)).status).toBe(403);
+  expect((await request(admin.token,'/settings/company','PUT',value)).status).toBe(200);
+  const {managementOfficeSchedule,...legacy}=defaultCompanySettings;
+  expect((await request(admin.token,'/settings/company','PUT',legacy)).body.managementOfficeSchedule.startTime).toBe('09:30');
+  expect((await request(employee.token,'/settings/company')).body.managementOfficeSchedule.workingDays).toEqual([0,1,2,3,4]);
+  expect((await request(admin.token,'/settings/company','PUT',{...value,managementOfficeSchedule:{...value.managementOfficeSchedule,endTime:'08:00'}})).status).toBe(400);
 });

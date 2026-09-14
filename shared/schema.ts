@@ -263,6 +263,7 @@ export const employees = pgTable("employees", {
   // Employment Details
   type: employeeTypeEnum("type").notNull(), // permanent, temporary, contract
   eventStaffEligible: boolean("event_staff_eligible").default(false),
+  workSchedule: text("work_schedule").notNull().default('unassigned'),
   department: text("department").notNull(),
   position: text("position").notNull(),
   location: text("location").notNull(),

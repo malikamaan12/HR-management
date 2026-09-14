@@ -32,6 +32,7 @@ const personal: Field[] = [
   { name: 'residentialAddress', label: 'Residential address', required: true }, { name: 'homeCountryAddress', label: 'Home country address' },
 ];
 const employment: Field[] = [
+  { name: 'workSchedule', label: 'Work schedule', options: ['unassigned','management_office','shift_based'], choices: ['Not assigned','Management office','Assigned shifts'], required: true },
   { name: 'type', label: 'Employment type', options: ['permanent', 'temporary', 'contract'], required: true },
   { name: 'status', label: 'Status', options: ['active', 'inactive', 'on_leave'], required: true },
   { name: 'department', label: 'Department', required: true }, { name: 'position', label: 'Job title', required: true },
@@ -60,7 +61,7 @@ export default function EmployeeForm({ employee, onSuccess, onCancel }: { employ
   const [editingVersion] = useState(employee?.recordVersion);
   const [defaults] = useState(() => employee
     ? Object.fromEntries(Object.keys(employeeWriteFields.shape).map(key => [key, employee[key as keyof ApiEmployeeRecord]]))
-    : { type: 'permanent', status: 'active', eventStaffEligible: false });
+    : { type: 'permanent', status: 'active', eventStaffEligible: false, workSchedule: 'unassigned' });
   const form = useForm<Values>({ resolver: zodResolver(schema), defaultValues: defaults });
   const { toast } = useToast();
   const managers = useQuery<ApiEmployeeDirectory>({ queryKey: ['/api/employees/directory', { q: managerSearch.trim(), limit: 50 }], enabled: tab === 'employment' });

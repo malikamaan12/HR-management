@@ -1,6 +1,6 @@
 import { getCompanySettings } from '../services/settings';
 import { lockEmployee, assertLeaveCompatible, WorkforceError } from '../services/workforce';
-import { leaveDays } from '@shared/settings';
+import { leaveDays, employeeWeekendDays } from '@shared/settings';
 import { Router } from 'express';
 import { z } from 'zod';
 import { and, eq, desc } from 'drizzle-orm';
@@ -14,9 +14,12 @@ const idSchema=z.coerce.number().int().positive();
 router.post('/',async(req,res)=>{
   try{
     const policy=await getCompanySettings();
-    const input=insertLeaveSchema.parse({...req.body,totalDays:leaveDays(req.body.startDate,req.body.endDate,policy.weekendDays),status:'pending',approvedBy:null,approvedAt:null});
-    const [employee]=await db.select({id:employees.id}).from(employees).where(and(eq(employees.id,input.employeeId),employeeScope(req.user!,'leave_absence_management','create')));
+    const employeeId=idSchema.parse(req.body.employeeId);
+    const [employee]=await db.select({id:employees.id,workSchedule:employees.workSchedule}).from(employees).where(and(eq(employees.id,employeeId),employeeScope(req.user!,'leave_absence_management','create')));
     if(!employee)return res.status(403).json({message:'You cannot request leave for this employee'});
+    let totalDays:number;
+    try{totalDays=leaveDays(req.body.startDate,req.body.endDate,employeeWeekendDays(employee,policy));}catch{return res.status(400).json({message:'Choose valid leave dates within a period of at most one year'});}
+    const input=insertLeaveSchema.parse({...req.body,employeeId,totalDays,status:'pending',approvedBy:null,approvedAt:null});
     if(input.endDate<input.startDate || !Number.isInteger(input.totalDays) || input.totalDays<1)return res.status(400).json({message:'Check the leave dates and duration'});
     const [leave]=await db.insert(leaves).values(input).returning();return res.status(201).json(leave);
   }catch(error){return res.status(error instanceof z.ZodError?400:500).json({message:'Unable to create leave request'});}
