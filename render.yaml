@@ -1,14 +1,17 @@
-# Review-only staging template. Configure a NEW PostgreSQL database first.
-# Existing databases need a backup and schema reconciliation before migrations.
+# Production deployment for a NEW database. Review the paid resources before applying.
+# Never attach an existing database without backup and migration reconciliation.
 services:
   - type: web
-    name: e3-hr-staging
+    name: e3-hr
     runtime: node
-    autoDeployTrigger: off
-    buildCommand: npm install -g pnpm@11.19.0 && pnpm install --frozen-lockfile && pnpm build
+    region: frankfurt
+    plan: 0.5c-512mb
+    branch: main
+    autoDeployTrigger: "off"
+    buildCommand: npm install -g pnpm@11.19.0 && pnpm install --frozen-lockfile --prod=false && pnpm build
     preDeployCommand: pnpm db:migrate
     startCommand: pnpm start
-    healthCheckPath: /healthz
+    healthCheckPath: /readyz
     envVars:
       - key: NODE_VERSION
         value: 24.19.0
@@ -16,23 +19,23 @@ services:
         value: production
       - key: APP_TIMEZONE
         value: Asia/Qatar
-      - key: APP_URL
-        sync: false
+      # APP_URL uses Render's assigned HTTPS URL by default. Set it for a custom domain.
       - key: DATABASE_URL
-        sync: false
+        fromDatabase:
+          name: e3-hr-db
+          property: connectionString
       - key: JWT_SECRET
         generateValue: true
       - key: JWT_REFRESH_SECRET
         generateValue: true
-      - key: RESEND_API_KEY
-        sync: false
-      - key: EMAIL_FROM
-        sync: false
-      - key: R2_ACCOUNT_ID
-        sync: false
-      - key: R2_ACCESS_KEY_ID
-        sync: false
-      - key: R2_SECRET_ACCESS_KEY
-        sync: false
-      - key: R2_BUCKET_NAME
-        sync: false
+      # Configure Resend and private R2 credentials in the dashboard when available.
+      # Bootstrap the first administrator in the service shell after migrations.
+databases:
+  - name: e3-hr-db
+    region: frankfurt
+    plan: 0.1c-256mb
+    diskSizeGB: 5
+    postgresMajorVersion: "17"
+    databaseName: e3hr
+    user: e3hr
+    ipAllowList: []

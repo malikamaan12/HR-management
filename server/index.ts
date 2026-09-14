@@ -3,11 +3,17 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 
 import { validateAuthConfiguration } from './services/auth';
+import { validateAppConfiguration } from './config';
+import { createReadinessHandler } from './services/readiness';
+import { pool } from './db';
 validateAuthConfiguration();
+validateAppConfiguration();
 const app = express();
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
 app.get('/healthz', (_req, res) => res.json({ status: 'ok' }));
+const readinessQuery = { text: 'SELECT 1 FROM users LIMIT 0', query_timeout: 2000 };
+app.get('/readyz', createReadinessHandler(() => pool.query(readinessQuery)));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 

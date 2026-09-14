@@ -1,10 +1,12 @@
+import { getAppUrl } from '../config';
+
 export function emailConfigured() {
-  return Boolean(process.env.RESEND_API_KEY && process.env.EMAIL_FROM && process.env.APP_URL);
+  return Boolean(process.env.RESEND_API_KEY && process.env.EMAIL_FROM && getAppUrl());
 }
 
 export async function sendPasswordResetEmail(to: string, token: string) {
   if (!emailConfigured()) throw new Error('Password reset email is not configured');
-  const url = new URL('/reset-password', process.env.APP_URL);
+  const url = new URL('/reset-password', getAppUrl());
   if (process.env.NODE_ENV === 'production' && url.protocol !== 'https:') throw new Error('APP_URL must use HTTPS');
   url.hash = new URLSearchParams({ token }).toString();
   const response = await fetch('https://api.resend.com/emails', {

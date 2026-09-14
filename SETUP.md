@@ -1,4 +1,4 @@
-# E3 HR development and staging setup
+# E3 HR development and deployment setup
 
 Use Node.js 24 (minimum 22.16) and pnpm 11.19.0. Install with `pnpm install --frozen-lockfile`.
 
@@ -12,10 +12,10 @@ Use Node.js 24 (minimum 22.16) and pnpm 11.19.0. Install with `pnpm install --fr
 
 R2 requires R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY and R2_BUCKET_NAME. Keep the bucket private. Document uploads go through the authenticated server, validate PDF/PNG/JPEG signatures, and are limited to 10 MB. Downloads require employee access and use 60-second signed attachment links. Existing external document URLs must be re-uploaded. R2 stores files; PostgreSQL stores employee, payroll and workflow records. See [Cloudflare's S3 SDK documentation](https://developers.cloudflare.com/r2/examples/aws/aws-sdk-js-v3/).
 
-Resend requires RESEND_API_KEY and EMAIL_FROM for a verified sender domain. Set APP_URL to the HTTPS production origin. Password reset links use hashed, one-time tokens and the reset page. Email and R2 integration tests use mocks; live delivery still needs staging verification. Never commit credentials or actual employee data.
+Resend requires RESEND_API_KEY and EMAIL_FROM for a verified sender domain. Set APP_URL to the HTTPS production origin. On Render only, an unset APP_URL uses the platform's RENDER_EXTERNAL_URL; an explicit custom domain takes precedence. Production startup rejects missing or invalid public origins. Password reset links use hashed, one-time tokens and the reset page. Email and R2 integration tests use mocks; live delivery still needs verification. Never commit credentials or actual employee data.
 
 ## Hosting
 
-The Express server serves the React frontend and API together. `render.yaml` is a staging template with manual deployments, a health check, server secrets, and a pre-deploy migration command. Supply an isolated PostgreSQL database URL and select the desired service region/plan in Render before applying the template. Creating the file does not provision or deploy anything. See [Render Blueprint reference](https://render.com/docs/blueprint-spec).
+The Express server serves the React frontend and API together. `render.yaml` defines a paid Node web service and a NEW PostgreSQL 17 database in Frankfurt, linked over Render's private network. It includes manual deployments, generated signing secrets, a database readiness probe, and a pre-deploy migration command. The build explicitly installs development dependencies needed by Vite and esbuild. Review the resources and cost before applying. Creating the file does not provision or deploy anything. See [Deployment-Guide.md](docs/Deployment-Guide.md) and [Render Blueprint reference](https://render.com/docs/blueprint-spec).
 
-Review database backup/restore, migrations and the business policies in Settings before accepting real HR data. The app currently calculates leave days from configured weekends; it does not implement holiday calendars, automatic accrual, bank/WPS transmission, biometric hardware or WhatsApp. Payroll payment references record externally completed payments. `healthz` checks the HTTP process, not database or vendor readiness.
+Review database backup/restore, migrations and the business policies in Settings before accepting real HR data. The app currently calculates leave days from configured weekends; it does not implement holiday calendars, automatic accrual, bank/WPS transmission, biometric hardware or WhatsApp. Payroll payment references record externally completed payments. `/healthz` checks the HTTP process. `/readyz` returns 200 only when the database connection can read the users table, otherwise 503 without database diagnostics. Neither probe verifies R2, Resend, administrator setup, or every business workflow.
