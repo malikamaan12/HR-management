@@ -22,6 +22,8 @@ Render Free runs the application against Supabase Free PostgreSQL with the Data 
 
 - Workforce page for event, FEC and mall-activation teams: sites/time zones, dated membership and lead grants, shift offers, employee acceptance/decline, cancellation reasons, roster coverage and audited changes. Capacity, overlapping schedules, approved leave and employment dates are checked. See [the workforce guide](docs/Workforce-Enhancement-Guide.md) for scope and setup.
 
+- Enhancement branch additions: append-only employee lifecycle history with controlled termination/reactivation actions, immutable document version snapshots, and shift qualification requirements that reject offers when required employee skills are missing or expired. These changes are committed on `enhance/admin-calculation-rules` and require the pending deployment before they are available at the live URL.
+
 - Real authentication and approval checks, separate signing secrets, hashed passwords, rotating sessions, lockout, logout/session revocation, and one-time Resend password resets. Browser tokens are held in memory and secure cookies; no default administrator bypass or seed password.
 - Fixed frontend request argument handling, HTTP methods, request bodies, query filters and employee IDs. Removed the full-project TypeScript errors.
 - Real employee, event profile, roster, assignment, event rating and communication persistence. Explicit unique account-to-employee linking; account linking cannot be changed through ordinary employee edits.
@@ -42,7 +44,7 @@ Strict TypeScript checking and frontend/server production builds pass. The front
 
 ## Remaining completion work
 
-- Migrations through 0010 are live; 0008 adds employee versions, 0009 adds work schedules and 0010 adds immutable calculation-rule versions plus record snapshots. Complete timed observations linked to assignments, payroll time line items/adjustments, shift revisions/recurrence, qualification checks, advanced helpdesk routing/targets, configurable rating rubrics and review follow-up tasks, and the EOS adapter in subsequent enhancement slices. The EOS contract remains a proposal; it is not a live integration.
+- Migrations through 0010 are live; 0008 adds employee versions, 0009 adds work schedules and 0010 adds immutable calculation-rule versions plus record snapshots. Migrations 0011–0013 are prepared on the enhancement branch for lifecycle history, document versions and shift qualification checks. Complete timed observations linked to assignments, payroll time line items/adjustments, shift revisions/recurrence, advanced helpdesk routing/targets, configurable rating rubrics and review follow-up tasks, and the EOS adapter in subsequent enhancement slices. The EOS contract remains a proposal; it is not a live integration.
 
 - Configure Resend with a verified sender and exercise real password-reset delivery. Complete browser file attachment and manual backup restoration checks. No bank transfers are implemented.
 - Reconcile any existing database and explicitly configure company timezone, weekends, leave types/balances and employee-account links. Automatic accrual, holiday calendars and advanced multi-stage leave balance/workflow rules are not completed.
