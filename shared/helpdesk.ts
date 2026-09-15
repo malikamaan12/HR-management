@@ -16,8 +16,8 @@ export const caseActionInput=z.discriminatedUnion('action',[
   z.object({action:z.literal('status'),version:idInput,status:z.enum(caseStatuses),reason:z.string().trim().min(5).max(1000)}).strict(),
   z.object({action:z.literal('restrict'),version:idInput}).strict(),
 ]);
-export interface CaseSummary {id:number;title:string;category:typeof caseCategories[number];confidential:boolean;status:CaseStatus;requesterId:number;assigneeId:number|null;version:number;createdAt:string;updatedAt:string;requesterName:string;assigneeName:string|null}
+export interface CaseSummary {firstResponseDueAt:string|null;resolutionDueAt:string|null;firstRespondedAt:string|null;resolvedAt:string|null;escalatedAt:string|null;id:number;title:string;category:typeof caseCategories[number];confidential:boolean;status:CaseStatus;requesterId:number;assigneeId:number|null;version:number;createdAt:string;updatedAt:string;requesterName:string;assigneeName:string|null}
 export interface CaseCapabilities {staff:boolean;assign:boolean;restrict:boolean;reply:boolean;internal:boolean;statuses:CaseStatus[]}
-export interface CaseDetail {case:CaseSummary;capabilities:CaseCapabilities;messages:{id:number;body:string;internal:boolean;authorName:string;createdAt:string;attachments:{id:number;filename:string;size:number}[]}[];events:{id:number;actorName:string;details:string;internal:boolean;createdAt:string}[]}
+export interface CaseDetail {canEscalate:boolean;case:CaseSummary;capabilities:CaseCapabilities;messages:{id:number;body:string;internal:boolean;authorName:string;createdAt:string;attachments:{id:number;filename:string;size:number}[]}[];events:{id:number;actorName:string;details:string;internal:boolean;createdAt:string}[]}
 export interface CaseList {items:CaseSummary[];total:number;page:number;limit:number}
-export interface HelpdeskConfig {canWorkQueue:boolean;confidentialTriage:boolean;attachmentsAvailable:boolean}
+export interface HelpdeskConfig {canManagePolicies:boolean;canWorkQueue:boolean;confidentialTriage:boolean;attachmentsAvailable:boolean}

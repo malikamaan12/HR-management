@@ -53,7 +53,7 @@ const bank: Field[] = [
 ];
 const sections = [{ id: 'personal', label: 'Personal', fields: personal }, { id: 'employment', label: 'Employment', fields: employment }, { id: 'bank', label: 'Bank & emergency', fields: bank }];
 
-export default function EmployeeForm({ employee, onSuccess, onCancel }: { employee?: ApiEmployeeRecord; onSuccess: () => void; onCancel?: () => void }) {
+export default function EmployeeForm({ employee, onSuccess, onCancel, initialValues, submit }: { employee?: ApiEmployeeRecord; onSuccess: () => void; onCancel?: () => void; initialValues?: Partial<Values>; submit?: (values:Values)=>Promise<unknown> }) {
   const [tab, setTab] = useState('personal');
   const [saving, setSaving] = useState(false);
   const [managerSearch, setManagerSearch] = useState('');
@@ -61,14 +61,14 @@ export default function EmployeeForm({ employee, onSuccess, onCancel }: { employ
   const [editingVersion] = useState(employee?.recordVersion);
   const [defaults] = useState(() => employee
     ? Object.fromEntries(Object.keys(employeeWriteFields.shape).map(key => [key, employee[key as keyof ApiEmployeeRecord]]))
-    : { type: 'permanent', status: 'active', eventStaffEligible: false, workSchedule: 'unassigned' });
+    : { type: 'permanent', status: 'active', eventStaffEligible: false, workSchedule: 'unassigned',...initialValues });
   const form = useForm<Values>({ resolver: zodResolver(schema), defaultValues: defaults });
   const { toast } = useToast();
   const managers = useQuery<ApiEmployeeDirectory>({ queryKey: ['/api/employees/directory', { q: managerSearch.trim(), limit: 50 }], enabled: tab === 'employment' });
   async function save(values: Values) {
     setSaving(true);
     try {
-      await apiRequest(employee ? `/api/employees/${employee.id}` : '/api/employees', {
+      if(submit)await submit(values);else await apiRequest(employee ? `/api/employees/${employee.id}` : '/api/employees', {
         method: employee ? 'PATCH' : 'POST', body: { ...values, ...(employee ? { expectedVersion: editingVersion } : {}) },
       });
       await queryClient.invalidateQueries({ predicate: query => typeof query.queryKey[0] === 'string' && query.queryKey[0].startsWith('/api/employees') });

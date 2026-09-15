@@ -1,0 +1,5 @@
+CREATE TABLE payroll_reviews (payroll_id integer PRIMARY KEY REFERENCES payroll(id),version integer NOT NULL DEFAULT 1,currency text NOT NULL,period_start date NOT NULL,period_end date NOT NULL,pay_date date NOT NULL,policy jsonb NOT NULL,created_by integer NOT NULL REFERENCES users(id),approver_id integer NOT NULL REFERENCES users(id),approved_by integer REFERENCES users(id),approved_at timestamptz,adjustments jsonb NOT NULL DEFAULT '[]',history jsonb NOT NULL DEFAULT '[]');
+--> statement-breakpoint
+CREATE TABLE payroll_time_lines (id serial PRIMARY KEY,payroll_id integer NOT NULL REFERENCES payroll(id),timesheet_id integer NOT NULL UNIQUE REFERENCES workforce_timesheets(id),timesheet_version integer NOT NULL,work_date date NOT NULL,regular_minutes integer NOT NULL CHECK(regular_minutes>=0),overtime_minutes integer NOT NULL CHECK(overtime_minutes>=0),amount numeric(14,2) NOT NULL CHECK(amount>=0),snapshot jsonb NOT NULL);
+--> statement-breakpoint
+CREATE INDEX payroll_time_lines_payroll ON payroll_time_lines(payroll_id);

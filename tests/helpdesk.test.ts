@@ -24,9 +24,9 @@ async function account(name:string,role:UserRole='employee'){
   const [user]=await context.db.insert(users).values({username:name,email:name+'@example.test',firstName:name,lastName:'Test',password:await bcrypt.hash(password,4),role,isActive:true,approvalStatus:'approved'}).returning();
   return {...user,token:(await authService.login(name,password)).accessToken};
 }
-async function request(token:string,path:string,body?:unknown){
+async function request(token:string,path:string,body?:unknown,method=body===undefined?'GET':'POST'){
   const multipart=body instanceof FormData;
-  const res=await fetch(base+path,{method:body===undefined?'GET':'POST',redirect:'manual',headers:{Authorization:'Bearer '+token,...multipart?{}:{'Content-Type':'application/json'}},body:body===undefined?undefined:multipart?body:JSON.stringify(body)});
+  const res=await fetch(base+path,{method,redirect:'manual',headers:{Authorization:'Bearer '+token,...multipart?{}:{'Content-Type':'application/json'}},body:body===undefined?undefined:multipart?body:JSON.stringify(body)});
   const text=await res.text();return {status:res.status,body:res.headers.get('content-type')?.includes('json')?JSON.parse(text):text,location:res.headers.get('location')};
 }
 function multipart(values:Record<string,string>,content='%PDF-test',filename='evidence.pdf'){
@@ -151,4 +151,45 @@ test('deactivation and role changes remove assigned responder access',async()=>{
   await action(director.token,id,{action:'assign',assigneeId:manager.id});
   await context.db.update(users).set({role:'employee'}).where(eq(users.id,manager.id));expect((await request(manager.token,`/cases/${id}`)).status).toBe(404);
   await context.db.update(users).set({isActive:false}).where(eq(users.id,manager.id));expect((await request(manager.token,`/cases/${id}`)).status).toBe(401);
+});
+
+const routingRule=(extra:Record<string,unknown>={})=>({category:'payroll',confidential:false,employeeId:null,enabled:true,effectiveAt:new Date(Date.now()-60000).toISOString(),firstResponseHours:4,resolutionHours:24,defaultAssigneeId:null,escalationAssigneeId:null,reason:'Configured support response policy',...extra});
+test('configured routing snapshots deadlines; internal notes do not satisfy response targets and escalation retains privacy',async()=>{
+  const employee=await account('employee'),hr=await account('hr','hr'),director=await account('director','hr_director');
+  expect((await request(hr.token,'/policies',routingRule({defaultAssigneeId:hr.id,escalationAssigneeId:director.id}))).status).toBe(201);
+  const id=await create(employee.token);let row=await detail(hr.token,id);expect(row.case.assigneeId).toBe(hr.id);expect(row.case.firstResponseDueAt).toBeTruthy();expect(row.canEscalate).toBe(true);
+  await reply(hr.token,id,'Private investigation note',true);expect((await detail(hr.token,id)).case.firstRespondedAt).toBeNull();
+  await reply(hr.token,id,'We have received your query and will investigate.');expect((await detail(hr.token,id)).case.firstRespondedAt).toBeTruthy();
+  await context.db.update(helpdeskCases).set({resolutionDueAt:new Date(Date.now()-1000)}).where(eq(helpdeskCases.id,id));
+  expect((await request(hr.token,'/cases?view=queue&overdue=true')).body.total).toBe(1);
+  row=await detail(hr.token,id);expect((await request(employee.token,'/cases/'+id+'/escalate',{version:row.case.version,reason:'Requester cannot grant handler access'})).status).toBe(403);
+  expect((await request(hr.token,'/cases/'+id+'/escalate',{version:row.case.version,reason:'Response target requires specialist review'})).status).toBe(200);
+  expect((await detail(director.token,id)).case.assigneeId).toBe(director.id);
+  expect((await request(hr.token,'/policies',routingRule({firstResponseHours:8,resolutionHours:48}))).status).toBe(201);
+  await action(director.token,id,{action:'status',status:'resolved',reason:'Investigation complete and query resolved'});
+  expect((await request(hr.token,'/cases?view=queue&overdue=true')).body.total).toBe(0);
+  const before=Date.now();await action(employee.token,id,{action:'status',status:'in_progress',reason:'Need another clarification on this issue'});
+  row=await detail(employee.token,id);expect(row.case.escalatedAt).toBeNull();expect(Date.parse(row.case.resolutionDueAt)-before).toBeGreaterThan(23.9*3600000);expect(Date.parse(row.case.resolutionDueAt)-before).toBeLessThan(24.1*3600000);
+});
+test('confidential policy administration and automatic handlers are restricted',async()=>{
+  const employee=await account('employee'),hr=await account('hr','hr'),director=await account('director','hr_director');
+  expect((await request(employee.token,'/policies',routingRule())).status).toBe(403);
+  expect((await request(hr.token,'/policies',routingRule({confidential:true}))).status).toBe(403);
+  expect((await request(director.token,'/policies',routingRule({confidential:true,defaultAssigneeId:hr.id}))).status).toBe(400);
+  expect((await request(director.token,'/policies',routingRule({confidential:true,defaultAssigneeId:director.id}))).status).toBe(201);
+  expect((await request(hr.token,'/policies')).body.total).toBe(0);
+  const id=await create(employee.token,{confidential:true});expect((await detail(director.token,id)).case.assigneeId).toBe(director.id);expect((await request(hr.token,'/cases/'+id)).status).toBe(404);
+});
+test('knowledge articles enforce publication, HR-only visibility, version conflicts and revision history',async()=>{
+  const employee=await account('employee'),hr=await account('hr','hr'),handler=await account('handler','hr_manager');
+  const content={title:'How to request a letter',body:'Open a document request and describe the required letter.',category:'documents',audience:'all',status:'draft'};
+  const created=await request(hr.token,'/articles',content);expect(created.status).toBe(201);const id=created.body.id;
+  expect((await request(employee.token,'/articles?q=letter')).body.total).toBe(0);expect((await request(employee.token,'/articles/'+id)).status).toBe(404);
+  expect((await request(hr.token,'/articles/'+id,{...content,version:1,status:'published',reason:'Approved employee instructions'},'PATCH')).status).toBe(200);
+  expect((await request(employee.token,'/articles?q=letter')).body.total).toBe(1);expect((await request(employee.token,'/articles/'+id)).body.history).toEqual([]);
+  expect((await request(hr.token,'/articles/'+id,{...content,version:1,status:'archived',reason:'Stale archive attempt'},'PATCH')).status).toBe(409);
+  expect((await request(hr.token,'/articles/'+id,{...content,version:2,audience:'hr',status:'published',reason:'Restricted operational instructions'},'PATCH')).status).toBe(200);
+  expect((await request(employee.token,'/articles/'+id)).status).toBe(404);expect((await request(handler.token,'/articles/'+id)).status).toBe(200);
+  const article=await request(hr.token,'/articles/'+id);expect(article.body.history).toHaveLength(3);expect(article.body.history[2].snapshot.status).toBe('draft');
+  expect((await request(employee.token,'/articles',content)).status).toBe(403);
 });

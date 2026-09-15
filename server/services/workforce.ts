@@ -1,7 +1,8 @@
-import {and, eq, gt, gte, isNull, lt, lte, ne, notInArray, sql} from 'drizzle-orm';
+import {and, eq, gt, gte, inArray, isNull, lt, lte, ne, notInArray, sql} from 'drizzle-orm';
 import {db} from '../db';
 import {employees, leaves, shiftSchedules, eventStaffAssignments, workforceAssignments as assignments,
-  workforceGrants as grants, workforceMembers as members, workforceShifts as shifts, workforceTeams as teams, workforceSites as sites, activityLogs} from '@shared/schema';
+  workforceGrants as grants, workforceMembers as members, workforceShifts as shifts, workforceTeams as teams, workforceSites as sites, activityLogs,
+  workforceUnavailable as unavailable, workforceQualifications as qualifications, employeeQualifications as credentials} from '@shared/schema';
 import {localDate, workforceAdmin} from '@shared/workforce';
 import type {TokenPayload} from './auth';
 
@@ -44,14 +45,20 @@ export async function assertLeaveCompatible(tx:WorkforceTransaction, employeeId:
   if (rows.some(s=>localDate(s.startAt,s.timezone)<=endDate && localDate(new Date(+s.endAt-1),s.timezone)>=startDate))
     fail(409,'Cancel the overlapping accepted workforce assignment before approving leave');
 }
-export async function eligible(tx:WorkforceTransaction, employeeId:number, shift:typeof shifts.$inferSelect, timezone:string, excludeId?:number) {
-  const employee = await lockEmployee(tx,employeeId);
+export async function eligible(tx:WorkforceTransaction, employeeId:number, shift:typeof shifts.$inferSelect, timezone:string, excludeId?:number, lock=true) {
+  const employee = lock ? await lockEmployee(tx,employeeId) : (await tx.select().from(employees).where(eq(employees.id,employeeId)))[0];
+  if(!employee) fail(404,'Employee not found');
   const startDate=localDate(shift.startAt,timezone),endDate=localDate(new Date(+shift.endAt-1),timezone);
   if (employee.status!=='active' || employee.joiningDate>startDate || (employee.contractEndDate && employee.contractEndDate<endDate)
-    || (employee.terminationDate && employee.terminationDate<=endDate)) fail(409,'Employee is not active for the full shift dates');
+    || (employee.terminationDate && employee.terminationDate<endDate)) fail(409,'Employee is not active for the full shift dates');
   const [member] = await tx.select({id:members.id}).from(members).where(and(eq(members.teamId,shift.teamId),eq(members.employeeId,employeeId),
     lte(members.startAt,shift.startAt),gte(members.endAt,shift.endAt))).limit(1);
   if (!member) fail(409,'Employee must belong to this team for the entire shift');
+  const [blocked]=await tx.select({id:unavailable.id}).from(unavailable).where(and(eq(unavailable.employeeId,employeeId),isNull(unavailable.cancelledAt),lt(unavailable.startAt,shift.endAt),gt(unavailable.endAt,shift.startAt))).limit(1);
+  if(blocked) fail(409,'Employee has recorded unavailability during this shift');
+  const verified=await tx.select().from(credentials).where(and(eq(credentials.employeeId,employeeId),isNull(credentials.revokedAt)));
+  const missing=missingQualifications(shift,timezone,verified);
+  if(missing.length) fail(409,'Required qualifications are missing or not valid for the full shift: '+missing.join(', '));
   const [leave] = await tx.select({id:leaves.id}).from(leaves).where(and(eq(leaves.employeeId,employeeId),eq(leaves.status,'approved'),
     lte(leaves.startDate,endDate),gte(leaves.endDate,startDate))).limit(1);
   if (leave) fail(409,'Employee has approved leave during this shift');
@@ -61,6 +68,25 @@ export async function eligible(tx:WorkforceTransaction, employeeId:number, shift
   const [legacyEvent] = await tx.select({id:eventStaffAssignments.id}).from(eventStaffAssignments).where(and(eq(eventStaffAssignments.employeeId,employeeId),
     notInArray(eventStaffAssignments.status,['declined','cancelled','no_show']),lt(eventStaffAssignments.startTime,shift.endAt),gt(eventStaffAssignments.endTime,shift.startAt))).limit(1);
   if (legacyShift || legacyEvent) fail(409,'Employee has an overlapping schedule in Attendance or Event Staff');
+}
+export async function resolveQualifications(tx:WorkforceTransaction,ids:number[]=[]){
+  if(!ids.length)return [];
+  const rows=await tx.select({id:qualifications.id,name:qualifications.name}).from(qualifications).where(inArray(qualifications.id,ids)).orderBy(qualifications.id);
+  if(rows.length!==new Set(ids).size)fail(400,'Choose existing qualifications');return rows;
+}
+export function missingQualifications(shift:Pick<typeof shifts.$inferSelect,'startAt'|'endAt'|'requiredQualifications'>,timezone:string,verified:Pick<typeof credentials.$inferSelect,'qualificationId'|'validFrom'|'validThrough'|'revokedAt'>[]){
+  const start=localDate(shift.startAt,timezone),end=localDate(new Date(+shift.endAt-1),timezone);
+  return shift.requiredQualifications.filter(q=>{
+    let coveredUntil:string|null=null;
+    for(const c of verified.filter(c=>c.qualificationId===q.id&&!c.revokedAt).sort((a,b)=>a.validFrom.localeCompare(b.validFrom))){
+      if(c.validThrough&&c.validThrough<start)continue;
+      if(coveredUntil===null){if(c.validFrom>start)break;}
+      else if(c.validFrom>new Date(Date.parse(coveredUntil+'T00:00:00Z')+86400000).toISOString().slice(0,10))break;
+      if(!c.validThrough||c.validThrough>=end)return false;
+      if(coveredUntil===null||c.validThrough>coveredUntil)coveredUntil=c.validThrough;
+    }
+    return true;
+  }).map(q=>q.name);
 }
 export async function audit(tx:WorkforceTransaction,user:TokenPayload,entityType:string,entityId:number,details:string) {
   await tx.insert(activityLogs).values({userId:user.userId,action:'update',entityType:'workforce_'+entityType,entityId,details});

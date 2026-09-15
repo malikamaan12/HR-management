@@ -1,7 +1,8 @@
 import {Router} from 'express';
+import {employeeBalances} from '../services/leave-ledger';
 import {authenticate} from '../middleware/auth';
 import {db} from '../db';
-import {employees,leaves,attendance,documents,performanceReviews,employeeGoals,payroll,leaveBalances} from '@shared/schema';
+import {employees,leaves,attendance,documents,performanceReviews,employeeGoals,payroll,leaveBalances,payrollReviews} from '@shared/schema';
 import {eq,and,gte,lte,desc,inArray} from 'drizzle-orm';
 import {attendanceDate} from '../services/attendance';
 import {getCompanySettings} from '../services/settings';
@@ -22,16 +23,16 @@ router.get('/dashboard',async(req,res)=>{
    db.select({expiryDate:documents.expiryDate}).from(documents).where(eq(documents.employeeId,employee.id)),
    db.select().from(performanceReviews).where(and(eq(performanceReviews.employeeId,employee.id),eq(performanceReviews.status,'completed'))).orderBy(desc(performanceReviews.completedDate)).limit(1),
    db.select({id:employeeGoals.id}).from(employeeGoals).where(and(eq(employeeGoals.employeeId,employee.id),inArray(employeeGoals.status,['not_started','in_progress','extended']))),
-   db.select().from(payroll).where(and(eq(payroll.employeeId,employee.id),eq(payroll.status,'processed'))).orderBy(desc(payroll.year),desc(payroll.month)).limit(1),
-   db.select().from(leaveBalances).where(and(eq(leaveBalances.employeeId,employee.id),eq(leaveBalances.year,year)))
+   db.select({month:payroll.month,year:payroll.year,netSalary:payroll.netSalary,currency:payrollReviews.currency}).from(payroll).leftJoin(payrollReviews,eq(payroll.id,payrollReviews.payrollId)).where(and(eq(payroll.employeeId,employee.id),eq(payroll.status,'processed'))).orderBy(desc(payroll.year),desc(payroll.month)).limit(1),
+   db.transaction(async tx=>{const [locked]=await tx.select().from(employees).where(eq(employees.id,employee.id)).for('update');return (await employeeBalances(tx,locked,year)).filter(b=>b.balanceRequired);})
   ]);
   const soon=new Date(Date.parse(today)+policy.documentExpiryDays*86400000).toISOString().slice(0,10);
   return res.json({employee:{firstName:employee.firstName,department:employee.department},date:today,
    attendance:todayAttendance[0]||null,
-   leaves:{available:balances.length?balances.reduce((sum,b)=>sum+Number(b.openingBalance)+Number(b.accrued)+Number(b.adjusted)-Number(b.used),0):null,used:requests.filter(r=>r.status==='approved').reduce((sum,r)=>sum+r.totalDays,0),pending:requests.filter(r=>r.status==='pending').length,upcoming:requests.filter(r=>r.status==='approved'&&r.endDate>=today)},
+   leaves:{available:balances.length?balances.reduce((sum,b)=>sum+b.available,0):null,used:requests.filter(r=>r.status==='approved').reduce((sum,r)=>sum+r.totalDays,0),pending:requests.filter(r=>r.status==='pending').length,upcoming:requests.filter(r=>r.status==='approved'&&r.endDate>=today)},
    documents:{total:files.length,expired:files.filter(f=>f.expiryDate<today).length,expiring:files.filter(f=>f.expiryDate>=today&&f.expiryDate<=soon).length},
    performance:{rating:reviews[0]?.overallRating||null,lastReview:reviews[0]?.completedDate||null,goals:goals.length},
-   payroll:payslips[0]?{month:payslips[0].month,year:payslips[0].year,netSalary:payslips[0].netSalary}:null});
+   payroll:payslips[0]?{month:payslips[0].month,year:payslips[0].year,netSalary:payslips[0].netSalary,currency:payslips[0].currency}:null});
  }catch(error){console.error('Employee dashboard failed');return res.status(500).json({message:'Unable to load your dashboard'});}
 });
 export default router;

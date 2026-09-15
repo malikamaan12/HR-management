@@ -1,4 +1,9 @@
+import performanceCycleRoutes from './routes/performance-cycles';
 import employeeRecordsRouter from './routes/employeeRecords';
+import hrRuleRoutes from './routes/hr-rules';
+import lifecycleRoutes from './routes/lifecycle';
+import hiringRoutes from './routes/hiring';
+import attendanceOperations from './routes/attendance-operations';
 import { moduleAccess } from './middleware/moduleAccess';
 import multer from 'multer';
 import payrollRoutes from './routes/payroll';
@@ -90,8 +95,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api', authenticate, logApiAccess);
   app.use('/api/admin/users',userRoutes);
   app.use('/api/settings',settingsRoutes);
+  app.use('/api/hr-rules',hrRuleRoutes);
+  app.use('/api/lifecycle',lifecycleRoutes);
+  app.use('/api/hiring',hiringRoutes);
+  app.use('/api/attendance-operations',attendanceOperations);
   app.use('/api/workforce',workforceRoutes);
   app.use('/api/helpdesk',helpdeskRoutes);
+  app.use('/api/review-cycles',performanceCycleRoutes);
   app.use('/api/timesheets',timesheetRoutes);
   app.use('/api/assignment-reviews',assignmentReviewRoutes);
   app.use('/api/team-overview',teamOverviewRoutes);

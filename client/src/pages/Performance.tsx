@@ -1,5 +1,5 @@
 import React from 'react';
-import PerformanceOverview from '../components/performance/PerformanceOverview';
+import PerformanceOverview from '../components/hr/PerformanceCycles';
 import { Helmet } from 'react-helmet';
 
 const Performance = () => {

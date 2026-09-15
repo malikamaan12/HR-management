@@ -1,6 +1,6 @@
 # HR module completion plan
 
-Updated 14 September 2026. The application is live at https://e3-hr.onrender.com on Render Free and Supabase Free. This checklist separates the current foundation from workflows that still need implementation and acceptance. It does not certify every module as finished.
+Updated 16 September 2026. Attendance/leave, payroll and recruitment/onboarding/offboarding core workflows are now implemented locally; deployment remains pending. The application is live at https://e3-hr.onrender.com on Render Free and Supabase Free. This checklist separates the current foundation from workflows that still need implementation and acceptance. It does not certify every module as finished.
 
 ## Release standard
 
@@ -11,13 +11,13 @@ Each section must support its main workflow end to end, enforce server-side reco
 | Order | Section | Existing foundation | Completion work |
 | --- | --- | --- | --- |
 | 1 | Employee records | Directory, profiles, account links, permanent/temporary/contract types | Current pass: paginated search, private-field projection, manager selection/cycle checks, edit conflicts, transactional history, profile documents and form corrections. Next: effective-dated employment changes, transfers, termination checklist and employee-requested corrections. |
-| 2 | Attendance and leave | Clock/breaks, manual attendance, requests and approvals | Confirm company working week/timezone; holiday calendar, leave balance ledger, accrual/carryover policies, roster-aware attendance, corrections and approval inbox. Remove or complete calendar placeholders. |
-| 3 | Event, temporary and FEC workforce | Sites, teams, dated memberships/grants, shifts/offers/acceptance, conflicts | Recurring rosters, shift revisions, qualifications, availability, replacements, operational incidents and mobile arrival workflow. Keep employment type separate from event/FEC team assignment. |
+| 2 | Attendance and leave | Clock/breaks, manual attendance, requests and approvals | Completed locally: admin company/employee rules, holiday calendars, ledger/accrual/carryover, roster-aware daily view, reviewed corrections and functional leave calendar. Optional next scope: half-day requests and multi-stage approvals. |
+| 3 | Event, temporary and FEC workforce | Sites, teams, dated memberships/grants, shifts/offers/acceptance, conflicts | Completed locally: recurring rosters, shift revisions with fresh acceptance, cancellation, private unavailable periods, HR-verified qualifications and replacement staffing with employee acceptance. Also completed: membership end-date revisions/history, operational incidents with ownership/resolution/reopening, and mobile arrival/departure with dated team/employee rules and independent visit review. Also completed: weekly unavailable patterns with exceptions, renewal due lists, dated qualification/employee reminder policies and independent HR renewal verification. Next: whole-series roster edits, certificate evidence uploads/external validation and device/offline attendance integrations. Keep employment type separate from event/FEC team assignment. |
 | 4 | Team lead dashboard | Scoped staffing gaps, timesheets and review metrics | Unified team approvals, absence coverage, task ownership, delegated access expiry and drill-down actions. |
-| 5 | Timesheets and payroll | Assignment approvals/corrections, payroll locks, draft/process/payment references and CSV | Confirm payroll cycle/rates; approved time to pay lines, overtime rules, allowances/deductions, adjustment approvals, payslips and reconciliation. Bank submission remains a separate integration. |
-| 6 | HR helpdesk | Private queues, messages, files, history and status | Category routing, owner assignment, response targets/escalation, employee visibility checks and searchable knowledge articles. |
-| 7 | Ratings and performance | Assignment rubric/evidence, acknowledgement/dispute and independent HR resolution | Review cycles, objectives, calibration, development plans and fair reporting with sample counts. Ratings must not silently drive payroll or employment decisions. |
-| 8 | Recruitment, onboarding and offboarding | Requisitions, candidates, offers and onboarding tasks | Complete candidate-to-employee handoff, reusable checklists, owners/due dates, document collection, asset return and account deactivation. |
+| 5 | Timesheets and payroll | Assignment approvals/corrections, payroll locks, draft/process/payment references and CSV | Completed locally: dated company/employee pay rules, approved-time lines, daily overtime, allowances/deductions, reviewed adjustments, payslips, reconciliation and cancellation/regeneration. Bank submission and statutory calculation adapters remain separate integrations. |
+| 6 | HR helpdesk | Private queues, messages, files, history and status | Completed locally: dated category routing with employee overrides, owner assignment, saved response/resolution targets, overdue filter, explicit escalation and searchable knowledge articles with publication/visibility controls and version history. Optional next scope: automated escalation/reminders and business-hour calendars. |
+| 7 | Ratings and performance | Assignment rubric/evidence, acknowledgement/dispute and independent HR resolution | Completed locally: configurable review cycles/criteria/rating labels, per-employee settings, self and manager assessments, independent HR calibration/publication, acknowledgement, objectives/development actions and scoped reports with sample counts. Ratings do not automatically change payroll or employment. Bulk assignment and participant withdrawal remain extensions. |
+| 8 | Recruitment, onboarding and offboarding | Requisitions, candidates, offers and onboarding tasks | Completed locally: requisition approval, interviews/results, offer responses/reissue, candidate-to-employee handoff, reusable checklists, owners/dates, document collection, asset return and account/session deactivation. |
 | 9 | Documents and compliance | Private upload, expiry data and signed download | Validate browser upload flow, renewal requests, version history, retention rules and notifications once email is configured. |
 | 10 | Reports and analytics | Basic organization reporting | Agreed metric definitions, scoped drill-downs, date/site/team filters, reconciled totals and real export actions. |
 | 11 | Self-service, learning, benefits and expenses | Partial screens and basic APIs | Audit actual workflows; complete requests, approvals, entitlements, course completion and reimbursement records before advertising them as ready. |
@@ -36,11 +36,19 @@ Each section must support its main workflow end to end, enforce server-side reco
 
 ## Inputs needed for subsequent phases
 
-- Management working week confirmed: Sunday–Thursday, 09:00–17:00, Asia/Qatar; Friday/Saturday off. The scoped policy and employee assignment are implemented; see [the management schedule guide](Management-Office-Schedule.md). Holiday policy, leave rules and other employee calendars still need confirmation.
-- Payroll cycle, time rounding, approved rate structure and who signs off pay.
+- Management working week confirmed: Sunday–Thursday, 09:00–17:00, Asia/Qatar; Friday/Saturday off. The scoped policy and employee assignment are implemented; see [the management schedule guide](Management-Office-Schedule.md). Administrators now set holidays and leave/calendar rules, including dated employee overrides, in HR Rules.
+- Administrators configure the monthly payroll cycle, rates, daily overtime cap and independent pay approver in HR Rules; no code changes are needed for supported policy values.
 - EOS API/repository when available; EOS is still under development.
 - Resend sender domain and configuration. No email or WhatsApp delivery is represented as live yet.
 
-## Validation record
+## Attendance, payroll and lifecycle release
+
+See [the operations guide](Attendance-Payroll-Lifecycle-Guide.md) for implemented behavior, supported policy options, legacy-data reconciliation and migration instructions. See [the current status](../IMPLEMENTATION-STATUS.md) for latest verification. No production employee data was modified during implementation.
+
+## Employee foundation validation record
 
 Employee API tests cover permissions, more than 100 records, filters and wildcards, account-versus-employee identity, private fields, duplicates, dates, protected writes, stale edits, manager cycles and atomic audit failure. The original 90 tests and 12 employee tests pass, as do TypeScript and frontend/server builds. Isolated browser checks passed for directory search beyond 100 records, create/edit, saved civil dates, manager selection, explicit save, history and employee-locked document selection. Browser file attachment and role-by-role screen acceptance remain separate checks.
+
+## Performance and helpdesk release
+
+See [the operating guide](Performance-Helpdesk-Guide.md) for review stages, privacy, policy precedence, elapsed-hour deadlines, explicit escalation and article publishing. Migration 0018 adds these workflows. Implementation remains local; hosted release acceptance and deployment are pending.

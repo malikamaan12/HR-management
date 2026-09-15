@@ -145,7 +145,7 @@ router.patch('/:id', async (req, res) => {
   } catch (error) { return fail(res, error); }
 });
 
-async function validateManagers(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], input: { reportingManagerId?: number | null; secondaryManagerId?: number | null }, employeeId?: number) {
+export async function validateManagers(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], input: { reportingManagerId?: number | null; secondaryManagerId?: number | null }, employeeId?: number) {
   if (input.reportingManagerId === undefined && input.secondaryManagerId === undefined) return;
   const rows = await tx.select({ id: employees.id, reportingManagerId: employees.reportingManagerId, secondaryManagerId: employees.secondaryManagerId, status: employees.status }).from(employees);
   const byId = new Map(rows.map(row => [row.id, row]));

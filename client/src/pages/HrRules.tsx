@@ -1,0 +1,63 @@
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '@/contexts/AuthContext';
+import { Button } from '@/components/ui/button';
+import { Field, Section, Table, fieldClass, useAction, QueryError } from '@/components/hr/Operations';
+import { ruleInput } from '@shared/hr-rules';
+type Rule = {
+    id: number;
+    kind: string;
+    name: string;
+    employeeId: number | null;
+    effectiveFrom: string;
+    reason: string;
+    config: any;
+};
+const blank = { timezone: 'Asia/Qatar', workingDays: [0, 1, 2, 3, 4], startTime: '09:00', endTime: '17:00', breakMinutes: 0, graceMinutes: 0, holidays: [] };
+const leave = { paid: true, balanceRequired: true, accrualMode: 'none', annualDays: 0, monthlyDays: 0, carryoverLimit: 0, minServiceDays: 0, maxConsecutiveDays: 30, approverId: null };
+const pay = { currency: 'QAR', cycleStartDay: 1, payDay: 1, basis: 'salary', basicSalary: '0.00', hourlyRate: '0.00', regularMinutesPerDay: 480, overtimeMultiplier: 1, allowances: {}, deductions: {}, approverId: null };
+export default function HrRules() {
+    const { user } = useAuth(), allowed = ['admin', 'super_admin'].includes(user?.role || '');
+    const [kind, setKind] = useState('attendance'), [name, setName] = useState('Work calendar'), [employeeId, setEmployee] = useState(''), [q, setQ] = useState(''), [effectiveFrom, setDate] = useState(new Date().toISOString().slice(0, 10)), [why, setWhy] = useState(''), [config, setConfig] = useState<any>(blank), [error, setError] = useState('');
+    const rules = useQuery<{
+        rule: Rule;
+        employeeName: string | null;
+    }[]>({ queryKey: ['/api/hr-rules'], enabled: allowed });
+    const directory = useQuery<{
+        employees: {
+            id: number;
+            firstName: string;
+            lastName: string;
+            employeeId: string;
+        }[];
+        approvers: {
+            id: number;
+            firstName: string;
+            lastName: string;
+            role: string;
+        }[];
+    }>({ queryKey: [`/api/hr-rules/directory?q=${encodeURIComponent(q)}`], enabled: allowed });
+    const save = useAction(() => setWhy(''));
+    const change = (key: string, value: any) => setConfig({ ...config, [key]: value });
+    const numeric = (key: string, label: string, step = 1) => <Field label={label} key={key}><input className={fieldClass} type="number" min="0" step={step} required value={config[key]} onChange={e => change(key, Number(e.target.value))}/></Field>;
+    const text = (key: string, label: string, type = 'text') => <Field label={label} key={key}><input className={fieldClass} type={type} required value={config[key]} onChange={e => change(key, e.target.value)}/></Field>;
+    const approver = <Field label="Designated approver"><select className={fieldClass} value={config.approverId || ''} required={kind === 'payroll'} onChange={e => change('approverId', e.target.value ? Number(e.target.value) : null)}><option value="">{kind === 'payroll' ? 'Choose a pay approver' : 'Any independent approver within scope'}</option>{directory.data?.approvers.map(p => <option value={p.id} key={p.id}>{p.firstName} {p.lastName} · {p.role}</option>)}</select></Field>;
+    if (!allowed)
+        return <p>Only administrators can configure rules.</p>;
+    return <div className="space-y-6"><h1 className="text-2xl font-bold">Attendance, leave and payroll rules</h1><p className="text-sm text-muted-foreground">Set company rules or an employee override. Each save adds a dated revision. Submitted leave and payroll retain their saved rules. Existing ledger credits stay unchanged; use a balance adjustment to reconcile past entitlement.</p><QueryError error={rules.error || directory.error}/><Section title="Create or revise a rule"><form className="space-y-4" onSubmit={e => { e.preventDefault(); const parsed = ruleInput.safeParse({ kind, name, employeeId: employeeId ? Number(employeeId) : null, effectiveFrom, reason: why, config }); if (!parsed.success) {
+        setError(parsed.error.issues.map(i => i.path.join('.') + ': ' + i.message).join('; '));
+        return;
+    } setError(''); save.mutate({ url: '/api/hr-rules', body: parsed.data }); }}>
+ <div className="grid gap-4 md:grid-cols-3"><Field label="Rule area"><select className={fieldClass} value={kind} onChange={e => { setKind(e.target.value); setName(e.target.value === 'attendance' ? 'Work calendar' : e.target.value === 'payroll' ? 'Pay policy' : ''); setConfig(e.target.value === 'attendance' ? blank : e.target.value === 'leave' ? leave : pay); }}>{['attendance', 'leave', 'payroll'].map(k => <option key={k}>{k}</option>)}</select></Field><Field label="Effective from"><input className={fieldClass} type="date" value={effectiveFrom} required onChange={e => setDate(e.target.value)}/></Field><Field label={kind === 'leave' ? 'Leave type name' : 'Rule name'}><input className={fieldClass} value={name} required readOnly={kind !== 'leave'} onChange={e => setName(e.target.value)}/></Field><Field label="Find an employee"><input className={fieldClass} value={q} onChange={e => setQ(e.target.value)} placeholder="Name or employee ID"/></Field><Field label="Applies to"><select className={fieldClass} value={employeeId} onChange={e => setEmployee(e.target.value)}><option value="">Company default</option>{employeeId && !directory.data?.employees.some(e => String(e.id) === employeeId) && <option value={employeeId}>Employee #{employeeId}</option>}{directory.data?.employees.map(p => <option key={p.id} value={p.id}>{p.firstName} {p.lastName} ({p.employeeId})</option>)}</select></Field></div>
+ {kind === 'attendance' && <><div className="grid gap-4 md:grid-cols-3">{text('timezone', 'Timezone')}{text('startTime', 'Work starts', 'time')}{text('endTime', 'Work ends', 'time')}{numeric('breakMinutes', 'Scheduled break minutes')}{numeric('graceMinutes', 'Late-arrival grace minutes')}</div><fieldset><legend className="text-sm font-medium">Working days</legend><div className="flex flex-wrap gap-4">{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d, i) => <label key={d}><input type="checkbox" checked={config.workingDays.includes(i)} onChange={e => change('workingDays', e.target.checked ? [...config.workingDays, i] : config.workingDays.filter((x: number) => x !== i))}/> {d}</label>)}</div></fieldset><Field label="Holidays"><div className="space-y-2">{config.holidays.map((h: any, i: number) => <div className="flex gap-2" key={i}><input aria-label="Holiday date" className={fieldClass} type="date" required value={h.date} onChange={e => change('holidays', config.holidays.map((v: any, j: number) => j === i ? { ...v, date: e.target.value } : v))}/><input aria-label="Holiday name" className={fieldClass} required value={h.name} onChange={e => change('holidays', config.holidays.map((v: any, j: number) => j === i ? { ...v, name: e.target.value } : v))}/><Button type="button" variant="outline" onClick={() => change('holidays', config.holidays.filter((_: any, j: number) => j !== i))}>Remove</Button></div>)}<Button type="button" variant="outline" onClick={() => change('holidays', [...config.holidays, { date: '', name: '' }])}>Add holiday</Button></div></Field></>}
+ {kind === 'leave' && <><div className="flex gap-5">{['paid', 'balanceRequired'].map(k => <label key={k}><input type="checkbox" checked={config[k]} onChange={e => change(k, e.target.checked)}/> {k === 'paid' ? 'Paid leave' : 'Require available balance'}</label>)}</div><div className="grid gap-4 md:grid-cols-3"><Field label="Accrual"><select className={fieldClass} value={config.accrualMode} onChange={e => change('accrualMode', e.target.value)}><option value="none">Manual credits only</option><option value="annual">Annual grant on first eligible day</option><option value="monthly">Monthly after each full eligible month</option></select></Field>{numeric('annualDays', 'Annual grant (days)', 0.01)}{numeric('monthlyDays', 'Monthly accrual (days)', 0.01)}{numeric('carryoverLimit', 'Maximum carryover (days)', 0.01)}{numeric('minServiceDays', 'Minimum service (days)')}{numeric('maxConsecutiveDays', 'Maximum consecutive calendar days')}{approver}</div><p className="text-sm">Requests count full scheduled working days. Half-day requests are not enabled.</p></>}
+ {kind === 'payroll' && <><div className="grid gap-4 md:grid-cols-3">{text('currency', 'Currency code')}{numeric('cycleStartDay', 'Monthly cycle starts on day (1–28)')}{numeric('payDay', 'Payment due day (1–28)')}<Field label="Pay basis"><select className={fieldClass} value={config.basis} onChange={e => change('basis', e.target.value)}><option value="salary">Monthly salary plus approved overtime</option><option value="hourly">Approved hours</option></select></Field>{text('basicSalary', 'Monthly basic salary')}{text('hourlyRate', 'Hourly rate for time and overtime')}{numeric('regularMinutesPerDay', 'Regular minutes per work date')}{numeric('overtimeMultiplier', 'Overtime multiplier', 0.01)}{approver}</div>{(['allowances', 'deductions'] as const).map(k => <Field label={k === 'allowances' ? 'Recurring allowances' : 'Recurring deductions'} key={k}><div className="space-y-2">{Object.entries(config[k]).map(([label, value]) => <div className="flex gap-2" key={label}><span className="w-1/3 pt-2">{label}</span><input className={fieldClass} aria-label={label + ' amount'} value={String(value)} onChange={e => change(k, { ...config[k], [label]: e.target.value })}/><Button type="button" variant="outline" onClick={() => change(k, Object.fromEntries(Object.entries(config[k]).filter(([n]) => n !== label)))}>Remove</Button></div>)}<input className={fieldClass} placeholder="New item name; press Enter to add" onKeyDown={e => { if (e.key === 'Enter') {
+        e.preventDefault();
+        const label = e.currentTarget.value.trim();
+        if (label) {
+            change(k, { ...config[k], [label]: '0.00' });
+            e.currentTarget.value = '';
+        }
+    } }}/></div></Field>)}</>}
+ <Field label="Reason for this revision"><textarea className={fieldClass} minLength={5} required value={why} onChange={e => setWhy(e.target.value)}/></Field>{error && <p role="alert" className="text-destructive text-sm">{error}</p>}<Button disabled={save.isPending}>Save rule revision</Button></form></Section><Section title="Rule history"><Table headers={['Revision', 'Area', 'Name', 'Scope', 'Effective', 'Reason', 'Action']} rows={(rules.data || []).map(({ rule: r, employeeName }) => [r.id, r.kind, r.name, employeeName || 'Company default', r.effectiveFrom, r.reason, <Button variant="outline" onClick={() => { setKind(r.kind); setName(r.name); setEmployee(r.employeeId ? String(r.employeeId) : ''); setConfig(r.config); setDate(new Date().toISOString().slice(0, 10)); setWhy(''); window.scrollTo(0, 0); }}>Revise</Button>])}/></Section></div>;
+}

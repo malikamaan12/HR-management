@@ -3,9 +3,10 @@ import MainLayout from "@/components/layouts/MainLayout";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/Dashboard";
 import EmployeeDatabase from "@/pages/EmployeeDatabase";
-import Payroll from "@/pages/Payroll";
-import Attendance from "@/pages/Attendance";
+import Payroll from "@/pages/PayrollOperations";
+import Attendance from "@/pages/AttendanceOperations";
 import Leave from "@/pages/Leave";
+import HrRules from '@/pages/HrRules';
 import Documents from "@/pages/Documents";
 import EventStaff from "@/pages/EventStaff";
 import Workforce from "@/pages/Workforce";
@@ -15,8 +16,8 @@ import AssignmentReviews from "@/pages/AssignmentReviews";
 import TeamOverview from "@/pages/TeamOverview";
 import Settings from "@/pages/Settings";
 import Reports from "@/pages/Reports";
-import Recruitment from "@/pages/Recruitment";
-import Onboarding from "@/pages/Onboarding";
+import Recruitment from "@/pages/Hiring";
+import Onboarding from "@/pages/Lifecycle";
 import Communications from "@/pages/Communications";
 import Performance from "@/pages/Performance";
 import PasswordRecovery from "@/pages/PasswordRecovery";
@@ -93,7 +94,8 @@ function App() {
       case '/event-staff': return 'Event Staff Management';
       case '/workforce': return 'Workforce';
       case '/recruitment': return 'Recruitment Management';
-      case '/onboarding': return 'Employee Onboarding';
+      case '/onboarding': return 'Onboarding and Offboarding';
+      case '/hr-rules': return 'HR Rules';
       case '/communications': return 'Communication Hub';
       case '/performance': return 'Performance Management';
       case '/settings': return 'Settings';
@@ -135,6 +137,7 @@ function App() {
           <Route path="/payroll" component={Payroll} />
           <Route path="/attendance" component={Attendance} />
           <Route path="/leave" component={Leave} />
+          <Route path="/hr-rules" component={HrRules} />
           <Route path="/documents" component={Documents} />
           <Route path="/event-staff" component={EventStaff} />
           <Route path="/workforce" component={Workforce} />

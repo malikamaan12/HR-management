@@ -2,6 +2,7 @@ import {and,eq,gt,lt,ne,inArray,or,sql} from 'drizzle-orm';
 import {workforceTimesheets as sheets,timesheetRevisions as revisions,workforceAssignments as assignments,workforceShifts as shifts,workforceTeams as teams,workforceSites as sites,workforceGrants as grants,employees} from '@shared/schema';
 import {workforceAdmin} from '@shared/workforce';
 import {payrollTimeAccess} from '@shared/timesheets';
+import {payrollTimeLines} from '@shared/schema';
 import {currentGrants,fail,lockEmployee,teamAccess,type WorkforceTransaction} from './workforce';
 import type {TokenPayload} from './auth';
 
@@ -13,6 +14,7 @@ export const paidStatuses=()=>inArray(sheets.status,['approved','payroll_locked'
 export const sheetScope=(user:TokenPayload)=>or(ownScope(user),and(ne(sheets.status,'draft'),reviewScope(user)),payrollTimeAccess(user.role,'read')?paidStatuses():undefined);
 export function sheetQuery(tx:WorkforceTransaction){return tx.select({...sheetFields,ownerUserId:employees.userId}).from(sheets).innerJoin(assignments,eq(sheets.assignmentId,assignments.id)).innerJoin(employees,eq(assignments.employeeId,employees.id)).innerJoin(shifts,eq(assignments.shiftId,shifts.id)).innerJoin(teams,eq(shifts.teamId,teams.id)).innerJoin(sites,eq(teams.siteId,sites.id));}
 export async function readSheet(tx:WorkforceTransaction,user:TokenPayload,id:number,lock=false){
+  if(lock){const [initial]=await sheetQuery(tx).where(and(eq(sheets.id,id),sheetScope(user)));if(!initial)fail(404,'Timesheet not found or outside your current access');await lockEmployee(tx,initial.employeeId);}
   const query=sheetQuery(tx).where(and(eq(sheets.id,id),sheetScope(user)));
   const [row]=lock?await query.for('update',{of:sheets}):await query;
   return row||fail(404,'Timesheet not found or outside your current access');
@@ -39,6 +41,8 @@ export async function recordRevision(tx:WorkforceTransaction,user:TokenPayload,r
   await tx.insert(revisions).values({timesheetId:row.id,version:row.version,actorId:user.userId,action,reason,snapshot:row});
 }
 export async function changeSheet(tx:WorkforceTransaction,user:TokenPayload,row:Awaited<ReturnType<typeof readSheet>>,values:Partial<typeof sheets.$inferInsert>,action:string,reason:string){
+  const [included]=await tx.select({id:payrollTimeLines.id}).from(payrollTimeLines).where(eq(payrollTimeLines.timesheetId,row.id));
+  if(included)fail(409,'This time is included in a payroll draft. Return and cancel that draft before changing the time.');
   const [saved]=await tx.update(sheets).set({...values,version:row.version+1,updatedAt:new Date()}).where(eq(sheets.id,row.id)).returning();
   await recordRevision(tx,user,saved,action,reason);return {id:saved.id,version:saved.version};
 }

@@ -15,21 +15,22 @@ export const memberInput = z.object({employeeId: positiveId, startAt: instant, e
 export const grantInput = z.object({userId: positiveId, permission: z.enum(['view', 'schedule', 'review_time', 'review_performance']), startAt: instant, endAt: instant}).strict().refine(v => v.endAt > v.startAt, 'End must be after start');
 export const shiftInput = z.object({role: z.string().trim().min(2).max(120), station: z.string().trim().max(120).optional(),
   headcount: z.coerce.number().int().min(1).max(500), breakMinutes: z.coerce.number().int().min(0).max(1439).default(0), startAt: instant, endAt: instant,
+  qualificationIds: z.array(positiveId).max(20).transform(ids=>[...new Set(ids)].sort((a,b)=>a-b)).optional(),
 }).strict().refine(v => v.endAt > v.startAt && +v.endAt - +v.startAt <= 86400000 && v.breakMinutes * 60000 < +v.endAt - +v.startAt,
   'Shifts must last up to 24 hours, with a break shorter than the shift');
 
 export interface TeamSummary {id: number; name: string; kind: typeof workforceKinds[number]; siteId: number; siteName: string; timezone: string}
 export interface WorkforceHome {isAdmin: boolean; teams: TeamSummary[]; sites: {id:number;name:string;timezone:string}[]}
 export interface WorkforcePerson {id:number; name:string; label:string}
-export interface AssignmentView {id:number; employeeId:number; name:string; status:'offered'|'accepted'|'declined'|'cancelled'; cancellationReason:string|null}
-export interface ShiftView {id:number; role:string; station:string|null; headcount:number; startAt:string; endAt:string; breakMinutes:number; canSchedule:boolean; assignments:AssignmentView[]}
+export interface AssignmentView {id:number; employeeId:number; name:string; status:'offered'|'accepted'|'declined'|'cancelled'; cancellationReason:string|null;replacesAssignmentId:number|null;replacementReason:string|null;replacementPending:boolean;missingQualifications:string[]}
+export interface ShiftView {id:number; version:number; status:'scheduled'|'cancelled'|'replaced'; seriesId:number|null; replacesId:number|null; replacementId:number|null; changeReason:string|null; requiredQualifications:{id:number;name:string}[]; role:string; station:string|null; headcount:number; startAt:string; endAt:string; breakMinutes:number; canSchedule:boolean; assignments:AssignmentView[]}
 export interface WorkforceDashboard {
   team: TeamSummary; canSchedule: boolean; from:string; to:string;
   shifts: ShiftView[];
-  members: {id:number;employeeId:number;name:string;type:string;startAt:string;endAt:string}[];
+  members: {id:number;version:number;employeeId:number;name:string;type:string;startAt:string;endAt:string}[];
   grants: {id:number;name:string;permission:string;startAt:string;endAt:string;revokedAt:string|null}[];
 }
-export interface MyAssignment {id:number; status:AssignmentView['status']; cancellationReason:string|null; role:string;station:string|null;startAt:string;endAt:string;breakMinutes:number;teamName:string;siteName:string;timezone:string;kind:TeamSummary['kind']}
+export interface MyAssignment {id:number;shiftId:number; status:AssignmentView['status']; replacesId:number|null;changeReason:string|null; cancellationReason:string|null;replacesAssignmentId:number|null;replacementReason:string|null;replacementPending:boolean;requiredQualifications:{id:number;name:string}[];missingQualifications:string[]; role:string;station:string|null;startAt:string;endAt:string;breakMinutes:number;teamName:string;siteName:string;timezone:string;kind:TeamSummary['kind']}
 
 // Calendar-day checks use the site's time zone, including overnight shifts.
 export function localDate(instant: Date, timezone: string) {

@@ -18,6 +18,7 @@ export const workforceTeams = pgTable('workforce_teams', {
 });
 export const workforceMembers = pgTable('workforce_members', {
   id: serial('id').primaryKey(), teamId: integer('team_id').notNull().references(() => workforceTeams.id),
+  version: integer('version').notNull().default(1),
   employeeId: integer('employee_id').notNull().references((): AnyPgColumn => employees.id),
   startAt: timestamp('start_at', {withTimezone: true}).notNull(), endAt: timestamp('end_at', {withTimezone: true}).notNull(),
 }, t => [check('workforce_member_dates', sql`${t.endAt} > ${t.startAt}`), index('workforce_member_team_employee').on(t.teamId, t.employeeId)]);
@@ -27,11 +28,24 @@ export const workforceGrants = pgTable('workforce_grants', {
   startAt: timestamp('start_at', {withTimezone: true}).notNull(), endAt: timestamp('end_at', {withTimezone: true}).notNull(),
   revokedAt: timestamp('revoked_at', {withTimezone: true}),
 }, t => [check('workforce_grant_dates', sql`${t.endAt} > ${t.startAt}`), index('workforce_grant_user_team').on(t.userId, t.teamId)]);
+export const workforceSeries = pgTable('workforce_series', {
+  id: serial('id').primaryKey(), teamId: integer('team_id').notNull().references(() => workforceTeams.id),
+  requestKey: text('request_key').notNull(), definition: jsonb('definition').notNull(), timezone: text('timezone').notNull(),
+  createdBy: integer('created_by').notNull().references((): AnyPgColumn => users.id),
+  createdAt: timestamp('created_at', {withTimezone: true}).defaultNow().notNull(),
+}, t => [uniqueIndex('workforce_series_request').on(t.teamId, t.requestKey)]);
 export const workforceShifts = pgTable('workforce_shifts', {
   id: serial('id').primaryKey(), teamId: integer('team_id').notNull().references(() => workforceTeams.id),
   role: text('role').notNull(), station: text('station'), headcount: integer('headcount').notNull(),
   startAt: timestamp('start_at', {withTimezone: true}).notNull(), endAt: timestamp('end_at', {withTimezone: true}).notNull(),
   breakMinutes: integer('break_minutes').notNull().default(0),
+  version: integer('version').notNull().default(1),
+  status: text('status').$type<'scheduled'|'cancelled'|'replaced'>().notNull().default('scheduled'),
+  seriesId: integer('series_id').references(() => workforceSeries.id),
+  replacesId: integer('replaces_id').unique().references((): AnyPgColumn => workforceShifts.id),
+  replacementId: integer('replacement_id').unique().references((): AnyPgColumn => workforceShifts.id),
+  changeReason: text('change_reason'),
+  requiredQualifications: jsonb('required_qualifications').$type<{id:number;name:string}[]>().notNull().default([]),
   createdBy: integer('created_by').notNull().references((): AnyPgColumn => users.id),
 }, t => [check('workforce_shift_dates', sql`${t.endAt} > ${t.startAt} AND ${t.endAt} <= ${t.startAt} + interval '24 hours'`),
   check('workforce_shift_capacity', sql`${t.headcount} BETWEEN 1 AND 500`),
@@ -44,7 +58,95 @@ export const workforceAssignments = pgTable('workforce_assignments', {
   createdBy: integer('created_by').notNull().references((): AnyPgColumn => users.id),
   createdAt: timestamp('created_at', {withTimezone: true}).defaultNow().notNull(),
   respondedAt: timestamp('responded_at', {withTimezone: true}), cancellationReason: text('cancellation_reason'),
+  replacesAssignmentId: integer('replaces_assignment_id').references((): AnyPgColumn => workforceAssignments.id),
+  replacementReason: text('replacement_reason'),
 }, t => [uniqueIndex('workforce_assignment_shift_employee').on(t.shiftId, t.employeeId), index('workforce_assignment_employee').on(t.employeeId)]);
+export const workforceShiftChanges = pgTable('workforce_shift_changes', {
+  id: serial('id').primaryKey(), shiftId: integer('shift_id').notNull().references(() => workforceShifts.id),
+  actorId: integer('actor_id').notNull().references((): AnyPgColumn => users.id),
+  reason: text('reason').notNull(), snapshot: jsonb('snapshot').notNull(),
+  createdAt: timestamp('created_at', {withTimezone: true}).defaultNow().notNull(),
+});
+export const workforceAvailabilitySeries = pgTable('workforce_availability_series', {
+  id:serial('id').primaryKey(), employeeId:integer('employee_id').notNull().references(():AnyPgColumn=>employees.id), requestKey:text('request_key').notNull(),
+  pattern:jsonb('pattern').$type<import('./workforce-renewals').AvailabilityPattern>().notNull(), createdBy:integer('created_by').notNull().references(():AnyPgColumn=>users.id),
+  createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(), stoppedAt:timestamp('stopped_at',{withTimezone:true}),
+  stoppedBy:integer('stopped_by').references(():AnyPgColumn=>users.id), stopReason:text('stop_reason'),
+},t=>[uniqueIndex('workforce_availability_request').on(t.employeeId,t.requestKey)]);
+export const workforceUnavailable = pgTable('workforce_unavailable', {
+  seriesId:integer('series_id').references(()=>workforceAvailabilitySeries.id),
+  id: serial('id').primaryKey(), employeeId: integer('employee_id').notNull().references(():AnyPgColumn => employees.id),
+  startAt: timestamp('start_at', {withTimezone:true}).notNull(), endAt: timestamp('end_at', {withTimezone:true}).notNull(),
+  note: text('note').notNull(), createdBy: integer('created_by').notNull().references(():AnyPgColumn => users.id),
+  createdAt: timestamp('created_at', {withTimezone:true}).notNull().defaultNow(),
+  cancelledAt: timestamp('cancelled_at', {withTimezone:true}), cancelledBy: integer('cancelled_by').references(():AnyPgColumn => users.id),
+  cancellationReason: text('cancellation_reason'),
+});
+export const workforceQualifications = pgTable('workforce_qualifications', {
+  id: serial('id').primaryKey(), name: text('name').notNull(), createdBy: integer('created_by').notNull().references(():AnyPgColumn => users.id),
+  createdAt: timestamp('created_at', {withTimezone:true}).notNull().defaultNow(),
+});
+export const employeeQualifications = pgTable('employee_qualifications', {
+  renewsCredentialId:integer('renews_credential_id').unique().references(():AnyPgColumn=>employeeQualifications.id),
+  id: serial('id').primaryKey(), employeeId: integer('employee_id').notNull().references(():AnyPgColumn => employees.id),
+  qualificationId: integer('qualification_id').notNull().references(() => workforceQualifications.id),
+  validFrom: date('valid_from').notNull(), validThrough: date('valid_through'), verificationReference: text('verification_reference').notNull(),
+  verifiedBy: integer('verified_by').notNull().references(():AnyPgColumn => users.id), verifiedAt: timestamp('verified_at', {withTimezone:true}).notNull().defaultNow(),
+  revokedAt: timestamp('revoked_at', {withTimezone:true}), revokedBy: integer('revoked_by').references(():AnyPgColumn => users.id), revocationReason: text('revocation_reason'),
+});
+
+export const workforceRenewalPolicies = pgTable('workforce_renewal_policies', {
+  id:serial('id').primaryKey(), qualificationId:integer('qualification_id').notNull().references(()=>workforceQualifications.id), employeeId:integer('employee_id').references(():AnyPgColumn=>employees.id),
+  effectiveAt:timestamp('effective_at',{withTimezone:true}).notNull(), config:jsonb('config').$type<import('./workforce-renewals').RenewalPolicy>().notNull(),
+  reason:text('reason').notNull(), createdBy:integer('created_by').notNull().references(():AnyPgColumn=>users.id), createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
+});
+export const workforceRenewals = pgTable('workforce_renewals', {
+  id:serial('id').primaryKey(), employeeId:integer('employee_id').notNull().references(():AnyPgColumn=>employees.id), previousCredentialId:integer('previous_credential_id').notNull().references(()=>employeeQualifications.id),
+  requestKey:text('request_key').notNull(), submittedBy:integer('submitted_by').notNull().references(():AnyPgColumn=>users.id), reference:text('reference').notNull(), note:text('note').notNull(),
+  status:text('status').$type<'submitted'|'returned'|'verified'|'cancelled'>().notNull().default('submitted'), version:integer('version').notNull().default(1),
+  policySnapshot:jsonb('policy_snapshot').notNull(), reviewedBy:integer('reviewed_by').references(():AnyPgColumn=>users.id), reviewedAt:timestamp('reviewed_at',{withTimezone:true}), reviewNote:text('review_note'),
+  newCredentialId:integer('new_credential_id').unique().references(()=>employeeQualifications.id), createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex('workforce_renewal_request').on(t.employeeId,t.requestKey)]);
+export const workforceRenewalHistory = pgTable('workforce_renewal_history', {
+  id:serial('id').primaryKey(), renewalId:integer('renewal_id').notNull().references(()=>workforceRenewals.id), version:integer('version').notNull(),
+  actorId:integer('actor_id').notNull().references(():AnyPgColumn=>users.id), action:text('action').notNull(), reason:text('reason').notNull(), snapshot:jsonb('snapshot').notNull(),
+  createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex('workforce_renewal_history_version').on(t.renewalId,t.version)]);
+
+export const workforceMemberChanges = pgTable('workforce_member_changes', {
+  id:serial('id').primaryKey(), memberId:integer('member_id').notNull().references(()=>workforceMembers.id),
+  actorId:integer('actor_id').notNull().references(():AnyPgColumn=>users.id), version:integer('version').notNull(),
+  previousEndAt:timestamp('previous_end_at',{withTimezone:true}).notNull(), endAt:timestamp('end_at',{withTimezone:true}).notNull(),
+  reason:text('reason').notNull(), createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex('workforce_member_change_version').on(t.memberId,t.version)]);
+export const workforceArrivalRules = pgTable('workforce_arrival_rules', {
+  id:serial('id').primaryKey(), teamId:integer('team_id').notNull().references(()=>workforceTeams.id),
+  employeeId:integer('employee_id').references(():AnyPgColumn=>employees.id), effectiveAt:timestamp('effective_at',{withTimezone:true}).notNull(),
+  rules:jsonb('rules').$type<import('./workforce-operations').ArrivalRules>().notNull(), reason:text('reason').notNull(),
+  createdBy:integer('created_by').notNull().references(():AnyPgColumn=>users.id), createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
+});
+export const workforcePresence = pgTable('workforce_presence', {
+  id:serial('id').primaryKey(), assignmentId:integer('assignment_id').notNull().unique().references(()=>workforceAssignments.id),
+  employeeId:integer('employee_id').notNull().references(():AnyPgColumn=>employees.id), version:integer('version').notNull().default(1),
+  arrivedAt:timestamp('arrived_at',{withTimezone:true}).notNull(), arrivedBy:integer('arrived_by').notNull().references(():AnyPgColumn=>users.id), departedAt:timestamp('departed_at',{withTimezone:true}),
+  departedBy:integer('departed_by').references(():AnyPgColumn=>users.id), departureReason:text('departure_reason'),
+  policySnapshot:jsonb('policy_snapshot').$type<{id:number|null;rules:import('./workforce-operations').ArrivalRules}>().notNull(),
+  flags:jsonb('flags').$type<string[]>().notNull().default([]), reviewedAt:timestamp('reviewed_at',{withTimezone:true}),
+  reviewedBy:integer('reviewed_by').references(():AnyPgColumn=>users.id), reviewNote:text('review_note'),
+});
+export const workforceIncidents = pgTable('workforce_incidents', {
+  id:serial('id').primaryKey(), shiftId:integer('shift_id').notNull().references(()=>workforceShifts.id),
+  reporterId:integer('reporter_id').notNull().references(():AnyPgColumn=>users.id), requestKey:text('request_key').notNull(),
+  occurredAt:timestamp('occurred_at',{withTimezone:true}).notNull(), title:text('title').notNull(), details:text('details').notNull(),
+  severity:text('severity').$type<'low'|'medium'|'high'>().notNull(), status:text('status').$type<'open'|'in_progress'|'resolved'>().notNull().default('open'),
+  version:integer('version').notNull().default(1), ownerId:integer('owner_id').references(():AnyPgColumn=>users.id),
+  createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex('workforce_incident_request').on(t.reporterId,t.requestKey)]);
+export const workforceIncidentUpdates = pgTable('workforce_incident_updates', {
+  id:serial('id').primaryKey(), incidentId:integer('incident_id').notNull().references(()=>workforceIncidents.id), version:integer('version').notNull(),
+  actorId:integer('actor_id').notNull().references(():AnyPgColumn=>users.id), status:text('status').notNull(), note:text('note').notNull(),
+  createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex('workforce_incident_update_version').on(t.incidentId,t.version)]);
 
 export const timesheetStatus = pgEnum('timesheet_status', ['draft', 'submitted', 'returned', 'approved', 'payroll_locked']);
 export const workforceTimesheets = pgTable('workforce_timesheets', {
@@ -95,6 +197,9 @@ export const helpdeskStatus = pgEnum('helpdesk_status', ['open', 'in_progress', 
 export const helpdeskCases = pgTable('helpdesk_cases', {
   id: serial('id').primaryKey(), title: text('title').notNull(), category: text('category').notNull(),
   confidential: boolean('confidential').notNull().default(false), status: helpdeskStatus('status').notNull().default('open'),
+  policySnapshot: jsonb('policy_snapshot').$type<{ policyId:number; firstResponseHours:number; resolutionHours:number; escalationAssigneeId:number|null }>(),
+  firstResponseDueAt: timestamp('first_response_due_at',{withTimezone:true}), resolutionDueAt: timestamp('resolution_due_at',{withTimezone:true}),
+  firstRespondedAt: timestamp('first_responded_at',{withTimezone:true}), resolvedAt: timestamp('resolved_at',{withTimezone:true}), escalatedAt: timestamp('escalated_at',{withTimezone:true}),
   requesterId: integer('requester_id').notNull().references((): AnyPgColumn => users.id),
   assigneeId: integer('assignee_id').references((): AnyPgColumn => users.id),
   version: integer('version').notNull().default(1),
@@ -399,6 +504,7 @@ export const clockMethodEnum = pgEnum('clock_method', ['qr_code', 'biometric', '
 
 // Attendance table
 export const attendance = pgTable("attendance", {
+  version: integer("version").notNull().default(1),
   totalBreakMinutes: integer("total_break_minutes").notNull().default(0),
   id: serial("id").primaryKey(),
   employeeId: integer("employee_id").references(() => employees.id).notNull(),
@@ -419,6 +525,21 @@ export const attendance = pgTable("attendance", {
   approvalDate: timestamp("approval_date"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Append-only effective rules and accounting entries. Every workflow snapshots its inputs.
+export const hrRules=pgTable('hr_rules',{
+ id:serial('id').primaryKey(),kind:text('kind').notNull(),name:text('name').notNull(),employeeId:integer('employee_id').references(()=>employees.id),
+ effectiveFrom:date('effective_from').notNull(),config:jsonb('config').notNull(),reason:text('reason').notNull(),createdBy:integer('created_by').notNull().references(()=>users.id),createdAt:timestamp('created_at',{withTimezone:true}).defaultNow().notNull(),
+});
+export const leaveLedger=pgTable('leave_ledger',{
+ id:serial('id').primaryKey(),employeeId:integer('employee_id').notNull().references(()=>employees.id),leaveType:text('leave_type').notNull(),year:integer('year').notNull(),units:integer('units').notNull(),sourceKey:text('source_key').notNull().unique(),reason:text('reason').notNull(),actorId:integer('actor_id').references(()=>users.id),createdAt:timestamp('created_at',{withTimezone:true}).defaultNow().notNull(),
+});
+export const leaveSnapshots=pgTable('leave_snapshots',{
+ leaveId:integer('leave_id').primaryKey().references(()=>leaves.id),rules:jsonb('rules').notNull(),daysByYear:jsonb('days_by_year').$type<Record<string,number>>().notNull(),balanceRequired:boolean('balance_required').notNull(),approverId:integer('approver_id').references(()=>users.id),
+});
+export const attendanceCorrections=pgTable('attendance_corrections',{
+ id:serial('id').primaryKey(),employeeId:integer('employee_id').notNull().references(()=>employees.id),date:date('date').notNull(),expectedVersion:integer('expected_version').notNull(),proposal:jsonb('proposal').notNull(),before:jsonb('before'),reason:text('reason').notNull(),status:text('status').default('pending').notNull(),requestedBy:integer('requested_by').notNull().references(()=>users.id),reviewedBy:integer('reviewed_by').references(()=>users.id),reviewNote:text('review_note'),createdAt:timestamp('created_at',{withTimezone:true}).defaultNow().notNull(),reviewedAt:timestamp('reviewed_at',{withTimezone:true}),
 });
 
 // Leave table
@@ -516,6 +637,13 @@ export const payroll = pgTable("payroll", {
   processedAt: timestamp("processed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const payrollReviews=pgTable('payroll_reviews',{
+ payrollId:integer('payroll_id').primaryKey().references(()=>payroll.id),version:integer('version').notNull().default(1),currency:text('currency').notNull(),periodStart:date('period_start').notNull(),periodEnd:date('period_end').notNull(),payDate:date('pay_date').notNull(),policy:jsonb('policy').notNull(),createdBy:integer('created_by').notNull().references(()=>users.id),approverId:integer('approver_id').notNull().references(()=>users.id),approvedBy:integer('approved_by').references(()=>users.id),approvedAt:timestamp('approved_at',{withTimezone:true}),adjustments:jsonb('adjustments').$type<{label:string;kind:'allowance'|'deduction';amount:string;reason:string}[]>().default([]).notNull(),history:jsonb('history').$type<{action:string;actorId:number;reason:string;at:string;version:number;snapshot?:unknown}[]>().default([]).notNull(),
+});
+export const payrollTimeLines=pgTable('payroll_time_lines',{
+ id:serial('id').primaryKey(),payrollId:integer('payroll_id').notNull().references(()=>payroll.id),timesheetId:integer('timesheet_id').notNull().unique().references(()=>workforceTimesheets.id),timesheetVersion:integer('timesheet_version').notNull(),workDate:date('work_date').notNull(),regularMinutes:integer('regular_minutes').notNull(),overtimeMinutes:integer('overtime_minutes').notNull(),amount:decimal('amount',{precision:14,scale:2}).notNull(),snapshot:jsonb('snapshot').notNull(),
 });
 
 // Event Staff Management Tables
@@ -805,6 +933,7 @@ export const geofences = pgTable("geofences", {
 
 // Job Requisitions
 export const jobRequisitions = pgTable("job_requisitions", {
+  version:integer('version').notNull().default(1),
   id: serial("id").primaryKey(),
   requisitionId: text("requisition_id").notNull().unique(), // Custom ID: JR-2023-001
   jobTitle: text("job_title").notNull(),
@@ -897,6 +1026,7 @@ export const candidateEducation = pgTable("candidate_education", {
 
 // Job Applications
 export const jobApplications = pgTable("job_applications", {
+  version:integer('version').notNull().default(1),
   id: serial("id").primaryKey(),
   candidateId: integer("candidate_id").references(() => candidates.id).notNull(),
   requisitionId: integer("requisition_id").references(() => jobRequisitions.id).notNull(),
@@ -911,6 +1041,7 @@ export const jobApplications = pgTable("job_applications", {
 
 // Interviews
 export const interviews = pgTable("interviews", {
+  version:integer('version').notNull().default(1),
   id: serial("id").primaryKey(),
   applicationId: integer("application_id").references(() => jobApplications.id).notNull(),
   interviewerId: integer("interviewer_id").references(() => employees.id).notNull(),
@@ -927,6 +1058,8 @@ export const interviews = pgTable("interviews", {
 
 // Job Offers
 export const jobOffers = pgTable("job_offers", {
+  version:integer('version').notNull().default(1),
+  currency:text('currency').notNull().default('QAR'),
   id: serial("id").primaryKey(),
   applicationId: integer("application_id").references(() => jobApplications.id).notNull(),
   offerDate: date("offer_date").notNull(),
@@ -999,6 +1132,19 @@ export const onboardingTasks = pgTable("onboarding_tasks", {
   documentUrl: text("document_url"), // if task requires document upload
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const hiringHandoffs=pgTable('hiring_handoffs',{
+ offerId:integer('offer_id').primaryKey().references(()=>jobOffers.id),candidateId:integer('candidate_id').notNull().unique().references(()=>candidates.id),employeeId:integer('employee_id').notNull().unique().references(()=>employees.id),createdBy:integer('created_by').notNull().references(()=>users.id),createdAt:timestamp('created_at',{withTimezone:true}).defaultNow().notNull(),
+});
+export const lifecycleTemplates=pgTable('lifecycle_templates',{
+ id:serial('id').primaryKey(),name:text('name').notNull(),kind:text('kind').notNull(),tasks:jsonb('tasks').$type<{title:string;kind:'general'|'document'|'asset_return';required:boolean;offsetDays:number}[]>().notNull(),createdBy:integer('created_by').notNull().references(()=>users.id),createdAt:timestamp('created_at',{withTimezone:true}).defaultNow().notNull(),
+});
+export const lifecycleCases=pgTable('lifecycle_cases',{
+ id:serial('id').primaryKey(),employeeId:integer('employee_id').notNull().references(()=>employees.id),kind:text('kind').notNull(),templateId:integer('template_id').notNull().references(()=>lifecycleTemplates.id),templateSnapshot:jsonb('template_snapshot').notNull(),startDate:date('start_date').notNull(),status:text('status').notNull().default('in_progress'),version:integer('version').notNull().default(1),createdBy:integer('created_by').notNull().references(()=>users.id),reason:text('reason').notNull(),completedAt:timestamp('completed_at',{withTimezone:true}),createdAt:timestamp('created_at',{withTimezone:true}).defaultNow().notNull(),
+});
+export const lifecycleTasks=pgTable('lifecycle_tasks',{
+ id:serial('id').primaryKey(),caseId:integer('case_id').notNull().references(()=>lifecycleCases.id),title:text('title').notNull(),kind:text('kind').notNull(),required:boolean('required').notNull(),ownerId:integer('owner_id').notNull().references(()=>users.id),dueDate:date('due_date').notNull(),status:text('status').notNull().default('pending'),evidence:text('evidence'),documentId:integer('document_id').references(()=>documents.id),assetTag:text('asset_tag'),completedBy:integer('completed_by').references(()=>users.id),completedAt:timestamp('completed_at',{withTimezone:true}),
 });
 
 // Insert schemas
@@ -2426,3 +2572,46 @@ export type InsertBulkImportJob = z.infer<typeof insertBulkImportJobSchema>;
 export type SelectBulkImportJob = typeof bulkImportJobs.$inferSelect;
 
 export const appSettings = pgTable("app_settings", {key:text("key").primaryKey(),value:jsonb("value").notNull(),updatedAt:timestamp("updated_at").defaultNow().notNull()});
+
+// Configured review cycles are separate from retained legacy review records.
+export const performanceCycles = pgTable('performance_cycles', {
+  id:serial('id').primaryKey(), name:text('name').notNull(), periodStart:date('period_start').notNull(), periodEnd:date('period_end').notNull(), dueDate:date('due_date').notNull(),
+  selfRequired:boolean('self_required').notNull(), rubric:jsonb('rubric').$type<import('./performance-cycles').Rubric>().notNull(), ratingLabels:jsonb('rating_labels').$type<string[]>().notNull(),
+  status:text('status').notNull().default('draft'), version:integer('version').notNull().default(1), createdBy:integer('created_by').notNull().references(()=>users.id),
+  createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(), updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+});
+export const performanceAssessments = pgTable('performance_assessments', {
+  id:serial('id').primaryKey(), cycleId:integer('cycle_id').notNull().references(()=>performanceCycles.id), employeeId:integer('employee_id').notNull().references(()=>employees.id),
+  reviewerId:integer('reviewer_id').notNull().references(()=>users.id), dueDate:date('due_date').notNull(), selfRequired:boolean('self_required').notNull(),
+  status:text('status').notNull().default('pending'), version:integer('version').notNull().default(1),
+  selfScores:jsonb('self_scores').$type<import('./performance-cycles').Scores>(), selfSummary:text('self_summary'),
+  managerScores:jsonb('manager_scores').$type<import('./performance-cycles').Scores>(), managerSummary:text('manager_summary'),
+  finalScores:jsonb('final_scores').$type<import('./performance-cycles').Scores>(), finalSummary:text('final_summary'), finalRating:decimal('final_rating',{precision:4,scale:2}),
+  calibratedBy:integer('calibrated_by').references(()=>users.id), publishedAt:timestamp('published_at',{withTimezone:true}), acknowledgedAt:timestamp('acknowledged_at',{withTimezone:true}),
+  createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(), updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex('performance_cycle_employee').on(t.cycleId,t.employeeId)]);
+export const performanceObjectives=pgTable('performance_objectives',{
+  id:serial('id').primaryKey(), assessmentId:integer('assessment_id').notNull().references(()=>performanceAssessments.id), kind:text('kind').notNull(),
+  title:text('title').notNull(), measure:text('measure').notNull(), dueDate:date('due_date').notNull(), progress:integer('progress').notNull().default(0), status:text('status').notNull().default('active'),
+  version:integer('version').notNull().default(1), createdBy:integer('created_by').notNull().references(()=>users.id), createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(), updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+});
+export const performanceHistory=pgTable('performance_history',{
+  id:serial('id').primaryKey(), cycleId:integer('cycle_id').notNull().references(()=>performanceCycles.id), assessmentId:integer('assessment_id').references(()=>performanceAssessments.id),
+  actorId:integer('actor_id').notNull().references(()=>users.id), action:text('action').notNull(), reason:text('reason'), snapshot:jsonb('snapshot'),
+  createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
+});
+export const helpdeskPolicies=pgTable('helpdesk_policies',{
+  id:serial('id').primaryKey(), category:text('category').notNull(), confidential:boolean('confidential').notNull(), employeeId:integer('employee_id').references(()=>employees.id),
+  enabled:boolean('enabled').notNull(), effectiveAt:timestamp('effective_at',{withTimezone:true}).notNull(), firstResponseHours:integer('first_response_hours').notNull(), resolutionHours:integer('resolution_hours').notNull(),
+  defaultAssigneeId:integer('default_assignee_id').references(()=>users.id), escalationAssigneeId:integer('escalation_assignee_id').references(()=>users.id),
+  reason:text('reason').notNull(), createdBy:integer('created_by').notNull().references(()=>users.id), createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
+});
+export const helpdeskArticles=pgTable('helpdesk_articles',{
+  id:serial('id').primaryKey(), title:text('title').notNull(), body:text('body').notNull(), category:text('category').notNull(), audience:text('audience').notNull(), status:text('status').notNull().default('draft'),
+  version:integer('version').notNull().default(1), createdBy:integer('created_by').notNull().references(()=>users.id), publishedAt:timestamp('published_at',{withTimezone:true}),
+  createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(), updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+});
+export const helpdeskArticleHistory=pgTable('helpdesk_article_history',{
+  id:serial('id').primaryKey(), articleId:integer('article_id').notNull().references(()=>helpdeskArticles.id), version:integer('version').notNull(), actorId:integer('actor_id').notNull().references(()=>users.id),
+  reason:text('reason').notNull(), snapshot:jsonb('snapshot').notNull(), createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex('helpdesk_article_revision').on(t.articleId,t.version)]);

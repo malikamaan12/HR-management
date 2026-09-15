@@ -9,6 +9,7 @@ interface SidebarProps {
   className?: string;
 }
 
+import {hasPermission} from '@shared/permissions';
 import type { HRModule } from "@shared/permissions";
 
 interface NavItem {
@@ -25,7 +26,8 @@ const navItems: NavItem[] = [
   { name: "Employee Database", icon: "fas fa-users", href: "/employees", module: "employee_database", requiredPermission: "read" },
   { name: "Bulk Import", icon: "fas fa-upload", href: "/bulk-import", module: "employee_database", requiredPermission: "create" },
   { name: "Recruitment", icon: "fas fa-user-plus", href: "/recruitment", module: "recruitment_onboarding", requiredPermission: "read" },
-  { name: "Onboarding", icon: "fas fa-clipboard-list", href: "/onboarding", module: "recruitment_onboarding", requiredPermission: "read" },
+  { name: "Onboarding / Offboarding", icon: "fas fa-clipboard-list", href: "/onboarding", module: "recruitment_onboarding", requiredPermission: "read" },
+  { name: "HR Rules", icon: "fas fa-sliders-h", href: "/hr-rules", module: "system_configuration", requiredPermission: "admin" },
   { name: "Payroll Management", icon: "fas fa-money-check-alt", href: "/payroll", module: "payroll_management", requiredPermission: "read" },
   { name: "Attendance Tracking", icon: "fas fa-calendar-check", href: "/attendance", module: "attendance_time_tracking", requiredPermission: "read" },
   { name: "Leave Management", icon: "fas fa-umbrella-beach", href: "/leave", module: "leave_absence_management", requiredPermission: "read" },
@@ -190,7 +192,7 @@ export default function Sidebar({ className }: SidebarProps) {
                   </NavigationItem>
                 );
               })}
-            </ul>
+            {user&&!hasPermission(user.role,'recruitment_onboarding','read')&&<li><Link to="/onboarding" className="sidebar-item flex items-center px-3 py-2 rounded-md hover:bg-primary/10"><i className="fas fa-clipboard-list w-6"/><span className="ml-3">My checklists</span></Link></li>}</ul>
           </nav>
           
           {/* User Profile Section */}

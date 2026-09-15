@@ -6,7 +6,7 @@ import { eq } from 'drizzle-orm';
 import express from 'express';
 import type { Server } from 'node:http';
 import bcrypt from 'bcryptjs';
-import { employees, users, activityLogs, type InsertEmployee } from '../shared/schema';
+import { employees, users, activityLogs, hrRules, type InsertEmployee } from '../shared/schema';
 const context = vi.hoisted(() => ({ db: null as any }));
 vi.mock('../server/db', () => ({ get db() { return context.db; }, pool: {} }));
 import router from '../server/routes/employeeRecords';
@@ -159,13 +159,15 @@ test('simultaneous edits accept only one version and preserve the losing editor 
 
 test('management calendar counts Sunday and excludes Friday/Saturday only for assigned office staff', async () => {
   const admin=await account();const office=await create(1,{workSchedule:'management_office'});const shift=await create(2,{workSchedule:'shift_based'});
+  await context.db.insert(hrRules).values({kind:'leave',name:'annual',effectiveFrom:'2026-01-01',createdBy:admin.id,reason:'Confirmed test rule',config:{paid:true,balanceRequired:false,accrualMode:'none',annualDays:0,monthlyDays:0,carryoverLimit:0,minServiceDays:0,maxConsecutiveDays:30,approverId:null}});
   expect((await request(admin.token,`/employees/${office.id}`)).body.workSchedule).toBe('management_office');
   const leave={leaveType:'annual',startDate:'2026-09-13',endDate:'2026-09-13',reason:'Test leave',totalDays:999,workSchedule:'management_office'};
   const sunday=await request(admin.token,'/leaves','POST',{...leave,employeeId:office.id});
   expect(sunday.status).toBe(201);expect(sunday.body.totalDays).toBe(1);
   expect((await request(admin.token,'/leaves','POST',{...leave,employeeId:office.id,startDate:'2026-09-18',endDate:'2026-09-19'})).status).toBe(400);
   expect((await request(admin.token,'/leaves','POST',{...leave,employeeId:shift.id})).status).toBe(400);
-  expect((await request(admin.token,'/leaves','POST',{...leave,employeeId:shift.id,startDate:'2026-09-18',endDate:'2026-09-18'})).status).toBe(201);
+  // Shift-based leave now requires an accepted roster, including on Fridays.
+  expect((await request(admin.token,'/leaves','POST',{...leave,employeeId:shift.id,startDate:'2026-09-18',endDate:'2026-09-18'})).status).toBe(400);
 });
 
 test('office settings persist, require admin and survive a legacy settings update',async()=>{

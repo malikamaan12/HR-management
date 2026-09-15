@@ -5,7 +5,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import { eq } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
-import { users, authSessions } from '../shared/schema';
+import { users, authSessions,hrRules } from '../shared/schema';
 import { parseAuthResponse } from '../client/src/contexts/auth-session';
 
 const testContext = vi.hoisted(() => ({ db: null as any, emails: [] as { email: string; token: string }[] }));
@@ -197,34 +197,41 @@ test('employee fields persist and employee IDs are not treated as account IDs', 
 
 test('HTTP workflows enforce ownership, payroll calculations, leave decisions and account permissions', async()=>{
   const admin=await account('admin',true,'super_admin');
+  const reviewer=await account('reviewer',true,'super_admin');
+  await testContext.db.insert(hrRules).values([
+   {kind:'payroll',name:'Pay policy',effectiveFrom:'2026-01-01',createdBy:admin.id,reason:'Approved test policy',config:{currency:'QAR',cycleStartDay:1,payDay:5,basis:'salary',basicSalary:'1000.10',hourlyRate:'10.00',regularMinutesPerDay:480,overtimeMultiplier:1.5,allowances:{housing:'250.25'},deductions:{absence:'10.05'},approverId:reviewer.id}},
+   {kind:'leave',name:'annual',effectiveFrom:'2026-01-01',createdBy:admin.id,reason:'Approved test leave',config:{paid:true,balanceRequired:false,accrualMode:'none',annualDays:0,monthlyDays:0,carryoverLimit:0,minServiceDays:0,maxConsecutiveDays:30,approverId:null}},
+  ]);
   const alice=await account('alice',true,'permanent_employee');
   const bob=await account('bob',true,'permanent_employee');
   const store=new DatabaseStorage();
   const makeEmployee=(id:number,name:string,qid:string)=>store.createEmployee({userId:id,employeeId:name,firstName:name,lastName:'Test',gender:'female',dateOfBirth:'1990-01-01',nationality:'Qatar',qidNumber:qid,primaryMobile:'12345678',residentialAddress:'Doha',emergencyContactName:'Contact',emergencyContactNumber:'87654321',type:'permanent',department:'Operations',position:'Coordinator',location:'Doha',joiningDate:'2026-01-01'});
   const employee=await makeEmployee(alice.id,'Alice','12345678901');
   const adminEmployee=await makeEmployee(admin.id,'Admin','12345678902');
-  const tokens=Object.fromEntries(await Promise.all(['admin','alice','bob'].map(async name=>[name,(await authService.login(name,password)).accessToken])));
+  const tokens=Object.fromEntries(await Promise.all(['admin','reviewer','alice','bob'].map(async name=>[name,(await authService.login(name,password)).accessToken])));
   const app=express();app.use(express.json());app.use('/payroll',payrollRouter);app.use('/leaves',leaveRouter);app.use('/settings',settingsRouter);app.use('/users',usersRouter);app.use('/employee',employeeRouter);
   const server=app.listen(0,'127.0.0.1');await new Promise<void>(resolve=>server.once('listening',resolve));
   const port=(server.address() as {port:number}).port;
   const call=async(actor:string,path:string,method='GET',body?:unknown)=>{const response=await fetch(`http://127.0.0.1:${port}${path}`,{method,headers:{Authorization:`Bearer ${tokens[actor]}`, 'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});return {status:response.status,data:await response.json()};};
   try{
-    const input={employeeId:employee.id,month:9,year:2026,basicSalary:'1000.10',allowances:{housing:'250.25'},deductions:{absence:'10.05'}};
-    expect((await call('alice','/payroll','POST',input)).status).toBe(400);
+    const input={employeeId:employee.id,month:9,year:2026};
+    expect((await call('alice','/payroll','POST',input)).status).toBe(404);
     const created=await call('admin','/payroll','POST',input);expect(created.status).toBe(201);expect(created.data.netSalary).toBe('1240.30');
-    expect((await call('admin','/payroll','POST',input)).status).toBe(400);
+    expect((await call('admin','/payroll','POST',input)).status).toBe(409);
     expect((await call('bob','/payroll/month/9/year/2026')).data).toEqual([]);
     expect((await call('alice','/payroll/month/9/year/2026')).data).toHaveLength(1);
-    expect((await call('admin',`/payroll/${created.data.id}/mark-paid`,'POST',{reference:'BANK-TEST'})).status).toBe(200);
+    expect((await call('admin',`/payroll/${created.data.id}/action`,'POST',{version:1,action:'submit',reason:'Ready for review'})).status).toBe(200);
+    expect((await call('reviewer',`/payroll/${created.data.id}/action`,'POST',{version:2,action:'approve',reason:'Checked pay figures'})).status).toBe(200);
+    expect((await call('reviewer',`/payroll/${created.data.id}/mark-paid`,'POST',{version:3,reference:'BANK-TEST',confirmed:true})).status).toBe(200);
     expect((await call('admin',`/payroll/${created.data.id}`,'PATCH',input)).status).toBe(400);
-    const request={employeeId:employee.id,leaveType:'annual',startDate:'2026-09-14',endDate:'2026-09-15',reason:'Test',totalDays:999,status:'approved',approvedBy:alice.id};
+    const request={employeeId:employee.id,leaveType:'annual',startDate:'2026-09-14',endDate:'2026-09-15',reason:'Test leave',totalDays:999,status:'approved',approvedBy:alice.id};
     const leave=await call('alice','/leaves','POST',request);expect(leave.status).toBe(201);expect(leave.data.status).toBe('pending');expect(leave.data.totalDays).toBe(2);expect(leave.data.approvedBy).toBeNull();
     expect((await call('bob',`/leaves/${leave.data.id}`)).status).toBe(404);
-    expect((await call('alice',`/leaves/${leave.data.id}/status`,'PATCH',{status:'approved'})).status).toBe(403);
+    expect((await call('alice',`/leaves/${leave.data.id}/status`,'PATCH',{status:'approved'})).status).toBe(404);
     expect((await call('admin',`/leaves/${leave.data.id}/status`,'PATCH',{status:'approved'})).status).toBe(200);
-    expect((await call('admin',`/leaves/${leave.data.id}/status`,'PATCH',{status:'rejected'})).status).toBe(400);
+    expect((await call('admin',`/leaves/${leave.data.id}/status`,'PATCH',{status:'rejected'})).status).toBe(409);
     const own=await call('admin','/leaves','POST',{...request,employeeId:adminEmployee.id});expect(own.status).toBe(201);
-    expect((await call('admin',`/leaves/${own.data.id}/status`,'PATCH',{status:'approved'})).status).toBe(400);
+    expect((await call('admin',`/leaves/${own.data.id}/status`,'PATCH',{status:'approved'})).status).toBe(403);
     expect((await call('alice','/settings/company','PUT',{...defaultCompanySettings,companyName:'Changed'})).status).toBe(403);
     expect((await call('admin','/settings/company','PUT',{...defaultCompanySettings,companyName:'Test company'})).status).toBe(200);
     expect((await call('alice','/settings/company')).data.companyName).toBe('Test company');
