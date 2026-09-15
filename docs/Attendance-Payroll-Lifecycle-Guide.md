@@ -1,6 +1,6 @@
 # Attendance, leave, payroll and employee lifecycle
 
-Implemented locally on 15 September 2026. This release adds migrations 0015–0018. It has not been deployed to the hosted application.
+Deployed on 16 September 2026 in release `c2727e7`. Migrations 0015–0018 add these workflows.
 
 ## Administrator rules
 

@@ -1,21 +1,21 @@
 # E3 HR module status — 16 September 2026
 
-The requested attendance/leave → payroll → recruitment/onboarding/offboarding implementation is complete for the core workflows described below. The combined release is prepared for deployment; the live deployment record is in the deployment guide. Administrators manage changing company policies and employee-specific overrides in **HR Rules**; effective dates and saved snapshots preserve history.
+The requested attendance/leave → payroll → recruitment/onboarding/offboarding implementation is complete for the core workflows described below. The combined release is deployed at [e3-hr.onrender.com](https://e3-hr.onrender.com), revision `c2727e7`. Administrators manage changing company policies and employee-specific overrides in **HR Rules**; effective dates and saved snapshots preserve history.
 
 ## Current status
 
 | Module | Status | What works |
 | --- | --- | --- |
 | Employee records | Core foundation implemented | Scoped directory, private fields, manager validation, conflict-safe edits, effective lifecycle history, controlled termination/reactivation, account links and versioned documents. |
-| Attendance | Core workflow implemented locally | Clock/breaks, overnight clock-out, calendars/holidays/grace, roster comparison, reviewed corrections and CSV reports. |
-| Leave | Core workflow implemented locally | Configurable entitlements/accrual/carryover, balance ledger, pending reservations, approvals, cancellations/refunds and calendar. |
-| Payroll | Core workflow implemented locally | Dated salary/hourly rules, approved time lines, overtime, adjustments, independent approval, regeneration, payslips, reconciliation and external payment references. |
-| Recruitment | Core workflow implemented locally | Requisition approval, candidates, screening, interviews/results, offers/responses and transactional employee handoff. |
-| Onboarding/offboarding | Core workflow implemented locally | Reusable checklists, owners/deadlines, document/asset evidence, completion, cancellation and employee/account deactivation. |
-| Workforce | Core workflows and roster enhancements implemented locally | Scoped scheduling, recurring rosters, shift revisions with fresh consent, one-off/weekly unavailability, verified qualifications and renewals, replacement staffing, membership history, incidents and mobile arrival/departure with dated rules. |
-| Timesheets and assignment reviews | Core workflows implemented locally | Approved time, rubric-based reviews/disputes and team overview. |
-| HR helpdesk | Core workflow and support operations implemented locally | Confidential cases, messages/files/history, dated company and employee routing rules, response targets, overdue queue, explicit escalation and searchable versioned knowledge articles. |
-| Performance and development | Core review cycle implemented locally | Configurable weighted criteria/rating labels, employee deadlines, self-assessment, assigned manager review, independent HR calibration/publication, acknowledgement, objectives/development actions and scoped reports with sample counts. |
+| Attendance | Core workflow deployed | Clock/breaks, overnight clock-out, calendars/holidays/grace, roster comparison, reviewed corrections and CSV reports. |
+| Leave | Core workflow deployed | Configurable entitlements/accrual/carryover, balance ledger, pending reservations, approvals, cancellations/refunds and calendar. |
+| Payroll | Core workflow deployed | Dated salary/hourly rules, approved time lines, overtime, adjustments, independent approval, regeneration, payslips, reconciliation and external payment references. |
+| Recruitment | Core workflow deployed | Requisition approval, candidates, screening, interviews/results, offers/responses and transactional employee handoff. |
+| Onboarding/offboarding | Core workflow deployed | Reusable checklists, owners/deadlines, document/asset evidence, completion, cancellation and employee/account deactivation. |
+| Workforce | Core workflows and roster enhancements deployed | Scoped scheduling, recurring rosters, shift revisions with fresh consent, one-off/weekly unavailability, verified qualifications and renewals, replacement staffing, membership history, incidents and mobile arrival/departure with dated rules. |
+| Timesheets and assignment reviews | Core workflows deployed | Approved time, rubric-based reviews/disputes and team overview. |
+| HR helpdesk | Core workflow and support operations deployed | Confidential cases, messages/files/history, dated company and employee routing rules, response targets, overdue queue, explicit escalation and searchable versioned knowledge articles. |
+| Performance and development | Core review cycle deployed | Configurable weighted criteria/rating labels, employee deadlines, self-assessment, assigned manager review, independent HR calibration/publication, acknowledgement, objectives/development actions and scoped reports with sample counts. |
 | Documents and reports | Document renewal core implemented; reporting enhancements remain | Private upload/download, document versions, scoped renewal requests and independent review; base exports and scoped reporting. Retention automation and reporting refinements remain. |
 | Learning, benefits and expenses | Partial | Existing screens/basic APIs require complete request, approval, entitlement, completion and reimbursement workflows. |
 | Team lead dashboard | Partial | Scoped team overview includes leave, time and assignment review queues; further unified approvals and operational drill-downs remain. |
@@ -24,7 +24,7 @@ See [the workflow and configuration guide](docs/Attendance-Payroll-Lifecycle-Gui
 
 ## What remains
 
-1. **Release acceptance and deployment:** reconcile existing leave/payroll data, configure actual company/employee rules, verify intended roles against managed PostgreSQL, back up and apply the migration journal. Migrations 0015–0023 are new in this combined release; deployed migrations 0000–0014 are preserved. No production data was seeded or changed during these checks.
+1. **Business setup:** configure actual company/employee rules and assign operational roles before entering employee records. Deployment and database migrations are complete. Migrations 0015–0023 are new in this combined release; deployed migrations 0000–0014 are preserved. No production demonstration records were added.
 2. **Workforce enhancements:** whole-series roster changes, external certificate validation/evidence uploads and device/offline attendance integrations. Weekly unavailability, date exceptions, qualification renewal due lists, configurable reminder windows and HR verification are now implemented alongside the earlier staffing workflows.
 3. **Performance and helpdesk extensions:** core review cycles, objectives/development plans, calibration, routing, response targets, explicit escalation and knowledge articles are now implemented. Bulk review assignment/participant withdrawal, automated reminders/escalation and business-hour target calendars remain optional extensions. See [the operating guide](docs/Performance-Helpdesk-Guide.md).
 4. **Documents and reports:** production file-delivery acceptance, retention automation, agreed metrics, filters and scoped drill-downs. Document versions and independently reviewed renewal requests are implemented.
@@ -42,3 +42,5 @@ A private read-only snapshot of 88 application/migration tables (362 rows) was s
 Group calculation rules continue to control attendance/timesheet rounding, paid breaks, leave counting/holiday exclusions and payroll rounding. New HR Rules supply dated company or employee entitlements, calendars, pay rates and approvers. Attendance corrections preserve calculation snapshots and require independent approval; payroll adjustments retain the generated period snapshot.
 
 See [Deployment-Guide.md](docs/Deployment-Guide.md) for the exact live revision and deployment acceptance. External email, device and bank integrations remain separate configuration/work.
+
+Deployment succeeded on 16 September 2026 at 00:40 Asia/Qatar. All 24 production migration hashes match the release, `/readyz` returns HTTP 200, and authenticated live checks verified Performance review cycles, Helpdesk operations and the Documents renewal queue. [Render deployment](https://dashboard.render.com/web/srv-dajuem0jo6nc73fb36r0/deploys/dep-dakrlnm7bikc73fo8j00).

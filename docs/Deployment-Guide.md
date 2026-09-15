@@ -1,6 +1,6 @@
 # E3 HR free deployment
 
-Updated 15 September 2026. The existing Free service is live at [e3-hr.onrender.com](https://e3-hr.onrender.com). Its source is now `malikamaan12/HR-management`, branch `main`. Release `ee08c0e83ad2ccf28aaa5b67dce27533e34b81ce` is Live in [deployment dep-dak8s7ek1f9s73cdu7j0](https://dashboard.render.com/web/srv-dajuem0jo6nc73fb36r0/deploys/dep-dak8s7ek1f9s73cdu7j0). Build and startup migrations succeeded, `/readyz` returned HTTP 200, and an authenticated browser check verified the Documents screen and renewal request queue with no production documents or requests. Upload and renewal/history were verified with isolated synthetic records; external production file delivery was not re-tested. The full qualification and offer walkthrough used an isolated database because production has no operational teams configured yet. The first administrator and private storage were configured during initial deployment. Resend sender setup remains pending. Automatic deployments are off; publishing a commit alone does not deploy it.
+Updated 16 September 2026. The existing Free service is live at [e3-hr.onrender.com](https://e3-hr.onrender.com), sourced from `malikamaan12/HR-management` on `main`. Combined module release `c2727e773519d1677140175d97512e590dd9253a` succeeded in [deployment dep-dakrlnm7bikc73fo8j00](https://dashboard.render.com/web/srv-dajuem0jo6nc73fb36r0/deploys/dep-dakrlnm7bikc73fo8j00). Render completed the production build and startup migrations. All 24 production migration records match the released SQL; `/readyz` returned HTTP 200. Authenticated read-only acceptance verified Performance cycles, Helpdesk operations and Documents renewal requests. Production has no operational employee records yet. The existing administrator and private storage remain configured; Resend sender setup remains pending. Automatic deployments remain off.
 
 ## Budget and services
 
@@ -50,3 +50,11 @@ Check dashboards for current limits and usage. Quotas can interrupt service; the
 ## Combined module release preparation — 16 September 2026
 
 The release merges the existing live branch into the new HR modules, preserving deployed migrations 0000–0014 and appending 0015–0023. A private read-only snapshot of 88 application/migration tables (362 rows) was saved outside Git. All deployed SQL hashes were verified (LF normalization), the snapshot restored in isolated PGlite, and the full upgraded journal preserved every existing application table row count. No employee, leave, payroll, document or workforce-team data needed legacy reconciliation. TypeScript, production frontend/server builds and 202 tests across 15 suites pass, including the focused correction-fixture rerun. Render deployment acceptance is recorded after the release below.
+
+## Combined module release acceptance — 16 September 2026
+
+- Git revision: `c2727e773519d1677140175d97512e590dd9253a`; manual deployment https://dashboard.render.com/web/srv-dajuem0jo6nc73fb36r0/deploys/dep-dakrlnm7bikc73fo8j00.
+- Render: Deploy succeeded, duration 1m34s; startup logs confirmed Database migrations completed.
+- Production journal: 24 entries, all hashes matched; public readiness: HTTP 200.
+- Authenticated pages: review-cycle empty state and create control, helpdesk knowledge/routing controls and queue, document renewal queue. These read-only checks added no operational data.
+- Live integrations beyond configured database/storage were not activated. Actual company and employee rules are configured in HR Rules and group Calculation Rules.
