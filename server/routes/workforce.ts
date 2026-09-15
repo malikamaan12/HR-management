@@ -4,8 +4,8 @@ import {z} from 'zod';
 import {db} from '../db';
 import {authenticate} from '../middleware/auth';
 import {employees, users, workforceSites as sites, workforceTeams as teams, workforceMembers as members,
-  workforceGrants as grants, workforceShifts as shifts, workforceAssignments as assignments, employeeQualifications as credentials} from '@shared/schema';
-import {workforceAdmin, positiveId, siteInput, teamInput, memberInput, grantInput, shiftInput} from '@shared/workforce';
+  workforceGrants as grants, workforceShifts as shifts, workforceAssignments as assignments, employeeQualifications as credentials, skills, employeeSkills} from '@shared/schema';
+import {workforceAdmin, positiveId, siteInput, teamInput, memberInput, grantInput, shiftInput, workforceSkillInput, workforceQualificationInput} from '@shared/workforce';
 import {WorkforceError,fail,requireWorkforceAdmin,currentGrants,teamAccess,eligible,audit,capacityCount,resolveQualifications,missingQualifications,lockEmployee} from '../services/workforce';
 import rosterRouter from './workforce-rosters';
 import staffingRouter from './workforce-staffing';
@@ -33,6 +33,50 @@ const handle=(fn:(req:Request,res:Response)=>Promise<unknown>)=>async(req:Reques
   }
 };
 const teamFields={id:teams.id,name:teams.name,kind:teams.kind,siteId:teams.siteId,siteName:sites.name,timezone:sites.timezone};
+const skillFields={id:skills.id,name:skills.name,category:skills.category};
+router.get('/skills',handle(async(req,res)=>{
+  if(!workforceAdmin(req.user!.role)) {
+    const teamId=positiveId.parse(req.query.teamId);
+    await db.transaction(tx=>teamAccess(tx,req.user!,teamId,'schedule'));
+  }
+  res.json(await db.select(skillFields).from(skills).orderBy(skills.name,skills.id));
+}));
+router.post('/skills',handle(async(req,res)=>{
+  requireWorkforceAdmin(req.user!);const input=workforceSkillInput.parse(req.body);
+  const result=await db.transaction(async tx=>{
+    // Serialize catalogue creation without changing or deduplicating legacy skill IDs.
+    await tx.execute(sql`LOCK TABLE skills IN SHARE ROW EXCLUSIVE MODE`);
+    const [existing]=await tx.select({id:skills.id}).from(skills).where(sql`lower(trim(${skills.name})) = lower(${input.name})`);
+    if(existing) fail(409,'A skill with this name already exists; choose it from the catalogue');
+    const [row]=await tx.insert(skills).values({...input,category:input.category||null}).returning(skillFields);
+    await audit(tx,req.user!,'skill',row.id,'Skill catalogue entry created');return row;
+  });res.status(201).json(result);
+}));
+router.get('/employees/:employeeId/qualifications',handle(async(req,res)=>{
+  requireWorkforceAdmin(req.user!);const employeeId=positiveId.parse(req.params.employeeId);
+  const [employee]=await db.select({id:employees.id}).from(employees).where(eq(employees.id,employeeId));
+  if(!employee) fail(404,'Employee not found');
+  res.json(await db.select({id:employeeSkills.id,skillId:employeeSkills.skillId,name:skills.name,proficiencyLevel:employeeSkills.proficiencyLevel,
+    certificationExpiry:employeeSkills.certificationExpiry,updatedAt:employeeSkills.updatedAt}).from(employeeSkills).innerJoin(skills,eq(employeeSkills.skillId,skills.id))
+    .where(eq(employeeSkills.employeeId,employeeId)).orderBy(skills.name,employeeSkills.id));
+}));
+router.post('/employees/:employeeId/qualifications',handle(async(req,res)=>{
+  requireWorkforceAdmin(req.user!);const employeeId=positiveId.parse(req.params.employeeId),input=workforceQualificationInput.parse(req.body);
+  const result=await db.transaction(async tx=>{
+    await lockEmployee(tx,employeeId);
+    const [skill]=await tx.select({id:skills.id}).from(skills).where(eq(skills.id,input.skillId)).for('share');
+    if(!skill) fail(400,'Choose an existing skill');
+    const rows=await tx.select().from(employeeSkills).where(and(eq(employeeSkills.employeeId,employeeId),eq(employeeSkills.skillId,input.skillId))).for('update');
+    if(rows.length>1) fail(409,'Duplicate legacy qualifications need reconciliation before editing');
+    const existing=rows[0];
+    if((existing?.updatedAt.toISOString()??null)!==(input.expectedUpdatedAt?new Date(input.expectedUpdatedAt).toISOString():null)) fail(409,'This qualification changed; reload it before saving');
+    const values={proficiencyLevel:input.proficiencyLevel,certificationExpiry:input.certificationExpiry?new Date(input.certificationExpiry):null,
+      updatedAt:new Date(Math.max(Date.now(),(existing?.updatedAt.getTime()??0)+1))};
+    const [row]=existing?await tx.update(employeeSkills).set(values).where(eq(employeeSkills.id,existing.id)).returning({id:employeeSkills.id}):
+      await tx.insert(employeeSkills).values({...values,employeeId,skillId:input.skillId}).returning({id:employeeSkills.id});
+    await audit(tx,req.user!,'employee_qualification',row.id,existing?'Employee qualification updated':'Employee qualification recorded');return row;
+  });res.status(200).json(result);
+}));
 function windowFor(req:Request) {
   const from=req.query.from?new Date(z.string().datetime({offset:true}).parse(req.query.from)):new Date(new Date().toISOString().slice(0,10)+'T00:00:00Z');
   const to=req.query.to?new Date(z.string().datetime({offset:true}).parse(req.query.to)):new Date(+from+14*86400000);
@@ -115,7 +159,9 @@ router.get('/teams/:teamId/dashboard',handle(async(req,res)=>{
     const grantRows=isAdmin?await tx.select({id:grants.id,name:sql<string>`${users.firstName} || ' ' || ${users.lastName}`,permission:grants.permission,startAt:grants.startAt,endAt:grants.endAt,revokedAt:grants.revokedAt})
       .from(grants).innerJoin(users,eq(grants.userId,users.id)).where(and(eq(grants.teamId,teamId),gt(grants.endAt,from))).orderBy(grants.id):[];
     const verified=roster.length?await tx.select().from(credentials).where(and(inArray(credentials.employeeId,[...new Set(roster.map(a=>a.employeeId))]),isNull(credentials.revokedAt))):[];
-    return {team,from,to,canSchedule:isAdmin||permissions.some(g=>g.permission==='schedule'),members:memberRows,grants:grantRows,
+    const requiredIds=[...new Set(visibleShifts.flatMap(s=>s.requiredSkills))];
+    const requiredCatalogue=requiredIds.length?await tx.select(skillFields).from(skills).where(inArray(skills.id,requiredIds)):[];
+    return {team,from,to,canSchedule:isAdmin||permissions.some(g=>g.permission==='schedule'),members:memberRows,grants:grantRows,skills:requiredCatalogue,
       shifts:visibleShifts.map(s=>({...s,createdBy:undefined,canSchedule:isAdmin||permissions.some(g=>g.permission==='schedule' && g.startAt<=s.startAt && g.endAt>=s.endAt),assignments:roster.filter(a=>a.shiftId===s.id).map(a=>({...a,missingQualifications:['offered','accepted'].includes(a.status)&&s.endAt>new Date()?missingQualifications(s,team.timezone,verified.filter(c=>c.employeeId===a.employeeId)):[]}))}))};
   });res.json(result);
 }));
@@ -123,6 +169,10 @@ router.post('/teams/:teamId/shifts',handle(async(req,res)=>{
   const teamId=positiveId.parse(req.params.teamId),input=shiftInput.parse(req.body);
   if(input.startAt<=new Date()) fail(400,'New shifts must start in the future');
   const result=await db.transaction(async tx=>{await teamAccess(tx,req.user!,teamId,'schedule',input);
+    if(input.requiredSkills.length) {
+      const found=await tx.select({id:skills.id}).from(skills).where(inArray(skills.id,input.requiredSkills)).for('share');
+      if(found.length!==input.requiredSkills.length) fail(400,'One or more required skills no longer exist; reload the catalogue');
+    }
     const {qualificationIds,...details}=input;const requiredQualifications=await resolveQualifications(tx,qualificationIds);
     const [row]=await tx.insert(shifts).values({...details,requiredQualifications,teamId,createdBy:req.user!.userId}).returning();await audit(tx,req.user!,'shift',row.id,'Shift created');return row;});
   res.status(201).json(result);
@@ -144,12 +194,14 @@ router.post('/shifts/:id/offers',handle(async(req,res)=>{
 }));
 router.get('/my-assignments',handle(async(req,res)=>{
   const {from,to}=windowFor(req);
-  const rows=await db.select({...replacementFields,shiftId:shifts.id,employeeId:employees.id,requiredQualifications:shifts.requiredQualifications,id:assignments.id,status:assignments.status,cancellationReason:assignments.cancellationReason,replacesId:shifts.replacesId,changeReason:shifts.changeReason,role:shifts.role,station:shifts.station,startAt:shifts.startAt,endAt:shifts.endAt,breakMinutes:shifts.breakMinutes,
+  const rows=await db.select({...replacementFields,requiredSkills:shifts.requiredSkills,shiftId:shifts.id,employeeId:employees.id,requiredQualifications:shifts.requiredQualifications,id:assignments.id,status:assignments.status,cancellationReason:assignments.cancellationReason,replacesId:shifts.replacesId,changeReason:shifts.changeReason,role:shifts.role,station:shifts.station,startAt:shifts.startAt,endAt:shifts.endAt,breakMinutes:shifts.breakMinutes,
     teamName:teams.name,siteName:sites.name,timezone:sites.timezone,kind:teams.kind})
     .from(assignments).innerJoin(employees,eq(assignments.employeeId,employees.id)).innerJoin(shifts,eq(assignments.shiftId,shifts.id))
     .innerJoin(teams,eq(shifts.teamId,teams.id)).innerJoin(sites,eq(teams.siteId,sites.id)).where(and(eq(employees.userId,req.user!.userId),lt(shifts.startAt,to),gt(shifts.endAt,from))).orderBy(shifts.startAt);
   const verified=rows.length?await db.select().from(credentials).where(and(inArray(credentials.employeeId,[...new Set(rows.map(a=>a.employeeId))]),isNull(credentials.revokedAt))):[];
-  res.json(rows.map(row=>({...row,employeeId:undefined,missingQualifications:['offered','accepted'].includes(row.status)&&row.endAt>new Date()?missingQualifications(row,row.timezone,verified.filter(c=>c.employeeId===row.employeeId)):[]})));
+  const requiredIds=[...new Set(rows.flatMap(row=>row.requiredSkills))];
+  const catalogue=requiredIds.length?await db.select(skillFields).from(skills).where(inArray(skills.id,requiredIds)):[];
+  res.json(rows.map(row=>({...row,requiredSkills:row.requiredSkills.map(id=>catalogue.find(skill=>skill.id===id)??{id,name:`Unavailable skill #${id}`,category:null}),employeeId:undefined,missingQualifications:['offered','accepted'].includes(row.status)&&row.endAt>new Date()?missingQualifications(row,row.timezone,verified.filter(c=>c.employeeId===row.employeeId)):[]})));
 }));
 router.post('/assignments/:id/respond',handle(async(req,res)=>{
   const id=positiveId.parse(req.params.id),{decision}=z.object({decision:z.enum(['accepted','declined'])}).strict().parse(req.body);

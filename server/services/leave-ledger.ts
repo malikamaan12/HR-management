@@ -3,6 +3,7 @@ import { employees, hrRules, leaveLedger, leaves, leaveSnapshots, workforceAssig
 import { leaveRule, dateRange, dayAt } from '@shared/hr-rules';
 import { attendancePolicy, ruleFor, businessToday } from './hr-rules';
 import { fail, type WorkforceTransaction } from './workforce';
+import { calculationSnapshot } from './calculation-rules';
 export async function balance(tx: WorkforceTransaction, employeeId: number, type: string, year: number) { const [row] = await tx.select({ units: sql<number> `coalesce(sum(${leaveLedger.units}),0)::int` }).from(leaveLedger).where(and(eq(leaveLedger.employeeId, employeeId), eq(leaveLedger.leaveType, type), eq(leaveLedger.year, year))); return row.units; }
 export async function reserved(tx: WorkforceTransaction, employeeId: number, type: string, year: number, excludeId?: number) { const rows = await tx.select({ id: leaves.id, days: leaveSnapshots.daysByYear }).from(leaves).innerJoin(leaveSnapshots, eq(leaves.id, leaveSnapshots.leaveId)).where(and(eq(leaves.employeeId, employeeId), eq(leaves.leaveType, type), eq(leaves.status, 'pending'), eq(leaveSnapshots.balanceRequired, true))); return rows.filter(r => r.id !== excludeId).reduce((sum, r) => sum + (r.days[String(year)] || 0) * 100, 0); }
 export async function accrue(tx: WorkforceTransaction, employee: typeof employees.$inferSelect, type: string, year: number) {
@@ -72,10 +73,14 @@ export async function leavePlan(tx: WorkforceTransaction, employee: typeof emplo
             fail(400, 'Minimum service requirement has not been met');
         const calendar = await attendancePolicy(tx, employee, day);
         const working = employee.workSchedule === 'shift_based' ? assigned.some(s => dayAt(s.start, s.timezone) === day) : calendar.workingDays.includes(new Date(day).getUTCDay());
-        const counted = working && !calendar.holidays.some(h => h.date === day);
+        const calculation = await calculationSnapshot(employee, day, tx);
+        const counting = calculation.rules.leave;
+        if (dates.length > counting.maxCalendarDays)
+            fail(400, 'Leave exceeds the configured calendar-day limit');
+        const counted = (counting.countMethod === 'calendar_days' || working) && !calendar.holidays.some(h => h.date === day) && !(counting.excludeHolidays && counting.holidays.some(h => h.date === day));
         if (counted)
             daysByYear[day.slice(0, 4)] = (daysByYear[day.slice(0, 4)] || 0) + 1;
-        rules.push({ day, counted, leaveRuleId: rule.id, leavePolicy: policy, calendar });
+        rules.push({ day, counted, leaveRuleId: rule.id, leavePolicy: policy, calendar, calculation });
     }
     const totalDays = Object.values(daysByYear).reduce((a, b) => a + b, 0);
     if (totalDays < 1)

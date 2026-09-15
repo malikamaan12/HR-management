@@ -22,7 +22,12 @@ export async function moduleAccess(req:Request,res:Response,next:NextFunction){
   if(module){
     const permission=read?'read':req.method==='DELETE'?'delete':req.method==='POST'?'create':'update';
     const scope=getAccessScope(req.user.role,module);
-    if(!hasPermission(req.user.role,module,permission)||!(scope==='all'||(module==='event_staff_management'&&scope==='event_staff')))
+    // Performance and training handlers apply the employee row scope
+    // themselves, so self/team/department users may reach them. Legacy
+    // organization-wide endpoints remain fail-closed unless their scope is
+    // all (or the event-staff scope explicitly supported by the route).
+    const handlerScoped = module === 'performance_management' || module === 'training_development';
+    if(!hasPermission(req.user.role,module,permission)||(!handlerScoped && !(scope==='all'||(module==='event_staff_management'&&scope==='event_staff'))))
       return res.status(403).json({message:'Organization-wide management access is required for this endpoint'});
   }
   try{

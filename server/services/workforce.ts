@@ -1,7 +1,7 @@
 import {and, eq, gt, gte, inArray, isNull, lt, lte, ne, notInArray, sql} from 'drizzle-orm';
 import {db} from '../db';
 import {employees, leaves, shiftSchedules, eventStaffAssignments, workforceAssignments as assignments,
-  workforceGrants as grants, workforceMembers as members, workforceShifts as shifts, workforceTeams as teams, workforceSites as sites, activityLogs,
+  workforceGrants as grants, workforceMembers as members, workforceShifts as shifts, workforceTeams as teams, workforceSites as sites, activityLogs, employeeSkills,
   workforceUnavailable as unavailable, workforceQualifications as qualifications, employeeQualifications as credentials} from '@shared/schema';
 import {localDate, workforceAdmin} from '@shared/workforce';
 import type {TokenPayload} from './auth';
@@ -62,6 +62,12 @@ export async function eligible(tx:WorkforceTransaction, employeeId:number, shift
   const [leave] = await tx.select({id:leaves.id}).from(leaves).where(and(eq(leaves.employeeId,employeeId),eq(leaves.status,'approved'),
     lte(leaves.startDate,endDate),gte(leaves.endDate,startDate))).limit(1);
   if (leave) fail(409,'Employee has approved leave during this shift');
+  if (shift.requiredSkills?.length) {
+    const skills = await tx.select({skillId: employeeSkills.skillId, certificationExpiry: employeeSkills.certificationExpiry})
+      .from(employeeSkills).where(and(eq(employeeSkills.employeeId, employeeId), inArray(employeeSkills.skillId, shift.requiredSkills)));
+    const valid = new Set(skills.filter(skill => !skill.certificationExpiry || skill.certificationExpiry >= shift.endAt).map(skill => skill.skillId));
+    if (shift.requiredSkills.some(skillId => !valid.has(skillId))) fail(409,'Employee does not hold all skills required for this shift');
+  }
   await assertNoWorkforceConflict(tx,employeeId,shift.startAt,shift.endAt,excludeId);
   const [legacyShift] = await tx.select({id:shiftSchedules.id}).from(shiftSchedules).where(and(eq(shiftSchedules.employeeId,employeeId),
     lt(shiftSchedules.startTime,shift.endAt),gt(shiftSchedules.endTime,shift.startAt))).limit(1);

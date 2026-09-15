@@ -1,3 +1,4 @@
+import { DocumentRenewalQueue } from '@/components/documents/DocumentRenewalQueue';
 import type { ApiDocument } from '@/lib/api-types';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -87,6 +88,7 @@ export default function Documents() {
 
   return (
     <div className="space-y-6">
+      <DocumentRenewalQueue />
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-xl font-poppins font-semibold">Document Management</CardTitle>

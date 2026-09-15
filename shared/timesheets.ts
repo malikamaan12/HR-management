@@ -1,3 +1,4 @@
+import type {CalculationSnapshot} from './calculation-rules';
 import {z} from 'zod';
 import type {UserRole} from './schema';
 import {getAccessScope,hasPermission} from './permissions';
@@ -14,7 +15,7 @@ export const reviewInput=z.discriminatedUnion('decision',[
   z.object({version:z.number().int().positive(),decision:z.literal('returned'),reason:z.string().trim().min(5).max(2000)}).strict(),
 ]);
 export interface TimeAssignment {assignmentId:number;employeeId:number;employeeName:string;teamId:number;teamName:string;siteName:string;timezone:string;role:string;startAt:string;endAt:string;plannedBreakMinutes:number}
-export interface TimesheetRow extends TimeAssignment {id:number;status:TimesheetStatus;version:number;actualStartAt:string;actualEndAt:string;breakMinutes:number;workedMinutes:number;employeeNote:string;payableMinutes:number|null;policyReference:string|null;reviewNote:string|null;reviewedAt:string|null;submittedAt:string|null;payrollId:number|null;lockedAt:string|null;updatedAt:string}
+export interface TimesheetRow extends TimeAssignment {calculationSnapshot?:CalculationSnapshot|null;id:number;status:TimesheetStatus;version:number;actualStartAt:string;actualEndAt:string;breakMinutes:number;workedMinutes:number;employeeNote:string;payableMinutes:number|null;policyReference:string|null;reviewNote:string|null;reviewedAt:string|null;submittedAt:string|null;payrollId:number|null;lockedAt:string|null;updatedAt:string}
 export interface TimesheetConfig {canReview:boolean;canPayrollRead:boolean;canPayrollLock:boolean}
 export interface TimesheetList {items:TimesheetRow[];total:number;page:number;limit:number}
 export interface TimeSnapshot {status:TimesheetStatus;actualStartAt:string;actualEndAt:string;breakMinutes:number;workedMinutes:number;payableMinutes:number|null;policyReference:string|null;employeeNote:string;reviewNote:string|null;payrollId:number|null}

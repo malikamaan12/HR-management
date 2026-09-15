@@ -260,6 +260,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/employees/:employeeId/leave-balances', async (req: Request, res: Response) => {
     try {
       const employeeId = parseInt(req.params.employeeId);
+      const [visible] = await db.select({ id: employees.id }).from(employees)
+        .where(and(eq(employees.id, employeeId), employeeScope(req.user!, 'leave_absence_management')));
+      if (!visible) return res.status(404).json({ message: 'Employee not found' });
       const leaveBalances = await storage.getLeaveBalances(employeeId);
       res.status(200).json(leaveBalances);
     } catch (error) {
@@ -275,6 +278,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!leaveBalance) {
         return res.status(404).json({ message: 'Leave balance not found' });
       }
+      const [visible] = await db.select({ id: employees.id }).from(employees)
+        .where(and(eq(employees.id, leaveBalance.employeeId), employeeScope(req.user!, 'leave_absence_management')));
+      if (!visible) return res.status(404).json({ message: 'Leave balance not found' });
       
       res.status(200).json(leaveBalance);
     } catch (error) {
@@ -285,6 +291,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/leave-balances', async (req: Request, res: Response) => {
     try {
       const leaveBalanceData = insertLeaveBalanceSchema.parse(req.body);
+      const [visible] = await db.select({ id: employees.id }).from(employees)
+        .where(and(eq(employees.id, leaveBalanceData.employeeId), employeeScope(req.user!, 'leave_absence_management', 'create')));
+      if (!visible) return res.status(403).json({ message: 'You cannot create this leave balance' });
       const newLeaveBalance = await storage.createLeaveBalance(leaveBalanceData);
       
       // Log activity
@@ -315,6 +324,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!leaveBalance) {
         return res.status(404).json({ message: 'Leave balance not found' });
       }
+      const [visible] = await db.select({ id: employees.id }).from(employees)
+        .where(and(eq(employees.id, leaveBalance.employeeId), employeeScope(req.user!, 'leave_absence_management', 'update')));
+      if (!visible) return res.status(403).json({ message: 'You cannot update this leave balance' });
       
       const updatedLeaveBalance = await storage.updateLeaveBalance(id, leaveBalanceData);
       
@@ -341,6 +353,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/leaves/:leaveId/supporting-documents', async (req: Request, res: Response) => {
     try {
       const leaveId = parseInt(req.params.leaveId);
+      const [visible] = await db.select({ id: leaves.id }).from(leaves).innerJoin(employees, eq(leaves.employeeId, employees.id))
+        .where(and(eq(leaves.id, leaveId), employeeScope(req.user!, 'leave_absence_management')));
+      if (!visible) return res.status(404).json({ message: 'Leave request not found' });
       const documents = await storage.getLeaveSupportingDocuments(leaveId);
       res.status(200).json(documents);
     } catch (error) {
@@ -351,6 +366,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/leave-supporting-documents', async (req: Request, res: Response) => {
     try {
       const documentData = insertLeaveSupportingDocumentSchema.parse(req.body);
+      const [visible] = await db.select({ id: leaves.id }).from(leaves).innerJoin(employees, eq(leaves.employeeId, employees.id))
+        .where(and(eq(leaves.id, documentData.leaveId), employeeScope(req.user!, 'leave_absence_management', 'create')));
+      if (!visible) return res.status(403).json({ message: 'You cannot add supporting documents to this leave request' });
       const newDocument = await storage.createLeaveSupportingDocument(documentData);
       
       // Log activity
@@ -376,6 +394,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/leaves/:leaveId/approvals', async (req: Request, res: Response) => {
     try {
       const leaveId = parseInt(req.params.leaveId);
+      const [visible] = await db.select({ id: leaves.id }).from(leaves).innerJoin(employees, eq(leaves.employeeId, employees.id))
+        .where(and(eq(leaves.id, leaveId), employeeScope(req.user!, 'leave_absence_management')));
+      if (!visible) return res.status(404).json({ message: 'Leave request not found' });
       const approvals = await storage.getLeaveApprovals(leaveId);
       res.status(200).json(approvals);
     } catch (error) {
@@ -386,6 +407,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/leave-approvals', async (req: Request, res: Response) => {
     try {
       const approvalData = insertLeaveApprovalSchema.parse(req.body);
+      const [visible] = await db.select({ id: leaves.id }).from(leaves).innerJoin(employees, eq(leaves.employeeId, employees.id))
+        .where(and(eq(leaves.id, approvalData.leaveId), employeeScope(req.user!, 'leave_absence_management', 'approve')));
+      if (!visible) return res.status(403).json({ message: 'You cannot create this leave approval' });
       const newApproval = await storage.createLeaveApproval(approvalData);
       
       // Log activity
@@ -1051,6 +1075,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Role & Permission Management Routes
   app.use('/api/role-management', roleManagementRoutes);
+
   
   // Training & Skills Routes
   app.use('/api/training', trainingRoutes);

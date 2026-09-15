@@ -6,6 +6,8 @@ import { ruleFor, scopedEmployee, audit, businessToday } from './hr-rules';
 import { fail, type WorkforceTransaction } from './workforce';
 import { employeeScope } from './access';
 import type { TokenPayload } from './auth';
+import { calculationSnapshot } from './calculation-rules';
+import { calculatePolicyPayroll, defaultCalculationRules, type CalculationRules } from '@shared/calculation-rules';
 export async function payrollRecord(tx: WorkforceTransaction, user: TokenPayload, id: number, permission: 'read' | 'update' | 'approve' = 'read') {
     // Employee first, then payroll and time records, matching timesheet writes.
     const [initial] = await tx.select({ employeeId: payroll.employeeId }).from(payroll).innerJoin(employees, eq(payroll.employeeId, employees.id)).where(and(eq(payroll.id, id), employeeScope(user, 'payroll_management', permission)));
@@ -113,7 +115,8 @@ export async function generatePayroll(tx: WorkforceTransaction, user: TokenPaylo
         for (const [k, v] of Object.entries(config.deductions))
             deductions[k] = (deductions[k] || 0) + moneyCents(v);
     }
-    const amounts = payrollAmounts(moneyText(Math.round(basicNumerator / dates.length)), { ...Object.fromEntries(Object.entries(allowances).map(([k, v]) => [k, moneyText(Math.round(v / dates.length))])), 'Approved time': moneyText(timeCents) }, Object.fromEntries(Object.entries(deductions).map(([k, v]) => [k, moneyText(Math.round(v / dates.length))])));
+    const calculation = await calculationSnapshot(employee, period.start, tx);
+    const amounts = { ...payrollAmounts(moneyText(Math.round(basicNumerator / dates.length)), { ...Object.fromEntries(Object.entries(allowances).map(([k, v]) => [k, moneyText(Math.round(v / dates.length))])), 'Approved time': moneyText(timeCents) }, Object.fromEntries(Object.entries(deductions).map(([k, v]) => [k, moneyText(Math.round(v / dates.length))])), calculation.rules.payroll), calculationSnapshot: calculation };
     const previousLines = duplicate ? await tx.select().from(payrollTimeLines).where(eq(payrollTimeLines.payrollId, duplicate.record.id)) : [];
     const [record] = replace ? await tx.update(payroll).set({ ...amounts, status: 'draft', wpsReference: null, processedBy: null, processedAt: null, updatedAt: new Date() }).where(eq(payroll.id, replace.id)).returning() : await tx.insert(payroll).values({ ...input, ...amounts, status: 'draft' }).returning();
     const nextVersion = (duplicate?.review?.version || 0) + 1;
@@ -127,8 +130,8 @@ export async function generatePayroll(tx: WorkforceTransaction, user: TokenPaylo
     return { ...record, review };
 }
 export async function addHistory(tx: WorkforceTransaction, user: TokenPayload, review: typeof payrollReviews.$inferSelect, action: string, reason: string, patch: Partial<typeof payrollReviews.$inferInsert> = {}) { const version = review.version + 1; const [record] = await tx.select().from(payroll).where(eq(payroll.id, review.payrollId)); const lines = await tx.select().from(payrollTimeLines).where(eq(payrollTimeLines.payrollId, review.payrollId)); await tx.update(payrollReviews).set({ ...patch, version, history: [...review.history, { action, actorId: user.userId, reason, at: new Date().toISOString(), version, snapshot: { record, lines, adjustments: patch.adjustments || review.adjustments } }] }).where(eq(payrollReviews.payrollId, review.payrollId)); await audit(tx, user, 'payroll', review.payrollId, action); }
-export function payrollAmounts(...args: Parameters<typeof calculatePayroll>) { try {
-    return calculatePayroll(...args);
+export function payrollAmounts(basic: Parameters<typeof calculatePayroll>[0], allowances: Parameters<typeof calculatePayroll>[1], deductions: Parameters<typeof calculatePayroll>[2], rounding: CalculationRules['payroll'] = defaultCalculationRules.payroll) { try {
+    return calculatePolicyPayroll(basic, allowances, deductions, rounding);
 }
 catch (error) {
     fail(400, error instanceof Error ? error.message : 'Invalid payroll amounts');

@@ -75,65 +75,73 @@
     {
       "idx": 10,
       "version": "7",
-      "when": 1789488000000,
-      "tag": "0010_attendance_leave_rules",
+      "when": 1789442400000,
+      "tag": "0010_calculation_rules",
       "breakpoints": true
     },
     {
       "idx": 11,
       "version": "7",
-      "when": 1789488001000,
-      "tag": "0011_payroll_review",
+      "when": 1789446000000,
+      "tag": "0011_employee_lifecycle",
       "breakpoints": true
     },
     {
       "idx": 12,
       "version": "7",
-      "when": 1789488002000,
-      "tag": "0012_employee_lifecycle",
+      "when": 1789449600000,
+      "tag": "0012_document_versions",
       "breakpoints": true
     },
     {
       "idx": 13,
       "version": "7",
-      "when": 1789488003000,
-      "tag": "0013_hiring_versions",
+      "when": 1789453200000,
+      "tag": "0013_workforce_shift_skills",
       "breakpoints": true
     },
     {
       "idx": 14,
       "version": "7",
-      "when": 1789488004000,
-      "tag": "0014_workforce_rosters",
+      "when": 1789456800000,
+      "tag": "0014_document_renewal_requests",
       "breakpoints": true
     },
     {
-      "idx": 15,
-      "version": "7",
-      "when": 1789488005000,
-      "tag": "0015_workforce_staffing",
-      "breakpoints": true
+      "idx": 15, "version": "7", "when": 1789488000000,
+      "tag": "0015_attendance_leave_rules", "breakpoints": true
     },
     {
-      "idx": 16,
-      "version": "7",
-      "when": 1789488006000,
-      "tag": "0016_workforce_operations",
-      "breakpoints": true
+      "idx": 16, "version": "7", "when": 1789488001000,
+      "tag": "0016_payroll_review", "breakpoints": true
     },
     {
-      "idx": 17,
-      "version": "7",
-      "when": 1789488007000,
-      "tag": "0017_workforce_renewals",
-      "breakpoints": true
+      "idx": 17, "version": "7", "when": 1789488002000,
+      "tag": "0017_employee_lifecycle", "breakpoints": true
     },
     {
-      "idx": 18,
-      "version": "7",
-      "when": 1789488008000,
-      "tag": "0018_performance_helpdesk",
-      "breakpoints": true
+      "idx": 18, "version": "7", "when": 1789488003000,
+      "tag": "0018_hiring_versions", "breakpoints": true
+    },
+    {
+      "idx": 19, "version": "7", "when": 1789488004000,
+      "tag": "0019_workforce_rosters", "breakpoints": true
+    },
+    {
+      "idx": 20, "version": "7", "when": 1789488005000,
+      "tag": "0020_workforce_staffing", "breakpoints": true
+    },
+    {
+      "idx": 21, "version": "7", "when": 1789488006000,
+      "tag": "0021_workforce_operations", "breakpoints": true
+    },
+    {
+      "idx": 22, "version": "7", "when": 1789488007000,
+      "tag": "0022_workforce_renewals", "breakpoints": true
+    },
+    {
+      "idx": 23, "version": "7", "when": 1789488008000,
+      "tag": "0023_performance_helpdesk", "breakpoints": true
     }
   ]
 }

@@ -6,13 +6,20 @@ import { eq } from 'drizzle-orm';
 import express from 'express';
 import type { Server } from 'node:http';
 import bcrypt from 'bcryptjs';
-import { employees, users, activityLogs, hrRules, type InsertEmployee } from '../shared/schema';
+import { employees, users, activityLogs, hrRules, employeeLifecycleEvents, documents, documentVersions, type InsertEmployee } from '../shared/schema';
 const context = vi.hoisted(() => ({ db: null as any }));
 vi.mock('../server/db', () => ({ get db() { return context.db; }, pool: {} }));
+const files = vi.hoisted(() => ({ upload: vi.fn(), remove: vi.fn(), download:vi.fn() }));
+vi.mock('../server/services/r2', () => ({
+  uploadDocument: files.upload, deleteDocumentObject: files.remove,
+  validateDocumentFile: vi.fn(), documentDownloadUrl: files.download,
+  StorageUnavailableError: class extends Error {},
+}));
 import router from '../server/routes/employeeRecords';
 import { authService } from '../server/services/auth';
 import settingsRouter from '../server/routes/settings';
 import leaveRouter from '../server/routes/leaveRequests';
+import documentRouter from '../server/routes/documents';
 import {defaultCompanySettings} from '../shared/settings';
 
 let pg: PGlite, server: Server, base: string;
@@ -40,15 +47,220 @@ beforeAll(async () => {
   pg = new PGlite();
   for (const file of readdirSync(new URL('../migrations', import.meta.url)).filter(n => n.endsWith('.sql')).sort()) await pg.exec(readFileSync(new URL('../migrations/' + file, import.meta.url), 'utf8'));
   context.db = drizzle(pg);
-  const app = express(); app.use(express.json()); app.use('/employees', router); app.use('/settings',settingsRouter); app.use('/leaves',leaveRouter);
+  const app = express(); app.use(express.json()); app.use('/employees', router); app.use('/settings',settingsRouter); app.use('/leaves',leaveRouter); app.use('/documents',documentRouter);
   server = app.listen(0, '127.0.0.1'); await new Promise<void>(resolve => server.once('listening', resolve));
   base = 'http://127.0.0.1:' + (server.address() as { port: number }).port;
 });
-beforeEach(async () => { await pg.exec('TRUNCATE users, employees, activity_logs, app_settings RESTART IDENTITY CASCADE'); });
+beforeEach(async () => {
+  await pg.exec('TRUNCATE users, employees, activity_logs, app_settings RESTART IDENTITY CASCADE');
+  files.upload.mockReset().mockResolvedValue('documents/1/test.pdf'); files.remove.mockReset().mockResolvedValue(undefined);
+  files.download.mockReset().mockResolvedValue('https://files.example.test/signed');
+});
 afterAll(async () => { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); await pg.close(); });
 
 test('employee endpoints require a valid session', async () => {
   for (const path of ['/employees', '/employees/directory', '/employees/1', '/employees/1/activity']) expect((await request('', path)).status).toBe(401);
+});
+
+test('lifecycle form payload records history without an employee ID and protects private notes', async () => {
+  const admin = await account();
+  const manager = await account('manager'); const lead = await create(1, { userId: manager.id });
+  const self = await account('permanent_employee'); const employee = await create(2, { userId: self.id, reportingManagerId: lead.id });
+  const payload = { eventType: 'promotion', effectiveDate: '2026-05-02', reason: 'Approved promotion review', notes: 'Private employment notes', expectedVersion: employee.recordVersion };
+  const result = await request(admin.token, `/employees/${employee.id}/lifecycle`, 'POST', payload);
+  expect(result.status).toBe(201); expect(result.body.employee.recordVersion).toBe(employee.recordVersion + 1);
+  expect((await request(admin.token, `/employees/${employee.id}/lifecycle`, 'POST', payload)).status).toBe(409);
+  expect((await request(manager.token, `/employees/${employee.id}/lifecycle`)).status).toBe(403);
+  expect((await request(self.token, `/employees/${employee.id}/lifecycle`)).body.history[0].notes).toBe(payload.notes);
+  expect((await request(self.token, `/employees/${employee.id}/lifecycle`, 'POST', payload)).status).toBe(403);
+  expect((await context.db.select().from(employeeLifecycleEvents))).toHaveLength(1);
+});
+
+test('termination disables linked login and sessions; future and stale status changes are rejected', async () => {
+  const admin = await account(); const self = await account('permanent_employee');
+  const employee = await create(1, { userId: self.id });
+  const payload = { eventType: 'termination', effectiveDate: '2026-05-03', reason: 'Employment ended by agreement', expectedVersion: employee.recordVersion };
+  const future = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
+  expect((await request(admin.token, `/employees/${employee.id}/lifecycle`, 'POST', { ...payload, effectiveDate: future })).status).toBe(400);
+  expect((await authService.login(self.username, password)).accessToken).toBeTruthy();
+  const ended = await request(admin.token, `/employees/${employee.id}/lifecycle`, 'POST', payload);
+  expect(ended.status).toBe(201); expect(ended.body.employee.status).toBe('inactive');
+  expect((await request(self.token, `/employees/${employee.id}`)).status).toBe(401);
+  await expect(authService.login(self.username, password)).rejects.toThrow(/inactive/);
+  const reactivated = await request(admin.token, `/employees/${employee.id}/lifecycle`, 'POST', { ...payload, eventType: 'reactivation', effectiveDate: '2026-05-04', expectedVersion: ended.body.employee.recordVersion });
+  expect(reactivated.status).toBe(201); expect(reactivated.body.employee.status).toBe('active');
+  await expect(authService.login(self.username, password)).rejects.toThrow(/inactive/);
+});
+
+test('lifecycle history and status changes roll back together when auditing fails', async () => {
+  const admin = await account(); const employee = await create();
+  await pg.exec("CREATE FUNCTION reject_lifecycle_audit() RETURNS trigger AS $$ BEGIN IF NEW.entity_type = 'employee_lifecycle' THEN RAISE EXCEPTION 'test audit failure'; END IF; RETURN NEW; END; $$ LANGUAGE plpgsql; CREATE TRIGGER reject_lifecycle_audit BEFORE INSERT ON activity_logs FOR EACH ROW EXECUTE FUNCTION reject_lifecycle_audit();");
+  try {
+    expect((await request(admin.token, `/employees/${employee.id}/lifecycle`, 'POST', { eventType: 'termination', effectiveDate: '2026-05-03', reason: 'Test rollback guarantee', expectedVersion: employee.recordVersion })).status).toBe(500);
+    expect((await context.db.select().from(employeeLifecycleEvents))).toHaveLength(0);
+    expect((await context.db.select().from(employees).where(eq(employees.id, employee.id)))[0].status).toBe('active');
+  } finally { await pg.exec('DROP TRIGGER reject_lifecycle_audit ON activity_logs; DROP FUNCTION reject_lifecycle_audit();'); }
+});
+
+async function uploadDocumentFor(token: string, employeeId: number) {
+  const body = new FormData();
+  for (const [key, value] of Object.entries({ employeeId: String(employeeId), documentType: 'passport', documentNumber: 'TEST-123', issueDate: '2026-01-01', expiryDate: '2027-01-01' })) body.append(key, value);
+  body.append('document', new Blob(['%PDF-test'], { type: 'application/pdf' }), 'test.pdf');
+  const response = await fetch(base + '/documents', { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body });
+  return { status: response.status, body: await response.json() as any };
+}
+
+test('document upload records an atomic initial snapshot with scoped version access', async () => {
+  const admin = await account(); const self = await account('permanent_employee');
+  const unrelated = await account('permanent_employee', 'unrelated');
+  const employee = await create(1, { userId: self.id }); await create(2, { userId: unrelated.id });
+  const uploaded = await uploadDocumentFor(admin.token, employee.id);
+  expect(uploaded.status).toBe(201);
+  const history = await request(self.token, `/documents/${uploaded.body.id}/versions`);
+  expect(history.status).toBe(200); expect(history.body).toHaveLength(1);
+  expect(history.body[0]).toMatchObject({ version: 1, createdBy: admin.id, snapshot: { documentNumber: 'TEST-123', employeeId: employee.id } });
+  expect((await request(unrelated.token, `/documents/${uploaded.body.id}/versions`)).status).toBe(404);
+});
+
+test('failed snapshot persistence rolls back the document and removes the uploaded object', async () => {
+  const admin = await account(); const employee = await create();
+  await pg.exec("CREATE FUNCTION reject_document_version() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'test version failure'; END; $$ LANGUAGE plpgsql; CREATE TRIGGER reject_document_version BEFORE INSERT ON document_versions FOR EACH ROW EXECUTE FUNCTION reject_document_version();");
+  try {
+    expect((await uploadDocumentFor(admin.token, employee.id)).status).toBe(500);
+    expect((await context.db.select().from(documents))).toHaveLength(0);
+    expect((await context.db.select().from(documentVersions))).toHaveLength(0);
+    expect(files.remove).toHaveBeenCalledWith('documents/1/test.pdf');
+  } finally { await pg.exec('DROP TRIGGER reject_document_version ON document_versions; DROP FUNCTION reject_document_version();'); }
+});
+
+async function replaceDocumentFor(token:string,id:number,overrides:Record<string,string>={},includeFile=true,endpoint='replace') {
+  const body=new FormData();
+  for(const [key,value] of Object.entries({documentNumber:'RENEWED-456',issueDate:'2027-01-01',expiryDate:'2028-01-01',reason:'Passport renewed by authority',expectedVersion:'1',...overrides}))body.append(key,value);
+  if(includeFile)body.append('document',new Blob(['%PDF-new'],{type:'application/pdf'}),'renewed.pdf');
+  const response=await fetch(base+`/documents/${id}/${endpoint}`,{method:'POST',headers:{Authorization:`Bearer ${token}`},body});
+  return {status:response.status,body:await response.json() as any};
+}
+test('renewal requests leave the current document untouched until an independent approval',async()=>{
+  const admin=await account(),self=await account('permanent_employee');const employee=await create(1,{userId:self.id});
+  const original=await uploadDocumentFor(admin.token,employee.id);files.upload.mockResolvedValue('documents/1/proposed.pdf');
+  const submitted=await replaceDocumentFor(self.token,original.body.id,{},true,'renewal-requests');expect(submitted.status).toBe(201);
+  expect((await request(self.token,`/documents/${original.body.id}`)).body.documentNumber).toBe('TEST-123');
+  const queue=await request(admin.token,'/documents/renewal-requests');expect(queue.body.items[0].canReview).toBe(true);
+  const path=`/documents/renewal-requests/${submitted.body.id}/decision`;
+  expect((await request(self.token,path,'POST',{decision:'approved',reason:'Self approval attempt'})).status).toBe(403);
+  expect((await request(admin.token,path,'POST',{decision:'approved',reason:'Authority details checked'})).status).toBe(200);
+  expect((await request(admin.token,path,'POST',{decision:'approved',reason:'Repeated approval attempt'})).status).toBe(409);
+  const current=(await request(self.token,`/documents/${original.body.id}`)).body;expect(current).toMatchObject({documentNumber:'RENEWED-456',currentVersion:2,documentFile:'documents/1/proposed.pdf'});
+  const history=(await request(self.token,`/documents/${original.body.id}/versions`)).body;expect(history[0].snapshot).toMatchObject({renewalRequestId:submitted.body.id,requestedBy:self.id,reviewReason:'Authority details checked'});
+  expect(history[1].snapshot.documentFile).toBe('documents/1/test.pdf');expect(files.remove).not.toHaveBeenCalled();
+});
+test('renewal proposals are private, department scoped, and downloadable only by requester or reviewers',async()=>{
+  const admin=await account(),self=await account('permanent_employee'),other=await account('permanent_employee','other'),hr=await account('hr_manager');
+  const employee=await create(1,{userId:self.id,department:'Finance'});await create(2,{userId:other.id});
+  const original=await uploadDocumentFor(admin.token,employee.id);const submitted=await replaceDocumentFor(self.token,original.body.id,{},true,'renewal-requests');
+  for(const token of [other.token,hr.token]){
+    expect((await request(token,'/documents/renewal-requests')).body.items).toEqual([]);
+    expect((await request(token,`/documents/renewal-requests/${submitted.body.id}/download`)).status).toBe(404);
+    expect((await request(token,`/documents/renewal-requests/${submitted.body.id}/decision`,'POST',{decision:'approved',reason:'Unauthorized review'})).status).toBe(404);
+  }
+  const response=await fetch(base+`/documents/renewal-requests/${submitted.body.id}/download`,{headers:{Authorization:`Bearer ${self.token}`},redirect:'manual'});expect(response.status).toBe(302);expect(response.headers.get('cache-control')).toBe('no-store');
+});
+test('duplicate pending requests clean their upload and withdrawal allows a new request',async()=>{
+  const admin=await account(),self=await account('permanent_employee');const employee=await create(1,{userId:self.id});
+  const original=await uploadDocumentFor(admin.token,employee.id);files.upload.mockResolvedValueOnce('proposal-one').mockResolvedValueOnce('proposal-two');
+  const first=await replaceDocumentFor(self.token,original.body.id,{},true,'renewal-requests');
+  expect((await replaceDocumentFor(self.token,original.body.id,{},true,'renewal-requests')).status).toBe(409);expect(files.remove).toHaveBeenCalledWith('proposal-two');
+  expect((await request(admin.token,`/documents/renewal-requests/${first.body.id}/decision`,'POST',{decision:'withdrawn',reason:'Not the requester'})).status).toBe(403);
+  expect((await request(self.token,`/documents/renewal-requests/${first.body.id}/decision`,'POST',{decision:'withdrawn',reason:'Correcting proposal fields'})).status).toBe(200);
+  expect((await replaceDocumentFor(self.token,original.body.id,{},true,'renewal-requests')).status).toBe(201);
+});
+test('stale approval cannot overwrite direct replacement and rejection preserves current version',async()=>{
+  const admin=await account(),reviewer=await account('super_admin','reviewer');const employee=await create();
+  const original=await uploadDocumentFor(admin.token,employee.id);const proposed=await replaceDocumentFor(admin.token,original.body.id,{},true,'renewal-requests');
+  const path=`/documents/renewal-requests/${proposed.body.id}/decision`;
+  expect((await request(admin.token,path,'POST',{decision:'approved',reason:'Requester cannot approve'})).status).toBe(403);
+  expect((await replaceDocumentFor(admin.token,original.body.id,{documentNumber:'DIRECT'})).status).toBe(200);
+  expect((await request(reviewer.token,path,'POST',{decision:'approved',reason:'Version is now stale'})).status).toBe(409);
+  expect((await request(reviewer.token,path,'POST',{decision:'rejected',reason:'Superseded by direct update'})).status).toBe(200);
+  expect((await request(admin.token,`/documents/${original.body.id}`)).body.documentNumber).toBe('DIRECT');
+});
+test('failed approval snapshot rolls back the decision and keeps its proposal for retry',async()=>{
+  const admin=await account(),reviewer=await account('super_admin','reviewer');const employee=await create();
+  const original=await uploadDocumentFor(admin.token,employee.id);const proposed=await replaceDocumentFor(admin.token,original.body.id,{},true,'renewal-requests');
+  await pg.exec("CREATE FUNCTION fail_renewal() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'test'; END; $$ LANGUAGE plpgsql; CREATE TRIGGER fail_renewal BEFORE INSERT ON document_versions FOR EACH ROW EXECUTE FUNCTION fail_renewal();");
+  try{
+    expect((await request(reviewer.token,`/documents/renewal-requests/${proposed.body.id}/decision`,'POST',{decision:'approved',reason:'Reviewed replacement file'})).status).toBe(500);
+    expect((await request(admin.token,`/documents/${original.body.id}`)).body.documentNumber).toBe('TEST-123');
+    expect((await request(admin.token,'/documents/renewal-requests')).body.items[0].status).toBe('pending');expect(files.remove).not.toHaveBeenCalled();
+  }finally{await pg.exec('DROP TRIGGER fail_renewal ON document_versions; DROP FUNCTION fail_renewal();');}
+});
+test('document replacement preserves files and scopes current and historical downloads',async()=>{
+  const admin=await account(),self=await account('permanent_employee'),other=await account('permanent_employee','other');
+  const employee=await create(1,{userId:self.id});await create(2,{userId:other.id});
+  const uploaded=await uploadDocumentFor(admin.token,employee.id),id=uploaded.body.id;
+  expect((await request(self.token,`/documents/${id}`)).body).toMatchObject({currentVersion:1,canReplace:true});
+  files.upload.mockResolvedValue('documents/1/renewed.pdf');
+  const renewed=await replaceDocumentFor(self.token,id);expect(renewed.status).toBe(200);
+  expect(renewed.body).toMatchObject({id,employeeId:employee.id,documentType:'passport',documentNumber:'RENEWED-456',currentVersion:2});
+  const history=(await request(self.token,`/documents/${id}/versions`)).body;
+  expect(history.map((v:any)=>v.version)).toEqual([2,1]);
+  expect(history[1].snapshot.documentFile).toBe('documents/1/test.pdf');
+  expect(history[0].snapshot).toMatchObject({documentFile:'documents/1/renewed.pdf',changeReason:'Passport renewed by authority'});
+  for(const [path,key] of [[`/documents/${id}/download`,'documents/1/renewed.pdf'],[`/documents/${id}/versions/1/download`,'documents/1/test.pdf']]){
+    const response=await fetch(base+path,{headers:{Authorization:`Bearer ${self.token}`},redirect:'manual'});
+    expect(response.status).toBe(302);expect(response.headers.get('cache-control')).toBe('no-store');expect(files.download).toHaveBeenLastCalledWith(key);
+  }
+  const calls=files.download.mock.calls.length;
+  expect((await request(other.token,`/documents/${id}/versions/1/download`)).status).toBe(404);
+  expect((await request(self.token,`/documents/${id}/versions/999/download`)).status).toBe(404);
+  expect(files.download).toHaveBeenCalledTimes(calls);expect(files.remove).not.toHaveBeenCalled();
+});
+test('replacement rejects unauthorized callers, protected metadata, invalid dates and stale versions before uploading',async()=>{
+  const admin=await account(),other=await account('permanent_employee'),reader=await account('finance');
+  const employee=await create(),uploaded=await uploadDocumentFor(admin.token,employee.id),id=uploaded.body.id;
+  expect((await request(reader.token,`/documents/${id}`)).body.canReplace).toBe(false);
+  files.upload.mockClear();
+  for(const token of [other.token,reader.token])expect((await replaceDocumentFor(token,id)).status).toBe(404);
+  for(const fields of [{employeeId:'999'},{documentType:'visa'},{expiryDate:'2026-02-30'},{issueDate:'2029-01-01'},{reason:'x'}])expect((await replaceDocumentFor(admin.token,id,fields)).status).toBe(400);
+  expect((await replaceDocumentFor(admin.token,id,{},false)).status).toBe(400);
+  expect((await replaceDocumentFor(admin.token,id,{expectedVersion:'0'})).status).toBe(409);
+  expect(files.upload).not.toHaveBeenCalled();
+});
+test('late replacement conflict cleans only its new object and preserves the winning version',async()=>{
+  const admin=await account(),employee=await create(),uploaded=await uploadDocumentFor(admin.token,employee.id),id=uploaded.body.id;
+  let release!:(key:string)=>void,started!:()=>void;
+  const began=new Promise<void>(resolve=>{started=resolve;});
+  files.upload.mockImplementationOnce(()=>{started();return new Promise<string>(resolve=>{release=resolve;});}).mockResolvedValueOnce('documents/1/winner.pdf');
+  const first=replaceDocumentFor(admin.token,id);await began;
+  const second=await replaceDocumentFor(admin.token,id);expect(second.status).toBe(200);
+  release('documents/1/loser.pdf');expect((await first).status).toBe(409);
+  expect(files.remove).toHaveBeenCalledExactlyOnceWith('documents/1/loser.pdf');
+  expect((await request(admin.token,`/documents/${id}`)).body.documentFile).toBe('documents/1/winner.pdf');
+  expect((await request(admin.token,`/documents/${id}/versions`)).body).toHaveLength(2);
+});
+test('failed replacement history rolls back metadata and cleans the replacement file',async()=>{
+  const admin=await account(),employee=await create(),uploaded=await uploadDocumentFor(admin.token,employee.id),id=uploaded.body.id;
+  files.upload.mockResolvedValue('documents/1/failed.pdf');
+  await pg.exec("CREATE FUNCTION reject_replacement() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'test'; END; $$ LANGUAGE plpgsql; CREATE TRIGGER reject_replacement BEFORE INSERT ON document_versions FOR EACH ROW EXECUTE FUNCTION reject_replacement();");
+  try{
+    expect((await replaceDocumentFor(admin.token,id)).status).toBe(500);
+    expect((await request(admin.token,`/documents/${id}`)).body).toMatchObject({documentNumber:'TEST-123',currentVersion:1,documentFile:'documents/1/test.pdf'});
+    expect(files.remove).toHaveBeenCalledExactlyOnceWith('documents/1/failed.pdf');
+  }finally{await pg.exec('DROP TRIGGER reject_replacement ON document_versions; DROP FUNCTION reject_replacement();');}
+});
+test('first replacement of a legacy document preserves the prior metadata as version one',async()=>{
+  const admin=await account(),employee=await create();
+  const [legacy]=await context.db.insert(documents).values({employeeId:employee.id,documentType:'passport',documentNumber:'LEGACY',issueDate:'2025-01-01',expiryDate:'2026-01-01',status:'expired',documentFile:'legacy.pdf'}).returning();
+  expect((await request(admin.token,`/documents/${legacy.id}`)).body.currentVersion).toBe(0);
+  expect((await replaceDocumentFor(admin.token,legacy.id,{expectedVersion:'0'})).status).toBe(200);
+  const history=(await request(admin.token,`/documents/${legacy.id}/versions`)).body;
+  expect(history.map((v:any)=>v.version)).toEqual([2,1]);expect(history[1].snapshot).toMatchObject({documentNumber:'LEGACY',documentFile:'legacy.pdf',changeReason:'Legacy document preserved before replacement'});
+});
+test('oversized renewal files return a useful error before private storage is called',async()=>{
+  const admin=await account(),employee=await create(),uploaded=await uploadDocumentFor(admin.token,employee.id);
+  files.upload.mockClear();const body=new FormData();body.append('document',new Blob([new Uint8Array(10*1024*1024+1)]),'large.pdf');
+  const response=await fetch(base+`/documents/${uploaded.body.id}/replace`,{method:'POST',headers:{Authorization:`Bearer ${admin.token}`},body});
+  expect(response.status).toBe(413);expect((await response.json()).message).toMatch(/10 MB/);expect(files.upload).not.toHaveBeenCalled();
 });
 test('directory searches all records, counts matches, escapes wildcards and applies filters', async () => {
   const admin = await account();

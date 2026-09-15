@@ -1,6 +1,6 @@
 # Attendance, leave, payroll and employee lifecycle
 
-Implemented locally on 15 September 2026. This release adds migrations 0010–0013. It has not been deployed to the hosted application.
+Implemented locally on 15 September 2026. This release adds migrations 0015–0018. It has not been deployed to the hosted application.
 
 ## Administrator rules
 
@@ -70,7 +70,7 @@ Completion requires every mandatory task. An independent HR administrator comple
 
 ## Release and verification
 
-- Apply the migration journal against a reconciled, backed-up database. New migrations add effective rules/leave accounting/corrections (0010), payroll reviews/time lines (0011), lifecycle templates/cases/tasks/handoffs (0012), and hiring versions/currency (0013).
+- Apply the migration journal against a reconciled, backed-up database. New migrations add effective rules/leave accounting/corrections (0015), payroll reviews/time lines (0016), lifecycle templates/cases/tasks/handoffs (0017), and hiring versions/currency (0018).
 - Test with separate administrator, reviewer and employee accounts linked to employee profiles. Confirm employee/department scopes and private document access with the actual intended roles.
 - The automated suite covers rule overrides, ledger reservations/carryover/refunds, correction conflicts, midnight clocks, rate changes, daily overtime, regeneration, transactional rollback, interview access and transitions, handoff idempotency, checklist ownership and offboarding session revocation.
 - `node scripts/preview-operations.mjs` serves a disposable synthetic preview at `http://127.0.0.1:5190` after the frontend build. It strips database/storage/messaging credentials, generates temporary account passwords, and uses in-memory PGlite. Restarting discards its records.

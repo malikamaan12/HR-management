@@ -6,7 +6,9 @@ import { getCompanySettings } from '../services/settings';
 import { authenticate, authorize } from '../middleware/auth';
 import { privateStorageConfigured } from '../services/r2';
 import { emailConfigured } from '../services/email';
+import calculationRulesRouter from './calculation-rules';
 const router=Router();router.use(authenticate);
+router.use('/calculation-rules',calculationRulesRouter);
 router.get('/company',async(_req,res)=>{try{return res.json(await getCompanySettings());}catch{return res.status(500).json({message:'Unable to load company settings'});}});
 router.get('/integrations',authorize(['admin','super_admin']),(_req,res)=>res.json({email:emailConfigured(),
   documents:privateStorageConfigured(),timezone:process.env.APP_TIMEZONE || 'UTC'}));

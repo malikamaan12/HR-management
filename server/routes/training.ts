@@ -9,8 +9,20 @@ import {
   getSkillGapRecommendations
 } from '../services/skillGap';
 import { authenticate, authorize } from '../middleware/auth';
+import { employeeScope } from '../services/access';
+import { hasPermission } from '@shared/permissions';
+import { employees } from '@shared/schema';
+import { eq, and } from 'drizzle-orm';
+import { db } from '../db';
 
 const router = express.Router();
+
+async function canAccessEmployee(req: any, employeeId: number, permission: 'read' | 'create' | 'update' = 'read') {
+  if (!req.user || !hasPermission(req.user.role, 'training_development', permission)) return false;
+  const [row] = await db.select({ id: employees.id }).from(employees)
+    .where(and(eq(employees.id, employeeId), employeeScope(req.user, 'training_development', permission)));
+  return !!row;
+}
 
 /**
  * @route GET /skills/gaps/:departmentId
@@ -61,11 +73,7 @@ router.get('/skills/employee/:employeeId', authenticate, async (req, res) => {
       });
     }
     
-    // Check if user is requesting their own skills or is HR/admin
-    const isOwnProfile = req.user && false /* Placeholder: needs user-employee mapping */;
-    const isAdminOrHr = req.user && (req.user.role === 'admin' || req.user.role === 'hr');
-    
-    if (!isOwnProfile && !isAdminOrHr) {
+    if (!(await canAccessEmployee(req, employeeId, 'read'))) {
       return res.status(403).json({ 
         success: false, 
         message: "Not authorized to view other employees' skills" 
@@ -105,11 +113,7 @@ router.get('/training/recommend/:employeeId', authenticate, async (req, res) => 
       });
     }
     
-    // Check if user is requesting their own skills or is HR/admin
-    const isOwnProfile = req.user && false /* Placeholder: needs user-employee mapping */;
-    const isAdminOrHr = req.user && (req.user.role === 'admin' || req.user.role === 'hr');
-    
-    if (!isOwnProfile && !isAdminOrHr) {
+    if (!(await canAccessEmployee(req, employeeId, 'read'))) {
       return res.status(403).json({ 
         success: false, 
         message: "Not authorized to view other employees' training recommendations" 
@@ -173,11 +177,7 @@ router.post('/training/enroll', authenticate, async (req, res) => {
       });
     }
     
-    // Check if user is enrolling themselves or is HR/admin
-    const isOwnProfile = req.user && false /* Placeholder: needs user-employee mapping */;
-    const isAdminOrHr = req.user && (req.user.role === 'admin' || req.user.role === 'hr');
-    
-    if (!isOwnProfile && !isAdminOrHr) {
+    if (!(await canAccessEmployee(req, Number(employeeId), 'create'))) {
       return res.status(403).json({ 
         success: false, 
         message: "Not authorized to enroll other employees" 
@@ -218,11 +218,7 @@ router.get('/training/progress/:employeeId/:courseId', authenticate, async (req,
       });
     }
     
-    // Check if user is requesting their own progress or is HR/admin
-    const isOwnProfile = req.user && false /* Placeholder: needs user-employee mapping */;
-    const isAdminOrHr = req.user && (req.user.role === 'admin' || req.user.role === 'hr');
-    
-    if (!isOwnProfile && !isAdminOrHr) {
+    if (!(await canAccessEmployee(req, employeeId, 'read'))) {
       return res.status(403).json({ 
         success: false, 
         message: "Not authorized to view other employees' course progress" 

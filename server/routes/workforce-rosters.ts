@@ -84,7 +84,7 @@ router.post('/shifts/:id/revise', handle(async(req,res) => {
       fail(400, 'Change at least one shift detail before creating a revision');
     const active = roster.filter(a => ['offered','accepted'].includes(a.status));
     if(active.length) await tx.update(assignments).set({status: 'cancelled', cancellationReason: 'Shift revised: ' + input.reason, respondedAt: new Date()}).where(inArray(assignments.id, active.map(a => a.id)));
-    const [replacement] = await tx.insert(shifts).values({...details,requiredQualifications, teamId: shift.teamId, seriesId: shift.seriesId, replacesId: id, changeReason: input.reason, createdBy: req.user!.userId}).returning();
+    const [replacement] = await tx.insert(shifts).values({...details,requiredQualifications,requiredSkills:shift.requiredSkills, teamId: shift.teamId, seriesId: shift.seriesId, replacesId: id, changeReason: input.reason, createdBy: req.user!.userId}).returning();
     for(const row of active) {
       await eligible(tx, row.employeeId, replacement, team.timezone);
       const [offer] = await tx.insert(assignments).values({shiftId: replacement.id, employeeId: row.employeeId, createdBy: req.user!.userId}).returning();

@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { clockStatus } from '../services/attendance';
+import { calculationSnapshot } from '../services/calculation-rules';
+import { calculateTime, managementLate, type CalculationSnapshot } from '@shared/calculation-rules';
 import { z } from 'zod';
 import { and, eq, gte, lte, sql, desc } from 'drizzle-orm';
 import { db } from '../db';
@@ -38,7 +40,7 @@ router.post('/corrections', handle(async (req, res) => {
         fail(400, 'Check-in must match the attendance date in the employee timezone'); if (input.date < e.joiningDate || (e.contractEndDate && input.date > e.contractEndDate) || (e.terminationDate && input.date > e.terminationDate))
         fail(400, 'Attendance must fall within employment dates'); const [record] = await tx.select().from(attendance).where(and(eq(attendance.employeeId, e.id), eq(attendance.date, input.date))); if ((record?.version || 0) !== input.expectedVersion)
         fail(409, 'Attendance changed; reload before requesting a correction'); const [pending] = await tx.select({ id: attendanceCorrections.id }).from(attendanceCorrections).where(and(eq(attendanceCorrections.employeeId, e.id), eq(attendanceCorrections.date, input.date), eq(attendanceCorrections.status, 'pending'))); if (pending)
-        fail(409, 'A correction is already awaiting review'); const [row] = await tx.insert(attendanceCorrections).values({ employeeId: e.id, date: input.date, expectedVersion: input.expectedVersion, proposal: { checkIn: input.checkIn, checkOut: input.checkOut, breakMinutes: input.breakMinutes, policy }, before: record || null, reason: input.reason, requestedBy: req.user!.userId }).returning(); await audit(tx, req.user!, 'attendance_correction', row.id, 'Correction submitted'); return row; }));
+        fail(409, 'A correction is already awaiting review'); const [row] = await tx.insert(attendanceCorrections).values({ employeeId: e.id, date: input.date, expectedVersion: input.expectedVersion, proposal: { checkIn: input.checkIn, checkOut: input.checkOut, breakMinutes: input.breakMinutes, policy, calculationSnapshot: record?.calculationSnapshot || await calculationSnapshot(e, input.date, tx, !!record?.checkIn) }, before: record || null, reason: input.reason, requestedBy: req.user!.userId }).returning(); await audit(tx, req.user!, 'attendance_correction', row.id, 'Correction submitted'); return row; }));
 }));
 router.post('/corrections/:id/review', handle(async (req, res) => {
     const id = positiveId.parse(req.params.id), input = z.object({ decision: z.enum(['approved', 'rejected']), reason }).strict().parse(req.body);
@@ -64,7 +66,9 @@ router.post('/corrections/:id/review', handle(async (req, res) => {
                 checkOut: string;
                 breakMinutes: number;
             };
-            const value = { checkIn: new Date(p.checkIn), checkOut: new Date(p.checkOut), totalBreakMinutes: p.breakMinutes, totalWorkHours: (Date.parse(p.checkOut) - Date.parse(p.checkIn)) / 60000 - p.breakMinutes, breakStartTime: null, breakEndTime: null, checkInMethod: 'manual' as const, checkOutMethod: 'manual' as const, status: await clockStatus(tx, e, row.date, new Date(p.checkIn), (row.proposal as any).policy || await attendancePolicy(tx, e, row.date)), notes: row.reason, updatedAt: new Date() };
+            const calculation = (row.proposal as { calculationSnapshot?: CalculationSnapshot }).calculationSnapshot || record?.calculationSnapshot || await calculationSnapshot(e, row.date, tx, !!record?.checkIn);
+            const policy = (row.proposal as any).policy || await attendancePolicy(tx, e, row.date);
+            const value = { calculationSnapshot: calculation, checkIn: new Date(p.checkIn), checkOut: new Date(p.checkOut), totalBreakMinutes: p.breakMinutes, totalWorkHours: calculateTime((Date.parse(p.checkOut) - Date.parse(p.checkIn)) / 60000, p.breakMinutes, calculation.rules.attendance).calculatedMinutes, breakStartTime: null, breakEndTime: null, checkInMethod: 'manual' as const, checkOutMethod: 'manual' as const, status: policy.id !== null || e.workSchedule === 'shift_based' ? await clockStatus(tx, e, row.date, new Date(p.checkIn), policy) : managementLate(new Date(p.checkIn), calculation) ? 'late' as const : 'present' as const, notes: row.reason, updatedAt: new Date() };
             if (record)
                 await tx.update(attendance).set(value).where(eq(attendance.id, record.id));
             else

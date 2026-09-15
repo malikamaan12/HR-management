@@ -80,7 +80,7 @@ const logSecurityAction = (eventType: typeof securityEventTypeEnum.enumValues[nu
 };
 
 // Role routes
-router.get("/roles", authenticate, async (req, res) => {
+router.get("/roles", authenticate, requireAdminRole, async (req, res) => {
   try {
     const roles = await getAllRoles();
     res.json({ success: true, data: roles });
@@ -90,7 +90,7 @@ router.get("/roles", authenticate, async (req, res) => {
   }
 });
 
-router.get("/roles/:id", authenticate, async (req, res) => {
+router.get("/roles/:id", authenticate, requireAdminRole, async (req, res) => {
   try {
     const roleId = parseInt(req.params.id);
     const role = await getRoleById(roleId);
@@ -187,7 +187,7 @@ router.delete(
 );
 
 // Permission routes
-router.get("/permissions", authenticate, async (req, res) => {
+router.get("/permissions", authenticate, requireAdminRole, async (req, res) => {
   try {
     const { module } = req.query;
     
@@ -205,7 +205,7 @@ router.get("/permissions", authenticate, async (req, res) => {
   }
 });
 
-router.get("/permissions/:id", authenticate, async (req, res) => {
+router.get("/permissions/:id", authenticate, requireAdminRole, async (req, res) => {
   try {
     const permissionId = parseInt(req.params.id);
     const permission = await getPermissionById(permissionId);

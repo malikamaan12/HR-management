@@ -1,6 +1,6 @@
 # Performance cycles and helpdesk operations
 
-Implemented locally on 16 September 2026. Apply migration `0018_performance_helpdesk.sql` through the migration journal before serving this release. This work does not deploy the hosted application or modify production employee data.
+Implemented locally on 16 September 2026. Apply migration `0023_performance_helpdesk.sql` through the migration journal before serving this release. This work does not deploy the hosted application or modify production employee data.
 
 ## Performance and development
 

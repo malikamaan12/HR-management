@@ -8,6 +8,8 @@ import { attendance, employees, insertAttendanceSchema } from '@shared/schema';
 import { authenticate } from '../middleware/auth';
 import { employeeScope } from '../services/access';
 import { attendanceDate, clockAttendance } from '../services/attendance';
+import {calculationSnapshot} from '../services/calculation-rules';
+import {calculateTime,managementLate} from '@shared/calculation-rules';
 const router=Router();router.use(authenticate);
 const date=z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value=>!isNaN(Date.parse(value)) && new Date(value).toISOString().slice(0,10)===value);
 router.get('/today',async(req,res)=>{
@@ -29,7 +31,6 @@ router.get('/date/:date',async(req,res)=>{
 });
 router.post('/',async(req,res)=>{
   return res.status(409).json({message:'Submit a correction through Attendance for independent approval'});
-
 });
 router.get('/reports/:type',async(req,res)=>{
   try{z.enum(['daily','weekly','monthly']).parse(req.params.type);const start=date.parse(req.query.start),end=date.parse(req.query.end);

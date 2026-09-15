@@ -5,7 +5,7 @@ import { authenticate, authorize } from '../middleware/auth';
 const router = Router();
 
 // Get predictive turnover analysis
-router.get('/predictive-turnover', authenticate, authorize(['admin', 'hr']), async (req: Request, res: Response) => {
+router.get('/predictive-turnover', authenticate, async (req: Request, res: Response) => {
   try {
     const department = req.query.department as string | undefined;
     const data = await analyticsService.getPredictiveTurnover(department);
@@ -16,7 +16,7 @@ router.get('/predictive-turnover', authenticate, authorize(['admin', 'hr']), asy
 });
 
 // Get skill gap analysis
-router.get('/skill-gap', authenticate, authorize(['admin', 'hr']), async (req: Request, res: Response) => {
+router.get('/skill-gap', authenticate, async (req: Request, res: Response) => {
   try {
     const department = req.query.department as string | undefined;
     const data = await analyticsService.getSkillGapAnalysis(department);
@@ -27,7 +27,7 @@ router.get('/skill-gap', authenticate, authorize(['admin', 'hr']), async (req: R
 });
 
 // Get performance trends
-router.get('/performance-trends', authenticate, authorize(['admin', 'hr']), async (req: Request, res: Response) => {
+router.get('/performance-trends', authenticate, async (req: Request, res: Response) => {
   try {
     const timeSpan = req.query.timeSpan ? parseInt(req.query.timeSpan as string) : 12; // Default to 12 months
     const department = req.query.department as string | undefined;

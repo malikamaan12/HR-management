@@ -157,7 +157,7 @@ export function useDataFilter() {
   const permissions = usePermissions();
   
   return {
-    filterEmployeeData: <T extends { id?: number; department?: string; userId?: number }>(
+    filterEmployeeData: <T extends { id?: number; department?: string; userId?: number; type?: string; reportingManagerId?: number | null }>(
       data: T[], 
       module: HRModule
     ): T[] => {
@@ -172,20 +172,19 @@ export function useDataFilter() {
             item.userId?.toString() === permissions.userId
           );
         case 'team':
-          // For team scope, would need additional team relationship data
-          // For now, treating same as department
+          // Keep the employee and direct reports in the team view. The API
+          // remains the source of truth; this is only a client-side guard.
           return data.filter(item => 
-            item.department === permissions.userDepartment ||
-            item.userId?.toString() === permissions.userId
+            item.userId?.toString() === permissions.userId ||
+            item.reportingManagerId?.toString() === permissions.userId ||
+            item.department === permissions.userDepartment
           );
         case 'self':
           return data.filter(item => 
-            item.userId?.toString() === permissions.userId ||
-            item.id?.toString() === permissions.userId
+            item.userId?.toString() === permissions.userId
           );
         case 'event_staff':
-          // Filter for event staff - would need employee type field
-          return data; // TODO: Implement event staff filtering
+          return data.filter(item => item.type === 'temporary' || item.userId?.toString() === permissions.userId);
         case 'none':
         default:
           return [];

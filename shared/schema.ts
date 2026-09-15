@@ -1,3 +1,4 @@
+import type {CalculationSnapshot,CalculationRules} from './calculation-rules';
 import { relations, sql } from "drizzle-orm";
 import { type AnyPgColumn, pgTable, text, serial, integer, boolean, timestamp, pgEnum, varchar, date, json, decimal, jsonb, check, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
@@ -46,6 +47,7 @@ export const workforceShifts = pgTable('workforce_shifts', {
   replacementId: integer('replacement_id').unique().references((): AnyPgColumn => workforceShifts.id),
   changeReason: text('change_reason'),
   requiredQualifications: jsonb('required_qualifications').$type<{id:number;name:string}[]>().notNull().default([]),
+  requiredSkills: integer('required_skills').array().notNull().default([]),
   createdBy: integer('created_by').notNull().references((): AnyPgColumn => users.id),
 }, t => [check('workforce_shift_dates', sql`${t.endAt} > ${t.startAt} AND ${t.endAt} <= ${t.startAt} + interval '24 hours'`),
   check('workforce_shift_capacity', sql`${t.headcount} BETWEEN 1 AND 500`),
@@ -150,6 +152,7 @@ export const workforceIncidentUpdates = pgTable('workforce_incident_updates', {
 
 export const timesheetStatus = pgEnum('timesheet_status', ['draft', 'submitted', 'returned', 'approved', 'payroll_locked']);
 export const workforceTimesheets = pgTable('workforce_timesheets', {
+  calculationSnapshot: jsonb("calculation_snapshot").$type<CalculationSnapshot>(),
   id: serial('id').primaryKey(), assignmentId: integer('assignment_id').notNull().unique().references(() => workforceAssignments.id),
   status: timesheetStatus('status').notNull().default('draft'), version: integer('version').notNull().default(1),
   actualStartAt: timestamp('actual_start_at', {withTimezone:true}).notNull(), actualEndAt: timestamp('actual_end_at', {withTimezone:true}).notNull(),
@@ -403,6 +406,21 @@ export const employees = pgTable("employees", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// Effective-dated employee lifecycle events. This append-only history keeps
+// transfers, promotions, renewals and offboarding explainable without
+// overloading the current employee row with historical values.
+export const employeeLifecycleEvents = pgTable("employee_lifecycle_events", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }).notNull(),
+  eventType: text("event_type").notNull(),
+  effectiveDate: date("effective_date").notNull(),
+  reason: text("reason").notNull(),
+  notes: text("notes"),
+  metadata: jsonb("metadata"),
+  createdBy: integer("created_by").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // Documents table (for compliance)
 export const documents = pgTable("documents", {
   id: serial("id").primaryKey(),
@@ -417,6 +435,31 @@ export const documents = pgTable("documents", {
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const documentVersions = pgTable("document_versions", {
+  id: serial("id").primaryKey(),
+  documentId: integer("document_id").references(() => documents.id, { onDelete: "cascade" }).notNull(),
+  version: integer("version").notNull(),
+  snapshot: jsonb("snapshot").notNull(),
+  createdBy: integer("created_by").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, table => ({
+  documentVersionUnique: uniqueIndex("document_versions_document_version").on(table.documentId, table.version),
+  documentVersionLookup: index("document_versions_document_created").on(table.documentId, table.createdAt),
+}));
+
+export const documentRenewalRequests = pgTable("document_renewal_requests", {
+  id: serial("id").primaryKey(),
+  documentId: integer("document_id").references(() => documents.id).notNull(),
+  requestedBy: integer("requested_by").references(() => users.id).notNull(),
+  expectedVersion: integer("expected_version").notNull(),
+  proposal: jsonb("proposal").notNull(),
+  status: text("status").default("pending").notNull(),
+  reviewReason: text("review_reason"),
+  reviewedBy: integer("reviewed_by").references(() => users.id),
+  reviewedAt: timestamp("reviewed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 // Employee Documents (specific document details)
@@ -505,6 +548,7 @@ export const clockMethodEnum = pgEnum('clock_method', ['qr_code', 'biometric', '
 // Attendance table
 export const attendance = pgTable("attendance", {
   version: integer("version").notNull().default(1),
+  calculationSnapshot: jsonb("calculation_snapshot").$type<CalculationSnapshot>(),
   totalBreakMinutes: integer("total_break_minutes").notNull().default(0),
   id: serial("id").primaryKey(),
   employeeId: integer("employee_id").references(() => employees.id).notNull(),
@@ -544,6 +588,7 @@ export const attendanceCorrections=pgTable('attendance_corrections',{
 
 // Leave table
 export const leaves = pgTable("leaves", {
+  calculationSnapshot: jsonb("calculation_snapshot").$type<CalculationSnapshot>(),
   id: serial("id").primaryKey(),
   employeeId: integer("employee_id").references(() => employees.id).notNull(),
   leaveType: text("leave_type").notNull(), // annual, sick, emergency, etc.
@@ -623,6 +668,8 @@ export const leaveApprovals = pgTable("leave_approvals", {
 
 // Payroll table
 export const payroll = pgTable("payroll", {
+  roundingAdjustmentCents: integer("rounding_adjustment_cents").notNull().default(0),
+  calculationSnapshot: jsonb("calculation_snapshot").$type<CalculationSnapshot>(),
   id: serial("id").primaryKey(),
   employeeId: integer("employee_id").references(() => employees.id).notNull(),
   month: integer("month").notNull(),
@@ -1174,6 +1221,12 @@ export const insertEmployeeSchema = createInsertSchema(employees).omit({
   recordVersion: true,
   createdAt: true,
   updatedAt: true,
+});
+
+export const insertEmployeeLifecycleEventSchema = createInsertSchema(employeeLifecycleEvents).omit({
+  id: true,
+  createdAt: true,
+  createdBy: true,
 });
 
 export const insertDocumentSchema = createInsertSchema(documents).omit({
@@ -2615,3 +2668,8 @@ export const helpdeskArticleHistory=pgTable('helpdesk_article_history',{
   id:serial('id').primaryKey(), articleId:integer('article_id').notNull().references(()=>helpdeskArticles.id), version:integer('version').notNull(), actorId:integer('actor_id').notNull().references(()=>users.id),
   reason:text('reason').notNull(), snapshot:jsonb('snapshot').notNull(), createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
 },t=>[uniqueIndex('helpdesk_article_revision').on(t.articleId,t.version)]);
+export const calculationRuleVersions=pgTable('calculation_rule_versions',{
+ id:serial('id').primaryKey(),scope:text('scope').notNull(),effectiveFrom:date('effective_from').notNull(),
+ rules:jsonb('rules').$type<CalculationRules>().notNull(),reason:text('reason').notNull(),
+ createdBy:integer('created_by').notNull().references(()=>users.id),createdAt:timestamp('created_at').notNull().defaultNow(),
+});

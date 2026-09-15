@@ -11,6 +11,7 @@ import { accrue, balance, reserved, leavePlan, assertFunds, employeeBalances } f
 import { scopedEmployee, audit, isRuleAdmin, businessToday } from '../services/hr-rules';
 import { fail, assertLeaveCompatible } from '../services/workforce';
 import { hasPermission } from '@shared/permissions';
+import { calculationSnapshot } from '../services/calculation-rules';
 const router = Router();
 router.use(authenticate);
 router.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
@@ -38,7 +39,7 @@ router.post('/', handle(async (req, res) => {
     const input = z.object({ employeeId: positiveId, leaveType: z.string().trim().min(1).max(100), startDate: civilDate, endDate: civilDate, reason }).parse(req.body);
     const result = await db.transaction(async (tx) => { const e = await scopedEmployee(tx, req.user!, input.employeeId, 'leave_absence_management', 'create', true); if (input.startDate.slice(0, 4) < businessToday().slice(0, 4))
         fail(400, 'Use a balance adjustment for closed-year reconciliation'); const [overlap] = await tx.select({ id: leaves.id }).from(leaves).where(and(eq(leaves.employeeId, e.id), inArray(leaves.status, ['pending', 'approved']), lte(leaves.startDate, input.endDate), gte(leaves.endDate, input.startDate))); if (overlap)
-        fail(409, 'These dates overlap an existing leave request'); const plan = await leavePlan(tx, e, input.leaveType, input.startDate, input.endDate); await assertFunds(tx, e, input.leaveType, plan); const [leave] = await tx.insert(leaves).values({ ...input, totalDays: plan.totalDays, status: 'pending' }).returning(); const { totalDays, ...snapshot } = plan; await tx.insert(leaveSnapshots).values({ leaveId: leave.id, ...snapshot }); await audit(tx, req.user!, 'leave', leave.id, 'Submitted leave with rule snapshot and balance reservation'); return leave; });
+        fail(409, 'These dates overlap an existing leave request'); const plan = await leavePlan(tx, e, input.leaveType, input.startDate, input.endDate); await assertFunds(tx, e, input.leaveType, plan); const [leave] = await tx.insert(leaves).values({ ...input, totalDays: plan.totalDays, calculationSnapshot: await calculationSnapshot(e, input.startDate, tx), status: 'pending' }).returning(); const { totalDays, ...snapshot } = plan; await tx.insert(leaveSnapshots).values({ leaveId: leave.id, ...snapshot }); await audit(tx, req.user!, 'leave', leave.id, 'Submitted leave with rule snapshot and balance reservation'); return leave; });
     res.status(201).json(result);
 }));
 router.get(['/', '/pending', '/status/:status'], handle(async (req, res) => {

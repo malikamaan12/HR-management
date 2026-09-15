@@ -1,8 +1,8 @@
 import type { ApiDocument, ApiEmployee } from '@/lib/api-types';
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
-import { format } from "date-fns";
+import { ReplaceDocument } from "./ReplaceDocument";
+
 
 import {
   Dialog,
@@ -29,6 +29,10 @@ export function DocumentDetails({ documentId, isOpen, onClose }: DocumentDetails
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("details");
   
+  const [replacing,setReplacing]=useState(false);
+  const [requestApproval,setRequestApproval]=useState(false);
+  useEffect(()=>{setReplacing(false);setActiveTab("details");},[documentId,isOpen]);
+
   // Fetch document details
   const { data: document, isLoading, error } = useQuery<ApiDocument>({
     queryKey: ['/api/documents', documentId],
@@ -41,6 +45,10 @@ export function DocumentDetails({ documentId, isOpen, onClose }: DocumentDetails
     queryKey: ['/api/employees', document?.employeeId],
     staleTime: 1000 * 60, // 1 minute
     enabled: !!document?.employeeId && isOpen,
+  });
+  const { data: versions = [], isLoading: versionsLoading, error: versionsError, refetch: reloadVersions } = useQuery<Array<{ id: number; version: number; snapshot: ApiDocument; createdBy: number; createdAt: string }>>({
+    queryKey: ['/api/documents', documentId, 'versions'],
+    enabled: !!documentId && isOpen && activeTab === 'versions',
   });
 
   // Function to refresh document
@@ -81,7 +89,7 @@ export function DocumentDetails({ documentId, isOpen, onClose }: DocumentDetails
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[650px]">
+      <DialogContent className="sm:max-w-[650px] max-h-[90vh] overflow-auto">
         <DialogHeader>
           <DialogTitle>Document Details</DialogTitle>
         </DialogHeader>
@@ -113,10 +121,11 @@ export function DocumentDetails({ documentId, isOpen, onClose }: DocumentDetails
               </Badge>
             </div>
             
-            <Tabs defaultValue="details" onValueChange={setActiveTab}>
-              <TabsList className="grid grid-cols-2 mb-4">
+            {replacing?<ReplaceDocument requestApproval={requestApproval} key={document.id} document={document} onCancel={()=>setReplacing(false)} onDone={()=>{setReplacing(false);setActiveTab("versions");}}/>:<Tabs value={activeTab} onValueChange={setActiveTab}>
+              <TabsList className="grid grid-cols-3 mb-4">
                 <TabsTrigger value="details">Details</TabsTrigger>
                 <TabsTrigger value="preview">Document Preview</TabsTrigger>
+                <TabsTrigger value="versions">Versions</TabsTrigger>
               </TabsList>
               
               <TabsContent value="details" className="space-y-4">
@@ -182,7 +191,19 @@ export function DocumentDetails({ documentId, isOpen, onClose }: DocumentDetails
                   {document.documentFile && <Button className="mt-4" onClick={downloadDocument}>Download document</Button>}
                 </div>
               </TabsContent>
-            </Tabs>
+
+              <TabsContent value="versions" className="space-y-3">
+                <p className="text-sm text-muted-foreground">Earlier files and metadata are retained here. Downloads check your current document access.</p>
+                {versionsError ? <div role="alert"><p>Unable to load document versions.</p><Button variant="outline" onClick={() => reloadVersions()}>Retry</Button></div> : versionsLoading ? <Skeleton className="h-20 w-full" /> : !versions.length ? <p className="text-sm text-muted-foreground">No version history is available for this document.</p> :
+                  <ol className="space-y-3">{versions.map(version => <li className="rounded-md border p-3" key={version.id}>
+                    <div className="flex items-center justify-between gap-3"><span className="font-medium">Version {version.version}</span><span className="text-sm text-muted-foreground">{formatDate(version.createdAt)}</span></div>
+                    <p className="mt-1 text-sm text-muted-foreground">Recorded by account #{version.createdBy} · expires {formatDate(version.snapshot.expiryDate)}</p>
+                    <p className="mt-1 text-sm">{version.snapshot.documentNumber} · issued {formatDate(version.snapshot.issueDate)}</p>
+                    {version.snapshot.changeReason&&<p className="mt-1 text-sm">Reason: {version.snapshot.changeReason}</p>}
+                    {version.snapshot.documentFile&&<Button asChild variant="outline" size="sm" className="mt-2"><a href={`/api/documents/${document.id}/versions/${version.version}/download`} target="_blank" rel="noopener noreferrer">Download version {version.version}</a></Button>}
+                  </li>)}</ol>}
+              </TabsContent>
+            </Tabs>}
           </div>
         ) : (
           <div className="p-4 text-center text-neutral-500">
@@ -191,6 +212,8 @@ export function DocumentDetails({ documentId, isOpen, onClose }: DocumentDetails
         )}
         
         <DialogFooter>
+          {document?.canReplace&&!replacing&&<Button variant="outline" onClick={()=>{setRequestApproval(true);setReplacing(true);}}>Request renewal approval</Button>}
+          {document?.canReplace&&!replacing&&<Button onClick={()=>{setRequestApproval(false);setReplacing(true);}}>Renew or replace</Button>}
           {document && document.documentFile && (
             <Button 
               variant="outline" 

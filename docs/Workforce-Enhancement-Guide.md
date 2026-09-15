@@ -1,6 +1,6 @@
 # Workforce operations and recurring rosters
 
-Updated 15 September 2026. Implemented locally; staging database migration and deployment are still required. Migrations 0014–0015 add recurring rosters, preserved shift revisions, availability, verified qualifications and replacement staffing.
+Updated 15 September 2026. Implemented locally; staging database migration and deployment are still required. Migrations 0019–0020 add recurring rosters, preserved shift revisions, availability, verified qualifications and replacement staffing.
 
 ## What is available
 
@@ -159,10 +159,14 @@ The workforce roadmap still includes:
 4. Performance cycles, objectives and development plans. Assignment rubrics, evidence, employee responses and dispute handling are implemented.
 5. Activation lifecycle and explicit legacy-event mapping, followed by EOS machine authentication, external IDs, idempotency, outbox/change feed and contract tests when EOS interfaces are available.
 
-Migration 0014 adds recurring-batch and shift-change history tables, shift version/status and replacement links. Existing shifts default to scheduled; historical assignments are preserved. The migration does not auto-convert historical event assignments or infer employee consent. R2/Resend live configuration, hosting and GitHub publication remain separate setup work. WhatsApp stays deferred.
+Migration 0019 adds recurring-batch and shift-change history tables, shift version/status and replacement links. Existing shifts default to scheduled; historical assignments are preserved. The migration does not auto-convert historical event assignments or infer employee consent. R2/Resend live configuration, hosting and GitHub publication remain separate setup work. WhatsApp stays deferred.
 
-Migration 0015 adds unavailable periods, qualification types and employee verification records, required-qualification snapshots on shifts, and replacement links on assignments. Existing shifts default to no qualification requirements. No employees are automatically certified and no company-specific qualifications or unavailable periods are seeded into production.
+Migration 0020 adds unavailable periods, qualification types and employee verification records, required-qualification snapshots on shifts, and replacement links on assignments. Existing shifts default to no qualification requirements. No employees are automatically certified and no company-specific qualifications or unavailable periods are seeded into production.
 
-Migration 0016 adds membership versions/history, dated arrival rule revisions, unique assignment visits and an incident/update log. Existing membership dates remain unchanged, and no historical arrivals or incidents are inferred. Browser acceptance with disposable synthetic accounts verified date revision/history, employee-specific rules, arrival/departure, independent visit review, incident ownership/resolution and a 390-pixel employee viewport. All migrations and checks remain local until release acceptance and deployment.
+Migration 0021 adds membership versions/history, dated arrival rule revisions, unique assignment visits and an incident/update log. Existing membership dates remain unchanged, and no historical arrivals or incidents are inferred. Browser acceptance with disposable synthetic accounts verified date revision/history, employee-specific rules, arrival/departure, independent visit review, incident ownership/resolution and a 390-pixel employee viewport. All migrations and checks remain local until release acceptance and deployment.
 
-Migration 0017 adds weekly availability patterns and period links, renewal policy revisions, renewal requests/history and links between old/new qualifications. It does not infer historical patterns, renew credentials or change existing validity dates. Synthetic browser acceptance verified pattern preview/save, single-date exceptions, stopping future dates, renewal submission/HR verification/history, clearing the due reminder and saving reminder rules. The renewal card and history were also checked at a 390-pixel viewport.
+Migration 0022 adds weekly availability patterns and period links, renewal policy revisions, renewal requests/history and links between old/new qualifications. It does not infer historical patterns, renew credentials or change existing validity dates. Synthetic browser acceptance verified pattern preview/save, single-date exceptions, stopping future dates, renewal submission/HR verification/history, clearing the due reminder and saving reminder rules. The renewal card and history were also checked at a 390-pixel viewport.
+
+## Compatibility with the live skills catalogue
+
+Existing required skills and employee qualifications remain available through Skills catalogue and Recorded skills. New qualification requirements and renewal workflows coexist with these records. Assignment eligibility checks both sets; a shift revision preserves existing required skills.
