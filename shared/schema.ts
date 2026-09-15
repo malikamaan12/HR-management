@@ -344,6 +344,19 @@ export const documentVersions = pgTable("document_versions", {
   documentVersionLookup: index("document_versions_document_created").on(table.documentId, table.createdAt),
 }));
 
+export const documentRenewalRequests = pgTable("document_renewal_requests", {
+  id: serial("id").primaryKey(),
+  documentId: integer("document_id").references(() => documents.id).notNull(),
+  requestedBy: integer("requested_by").references(() => users.id).notNull(),
+  expectedVersion: integer("expected_version").notNull(),
+  proposal: jsonb("proposal").notNull(),
+  status: text("status").default("pending").notNull(),
+  reviewReason: text("review_reason"),
+  reviewedBy: integer("reviewed_by").references(() => users.id),
+  reviewedAt: timestamp("reviewed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // Employee Documents (specific document details)
 export const employeeDocuments = pgTable("employee_documents", {
   id: serial("id").primaryKey(),

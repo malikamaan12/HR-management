@@ -6,7 +6,7 @@ import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {useToast} from '@/hooks/use-toast';
 
-export function ReplaceDocument({document,onDone,onCancel}:{document:ApiDocument;onDone:()=>void;onCancel:()=>void}) {
+export function ReplaceDocument({document,onDone,onCancel,requestApproval=false}:{requestApproval?:boolean;document:ApiDocument;onDone:()=>void;onCancel:()=>void}) {
   const [initial]=useState(document);
   const [number,setNumber]=useState(document.documentNumber),[issue,setIssue]=useState(document.issueDate),[expiry,setExpiry]=useState(document.expiryDate);
   const [authority,setAuthority]=useState(document.issueAuthority||''),[notes,setNotes]=useState(document.notes||''),[reason,setReason]=useState(''),[file,setFile]=useState<File|null>(null);
@@ -17,10 +17,10 @@ export function ReplaceDocument({document,onDone,onCancel}:{document:ApiDocument
     const body=new FormData();
     for(const [key,value] of Object.entries({documentNumber:number,issueDate:issue,expiryDate:expiry,issueAuthority:authority,notes,reason,expectedVersion:String(initial.currentVersion)}))body.append(key,value);
     body.append('document',file);
-    return apiJson(`/api/documents/${initial.id}/replace`,{method:'POST',body});
+    return apiJson(`/api/documents/${initial.id}/${requestApproval?'renewal-requests':'replace'}`,{method:'POST',body});
   },onSuccess:async()=>{
     await cache.invalidateQueries({predicate:q=>String(q.queryKey[0]).startsWith('/api/documents')||String(q.queryKey[0]).startsWith('/api/dashboard')});
-    toast({title:'Document renewed or replaced',description:'The earlier file remains in version history.'});onDone();
+    toast({title:requestApproval?'Renewal submitted for review':'Document renewed or replaced',description:requestApproval?'The current document remains unchanged until approval.':'The earlier file remains in version history.'});onDone();
   },onError:error=>toast({title:'Unable to replace document',description:error.message,variant:'destructive'})});
   return <form className="space-y-4" onSubmit={e=>{e.preventDefault();save.mutate();}}>
     <p className="text-sm text-muted-foreground">Upload the renewed or corrected {document.documentType}. The employee and document type remain the same. Earlier versions stay available to authorized readers.</p>
@@ -32,7 +32,7 @@ export function ReplaceDocument({document,onDone,onCancel}:{document:ApiDocument
       <label className="grid gap-1 text-sm">Reason for renewal or replacement<Input value={reason} onChange={e=>setReason(e.target.value)} minLength={5} maxLength={500} required/></label>
       <label className="grid gap-1 text-sm">New document file<Input type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={e=>setFile(e.target.files?.[0]??null)} required/></label>
       <p className="text-xs text-muted-foreground">PDF, PNG or JPEG, up to 10 MB. Every retained version uses private storage space.</p>
-      <div className="flex gap-2"><Button type="submit" disabled={save.isPending||!file}>{save.isPending?'Saving…':'Save new version'}</Button><Button type="button" variant="outline" disabled={save.isPending} onClick={onCancel}>Cancel replacement</Button></div>
+      <div className="flex gap-2"><Button type="submit" disabled={save.isPending||!file}>{save.isPending?'Saving…':requestApproval?'Submit for approval':'Save new version'}</Button><Button type="button" variant="outline" disabled={save.isPending} onClick={onCancel}>Cancel replacement</Button></div>
     </fieldset>
   </form>;
 }

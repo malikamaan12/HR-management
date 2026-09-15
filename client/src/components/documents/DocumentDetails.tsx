@@ -30,6 +30,7 @@ export function DocumentDetails({ documentId, isOpen, onClose }: DocumentDetails
   const [activeTab, setActiveTab] = useState("details");
   
   const [replacing,setReplacing]=useState(false);
+  const [requestApproval,setRequestApproval]=useState(false);
   useEffect(()=>{setReplacing(false);setActiveTab("details");},[documentId,isOpen]);
 
   // Fetch document details
@@ -120,7 +121,7 @@ export function DocumentDetails({ documentId, isOpen, onClose }: DocumentDetails
               </Badge>
             </div>
             
-            {replacing?<ReplaceDocument key={document.id} document={document} onCancel={()=>setReplacing(false)} onDone={()=>{setReplacing(false);setActiveTab("versions");}}/>:<Tabs value={activeTab} onValueChange={setActiveTab}>
+            {replacing?<ReplaceDocument requestApproval={requestApproval} key={document.id} document={document} onCancel={()=>setReplacing(false)} onDone={()=>{setReplacing(false);setActiveTab("versions");}}/>:<Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList className="grid grid-cols-3 mb-4">
                 <TabsTrigger value="details">Details</TabsTrigger>
                 <TabsTrigger value="preview">Document Preview</TabsTrigger>
@@ -211,7 +212,8 @@ export function DocumentDetails({ documentId, isOpen, onClose }: DocumentDetails
         )}
         
         <DialogFooter>
-          {document?.canReplace&&!replacing&&<Button onClick={()=>setReplacing(true)}>Renew or replace</Button>}
+          {document?.canReplace&&!replacing&&<Button variant="outline" onClick={()=>{setRequestApproval(true);setReplacing(true);}}>Request renewal approval</Button>}
+          {document?.canReplace&&!replacing&&<Button onClick={()=>{setRequestApproval(false);setReplacing(true);}}>Renew or replace</Button>}
           {document && document.documentFile && (
             <Button 
               variant="outline" 

@@ -2,9 +2,10 @@ import { getCompanySettings } from '../services/settings';
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
-import { and, eq, lte, desc, sql } from 'drizzle-orm';
+import { and, eq, lte, desc, sql, or } from 'drizzle-orm';
 import { db } from '../db';
-import { documents, documentVersions, employees, insertDocumentSchema } from '@shared/schema';
+import { documents, documentVersions, documentRenewalRequests as renewals, employees, insertDocumentSchema } from '@shared/schema';
+import { getAccessScope } from '@shared/permissions';
 import { authenticate } from '../middleware/auth';
 import { employeeScope } from '../services/access';
 import { uploadDocument, deleteDocumentObject, documentDownloadUrl, StorageUnavailableError, validateDocumentFile } from '../services/r2';
@@ -84,6 +85,96 @@ router.post('/:id/replace',receiveDocument,async(req,res)=>{
     if(error instanceof StorageUnavailableError)return res.status(503).json({message:error.message});
     return res.status(500).json({message:'Document replacement failed'});
   }
+});
+type Proposal = z.infer<typeof replacementMetadata> & {documentFile:string};
+const reviewerScope=(req:Request)=>getAccessScope(req.user!.role,'compliance_documents')==='self'?sql`false`:employeeScope(req.user!,'compliance_documents','update');
+const renewalVisibility=(req:Request)=>and(employeeScope(req.user!,'compliance_documents'),or(eq(renewals.requestedBy,req.user!.userId),reviewerScope(req)));
+function renewalError(res:Response,error:unknown){
+  if(error instanceof DocumentError)return res.status(error.status).json({message:error.message});
+  if(error instanceof z.ZodError)return res.status(400).json({message:'Check renewal fields and decision reason'});
+  if(error instanceof StorageUnavailableError)return res.status(503).json({message:error.message});
+  return res.status(500).json({message:'Unable to process renewal request'});
+}
+router.get('/renewal-requests',async(req,res)=>{
+  try{
+    const offset=z.coerce.number().int().min(0).default(0).parse(req.query.offset);
+    const rows=await db.select({request:renewals,employeeName:sql<string>`${employees.firstName} || ' ' || ${employees.lastName}`,documentType:documents.documentType,
+      canReview:sql<boolean>`${reviewerScope(req)} and ${renewals.requestedBy} <> ${req.user!.userId} and (${employees.userId} is null or ${employees.userId} <> ${req.user!.userId})`})
+      .from(renewals).innerJoin(documents,eq(renewals.documentId,documents.id)).innerJoin(employees,eq(documents.employeeId,employees.id))
+      .where(renewalVisibility(req)).orderBy(desc(renewals.createdAt),desc(renewals.id)).limit(51).offset(offset);
+    return res.json({hasMore:rows.length>50,items:rows.slice(0,50).map(({request,employeeName,documentType,canReview})=>({...request,employeeName,documentType,
+      canReview:canReview&&request.status==='pending',canWithdraw:request.requestedBy===req.user!.userId&&request.status==='pending'}))});
+  }catch(error){return renewalError(res,error);}
+});
+router.post('/:id/renewal-requests',receiveDocument,async(req,res)=>{
+  let key:string|undefined;
+  try{
+    const id=z.coerce.number().int().positive().parse(req.params.id),input=replacementMetadata.parse(req.body);
+    if(!req.file)throw new DocumentError(400,'A new PDF, PNG, or JPEG file is required');
+    try{validateDocumentFile(req.file);}catch(error){throw new DocumentError(400,(error as Error).message);}
+    const [allowed]=await db.select({employeeId:documents.employeeId}).from(documents).innerJoin(employees,eq(documents.employeeId,employees.id))
+      .where(and(eq(documents.id,id),employeeScope(req.user!,'compliance_documents','update')));
+    if(!allowed)throw new DocumentError(404,'Document not found or renewal is not permitted');
+    key=await uploadDocument(allowed.employeeId,req.file);
+    const result=await db.transaction(async tx=>{
+      const [current]=await tx.select().from(documents).where(eq(documents.id,id)).for('update');
+      const [employee]=await tx.select({id:employees.id}).from(employees).where(and(eq(employees.id,current.employeeId),employeeScope(req.user!,'compliance_documents','update')));
+      if(!employee||employee.id!==allowed.employeeId)throw new DocumentError(404,'Document access changed');
+      const [latest]=await tx.select({version:documentVersions.version}).from(documentVersions).where(eq(documentVersions.documentId,id)).orderBy(desc(documentVersions.version)).limit(1);
+      if((latest?.version??0)!==input.expectedVersion)throw new DocumentError(409,'Document changed; reload before requesting renewal');
+      const [pending]=await tx.select({id:renewals.id}).from(renewals).where(and(eq(renewals.documentId,id),eq(renewals.status,'pending')));
+      if(pending)throw new DocumentError(409,'This document already has a pending renewal request');
+      const [created]=await tx.insert(renewals).values({documentId:id,requestedBy:req.user!.userId,expectedVersion:input.expectedVersion,proposal:{...input,documentFile:key}}).returning();
+      return created;
+    });
+    return res.status(201).json(result);
+  }catch(error){
+    if(key)try{await deleteDocumentObject(key);}catch{console.error('Renewal upload cleanup failed');}
+    return renewalError(res,error);
+  }
+});
+router.get('/renewal-requests/:requestId/download',async(req,res)=>{
+  try{
+    const id=z.coerce.number().int().positive().parse(req.params.requestId);
+    const [row]=await db.select({proposal:renewals.proposal}).from(renewals).innerJoin(documents,eq(renewals.documentId,documents.id)).innerJoin(employees,eq(documents.employeeId,employees.id))
+      .where(and(eq(renewals.id,id),renewalVisibility(req)));
+    if(!row)throw new DocumentError(404,'Renewal request not found');
+    res.set('Cache-Control','no-store');return res.redirect(await documentDownloadUrl((row.proposal as Proposal).documentFile));
+  }catch(error){return renewalError(res,error);}
+});
+router.post('/renewal-requests/:requestId/decision',async(req,res)=>{
+  try{
+    const id=z.coerce.number().int().positive().parse(req.params.requestId);
+    const input=z.object({decision:z.enum(['approved','rejected','withdrawn']),reason:z.string().trim().min(5).max(500)}).strict().parse(req.body);
+    const policy=await getCompanySettings();
+    const result=await db.transaction(async tx=>{
+      const [visible]=await tx.select({documentId:renewals.documentId}).from(renewals).innerJoin(documents,eq(renewals.documentId,documents.id)).innerJoin(employees,eq(documents.employeeId,employees.id))
+        .where(and(eq(renewals.id,id),renewalVisibility(req)));
+      if(!visible)throw new DocumentError(404,'Renewal request not found');
+      // All document writes lock the document first, so review and direct replacement serialize.
+      const [current]=await tx.select().from(documents).where(eq(documents.id,visible.documentId)).for('update');
+      const [request]=await tx.select().from(renewals).where(eq(renewals.id,id)).for('update');
+      if(request.status!=='pending')throw new DocumentError(409,'This request has already been decided');
+      const [employee]=await tx.select({userId:employees.userId}).from(employees).where(and(eq(employees.id,current.employeeId),
+        input.decision==='withdrawn'?employeeScope(req.user!,'compliance_documents'):reviewerScope(req)));
+      if(!employee)throw new DocumentError(403,'Renewal review is not permitted');
+      if(input.decision==='withdrawn'){
+        if(request.requestedBy!==req.user!.userId)throw new DocumentError(403,'Only the requester can withdraw this request');
+      }else if(request.requestedBy===req.user!.userId||employee.userId===req.user!.userId)throw new DocumentError(403,'A different reviewer must decide this request');
+      if(input.decision==='approved'){
+        const [latest]=await tx.select({version:documentVersions.version}).from(documentVersions).where(eq(documentVersions.documentId,current.id)).orderBy(desc(documentVersions.version)).limit(1);
+        if((latest?.version??0)!==request.expectedVersion)throw new DocumentError(409,'The document changed after submission; reject or withdraw this request and submit a fresh one');
+        if(!latest)await tx.insert(documentVersions).values({documentId:current.id,version:1,snapshot:{...current,changeReason:'Legacy document preserved before replacement'},createdBy:req.user!.userId});
+        const {expectedVersion,reason,...proposal}=request.proposal as Proposal;
+        const today=new Date().toISOString().slice(0,10),soon=new Date(Date.now()+policy.documentExpiryDays*86400000).toISOString().slice(0,10);
+        const [updated]=await tx.update(documents).set({...proposal,updatedAt:new Date(),status:proposal.expiryDate<today?'expired':proposal.expiryDate<=soon?'expiring_soon':'valid'}).where(eq(documents.id,current.id)).returning();
+        await tx.insert(documentVersions).values({documentId:current.id,version:(latest?.version??1)+1,snapshot:{...updated,changeReason:reason,renewalRequestId:id,requestedBy:request.requestedBy,reviewReason:input.reason},createdBy:req.user!.userId});
+      }
+      const [decided]=await tx.update(renewals).set({status:input.decision,reviewReason:input.reason,reviewedBy:req.user!.userId,reviewedAt:new Date()}).where(eq(renewals.id,id)).returning();
+      return decided;
+    });
+    return res.json(result);
+  }catch(error){return renewalError(res,error);}
 });
 router.get('/:id/versions/:version/download',async(req,res)=>{
   try{

@@ -133,13 +133,67 @@ test('failed snapshot persistence rolls back the document and removes the upload
   } finally { await pg.exec('DROP TRIGGER reject_document_version ON document_versions; DROP FUNCTION reject_document_version();'); }
 });
 
-async function replaceDocumentFor(token:string,id:number,overrides:Record<string,string>={},includeFile=true) {
+async function replaceDocumentFor(token:string,id:number,overrides:Record<string,string>={},includeFile=true,endpoint='replace') {
   const body=new FormData();
   for(const [key,value] of Object.entries({documentNumber:'RENEWED-456',issueDate:'2027-01-01',expiryDate:'2028-01-01',reason:'Passport renewed by authority',expectedVersion:'1',...overrides}))body.append(key,value);
   if(includeFile)body.append('document',new Blob(['%PDF-new'],{type:'application/pdf'}),'renewed.pdf');
-  const response=await fetch(base+`/documents/${id}/replace`,{method:'POST',headers:{Authorization:`Bearer ${token}`},body});
+  const response=await fetch(base+`/documents/${id}/${endpoint}`,{method:'POST',headers:{Authorization:`Bearer ${token}`},body});
   return {status:response.status,body:await response.json() as any};
 }
+test('renewal requests leave the current document untouched until an independent approval',async()=>{
+  const admin=await account(),self=await account('permanent_employee');const employee=await create(1,{userId:self.id});
+  const original=await uploadDocumentFor(admin.token,employee.id);files.upload.mockResolvedValue('documents/1/proposed.pdf');
+  const submitted=await replaceDocumentFor(self.token,original.body.id,{},true,'renewal-requests');expect(submitted.status).toBe(201);
+  expect((await request(self.token,`/documents/${original.body.id}`)).body.documentNumber).toBe('TEST-123');
+  const queue=await request(admin.token,'/documents/renewal-requests');expect(queue.body.items[0].canReview).toBe(true);
+  const path=`/documents/renewal-requests/${submitted.body.id}/decision`;
+  expect((await request(self.token,path,'POST',{decision:'approved',reason:'Self approval attempt'})).status).toBe(403);
+  expect((await request(admin.token,path,'POST',{decision:'approved',reason:'Authority details checked'})).status).toBe(200);
+  expect((await request(admin.token,path,'POST',{decision:'approved',reason:'Repeated approval attempt'})).status).toBe(409);
+  const current=(await request(self.token,`/documents/${original.body.id}`)).body;expect(current).toMatchObject({documentNumber:'RENEWED-456',currentVersion:2,documentFile:'documents/1/proposed.pdf'});
+  const history=(await request(self.token,`/documents/${original.body.id}/versions`)).body;expect(history[0].snapshot).toMatchObject({renewalRequestId:submitted.body.id,requestedBy:self.id,reviewReason:'Authority details checked'});
+  expect(history[1].snapshot.documentFile).toBe('documents/1/test.pdf');expect(files.remove).not.toHaveBeenCalled();
+});
+test('renewal proposals are private, department scoped, and downloadable only by requester or reviewers',async()=>{
+  const admin=await account(),self=await account('permanent_employee'),other=await account('permanent_employee','other'),hr=await account('hr_manager');
+  const employee=await create(1,{userId:self.id,department:'Finance'});await create(2,{userId:other.id});
+  const original=await uploadDocumentFor(admin.token,employee.id);const submitted=await replaceDocumentFor(self.token,original.body.id,{},true,'renewal-requests');
+  for(const token of [other.token,hr.token]){
+    expect((await request(token,'/documents/renewal-requests')).body.items).toEqual([]);
+    expect((await request(token,`/documents/renewal-requests/${submitted.body.id}/download`)).status).toBe(404);
+    expect((await request(token,`/documents/renewal-requests/${submitted.body.id}/decision`,'POST',{decision:'approved',reason:'Unauthorized review'})).status).toBe(404);
+  }
+  const response=await fetch(base+`/documents/renewal-requests/${submitted.body.id}/download`,{headers:{Authorization:`Bearer ${self.token}`},redirect:'manual'});expect(response.status).toBe(302);expect(response.headers.get('cache-control')).toBe('no-store');
+});
+test('duplicate pending requests clean their upload and withdrawal allows a new request',async()=>{
+  const admin=await account(),self=await account('permanent_employee');const employee=await create(1,{userId:self.id});
+  const original=await uploadDocumentFor(admin.token,employee.id);files.upload.mockResolvedValueOnce('proposal-one').mockResolvedValueOnce('proposal-two');
+  const first=await replaceDocumentFor(self.token,original.body.id,{},true,'renewal-requests');
+  expect((await replaceDocumentFor(self.token,original.body.id,{},true,'renewal-requests')).status).toBe(409);expect(files.remove).toHaveBeenCalledWith('proposal-two');
+  expect((await request(admin.token,`/documents/renewal-requests/${first.body.id}/decision`,'POST',{decision:'withdrawn',reason:'Not the requester'})).status).toBe(403);
+  expect((await request(self.token,`/documents/renewal-requests/${first.body.id}/decision`,'POST',{decision:'withdrawn',reason:'Correcting proposal fields'})).status).toBe(200);
+  expect((await replaceDocumentFor(self.token,original.body.id,{},true,'renewal-requests')).status).toBe(201);
+});
+test('stale approval cannot overwrite direct replacement and rejection preserves current version',async()=>{
+  const admin=await account(),reviewer=await account('super_admin','reviewer');const employee=await create();
+  const original=await uploadDocumentFor(admin.token,employee.id);const proposed=await replaceDocumentFor(admin.token,original.body.id,{},true,'renewal-requests');
+  const path=`/documents/renewal-requests/${proposed.body.id}/decision`;
+  expect((await request(admin.token,path,'POST',{decision:'approved',reason:'Requester cannot approve'})).status).toBe(403);
+  expect((await replaceDocumentFor(admin.token,original.body.id,{documentNumber:'DIRECT'})).status).toBe(200);
+  expect((await request(reviewer.token,path,'POST',{decision:'approved',reason:'Version is now stale'})).status).toBe(409);
+  expect((await request(reviewer.token,path,'POST',{decision:'rejected',reason:'Superseded by direct update'})).status).toBe(200);
+  expect((await request(admin.token,`/documents/${original.body.id}`)).body.documentNumber).toBe('DIRECT');
+});
+test('failed approval snapshot rolls back the decision and keeps its proposal for retry',async()=>{
+  const admin=await account(),reviewer=await account('super_admin','reviewer');const employee=await create();
+  const original=await uploadDocumentFor(admin.token,employee.id);const proposed=await replaceDocumentFor(admin.token,original.body.id,{},true,'renewal-requests');
+  await pg.exec("CREATE FUNCTION fail_renewal() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'test'; END; $$ LANGUAGE plpgsql; CREATE TRIGGER fail_renewal BEFORE INSERT ON document_versions FOR EACH ROW EXECUTE FUNCTION fail_renewal();");
+  try{
+    expect((await request(reviewer.token,`/documents/renewal-requests/${proposed.body.id}/decision`,'POST',{decision:'approved',reason:'Reviewed replacement file'})).status).toBe(500);
+    expect((await request(admin.token,`/documents/${original.body.id}`)).body.documentNumber).toBe('TEST-123');
+    expect((await request(admin.token,'/documents/renewal-requests')).body.items[0].status).toBe('pending');expect(files.remove).not.toHaveBeenCalled();
+  }finally{await pg.exec('DROP TRIGGER fail_renewal ON document_versions; DROP FUNCTION fail_renewal();');}
+});
 test('document replacement preserves files and scopes current and historical downloads',async()=>{
   const admin=await account(),self=await account('permanent_employee'),other=await account('permanent_employee','other');
   const employee=await create(1,{userId:self.id});await create(2,{userId:other.id});
