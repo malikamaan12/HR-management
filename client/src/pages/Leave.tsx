@@ -1,3 +1,4 @@
+import { LeaveSummary } from '@/components/leave/LeaveSummary';
 import { format } from 'date-fns';
 import type { ApiEmployee } from '@/lib/api-types';
 import { useAuth } from '@/contexts/AuthContext';
@@ -69,6 +70,7 @@ interface LeaveRequest {
 }
 
 interface LeaveWithEmployee extends LeaveRequest {
+  canApprove: boolean; canCancel: boolean;
   employee: {
     id: number;
     firstName: string;
@@ -135,9 +137,10 @@ export default function Leave() {
     },
   });
   
+  const [dayFraction,setDayFraction]=useState(1);
   const startDate=form.watch('startDate'),endDate=form.watch('endDate');
   const quoteStart=startDate?format(startDate,'yyyy-MM-dd'):'',quoteEnd=endDate?format(endDate,'yyyy-MM-dd'):'';
-  const quote=useQuery<{totalDays:number;version:number}>({queryKey:[`/api/leaves/quote?employeeId=${selfEmployee?.id||0}&start=${quoteStart}&end=${quoteEnd}`],enabled:openRequestDialog&&!!selfEmployee&&!!quoteStart&&!!quoteEnd});
+  const quote=useQuery<{totalDays:number;version:number}>({queryKey:[`/api/leaves/quote?employeeId=${selfEmployee?.id||0}&start=${quoteStart}&end=${quoteEnd}&fraction=${dayFraction}`],enabled:openRequestDialog&&!!selfEmployee&&!!quoteStart&&!!quoteEnd});
 
   // Mutations
   const createLeaveMutation = useMutation({
@@ -152,7 +155,7 @@ export default function Leave() {
         leaveType: selectedLeaveType?.name || 'Annual Leave',
         startDate: format(data.startDate,'yyyy-MM-dd'),
         endDate: format(data.endDate,'yyyy-MM-dd'),
-        reason: data.reason
+        dayFraction,reason: data.reason
       };
       
       const response = await apiRequest({
@@ -163,7 +166,7 @@ export default function Leave() {
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/leaves'] });
+      queryClient.invalidateQueries({ predicate:q=>String(q.queryKey[0]).startsWith('/api/leaves') });
       toast({
         title: "Leave request submitted",
         description: "Your leave request has been submitted successfully.",
@@ -174,7 +177,7 @@ export default function Leave() {
     onError: (error) => {
       toast({
         title: "Error",
-        description: "Failed to submit leave request. Please try again.",
+        description: error.message,
         variant: "destructive",
       });
     },
@@ -190,7 +193,7 @@ export default function Leave() {
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/leaves'] });
+      queryClient.invalidateQueries({ predicate:q=>String(q.queryKey[0]).startsWith('/api/leaves') });
       toast({
         title: "Leave request updated",
         description: "The leave request has been updated successfully.",
@@ -199,7 +202,7 @@ export default function Leave() {
     onError: (error) => {
       toast({
         title: "Error",
-        description: "Failed to update leave request. Please try again.",
+        description: error.message,
         variant: "destructive",
       });
     },
@@ -331,7 +334,7 @@ export default function Leave() {
                             {formatDate(leave.createdAt)}
                           </td>
                           <td className="px-4 py-3 text-sm text-right">
-                            {leave.status === 'pending' && (userRole === 'admin' || userRole === 'hr') ? (
+                            {leave.canApprove ? (
                               <div className="flex justify-end space-x-2">
                                 <Button 
                                   size="sm" 
@@ -373,55 +376,8 @@ export default function Leave() {
         </CardContent>
       </Card>
 
-      <div className="grid md:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg font-medium">Leave Calendar</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-64 w-full bg-neutral-50 rounded-lg flex items-center justify-center">
-              <div className="text-center">
-                <p className="text-neutral-500">Calendar view coming soon</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg font-medium">Leave Balances</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loadingLeaveTypes ? (
-              <div className="space-y-3">
-                {Array(3).fill(0).map((_, i) => (
-                  <div key={i} className="flex justify-between">
-                    <Skeleton className="h-5 w-32" />
-                    <Skeleton className="h-5 w-16" />
-                  </div>
-                ))}
-              </div>
-            ) : !leaveTypes || leaveTypes.length === 0 ? (
-              <p className="text-neutral-500 text-center">No leave types configured</p>
-            ) : (
-              <div className="space-y-3">
-                {leaveTypes.map(type => (
-                  <div key={type.id} className="flex justify-between items-center">
-                    <div>
-                      <span className="font-medium text-neutral-700">{type.name}</span>
-                      <span className="ml-2 text-xs text-neutral-500">({type.category})</span>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-sm font-medium">{Math.floor(Math.random() * type.maxDays)} / {type.maxDays} days</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-      
+      <LeaveSummary employeeId={selfEmployee?.id} types={leaveTypes||[]} />
+
       {/* Request Leave Dialog */}
       <Dialog open={openRequestDialog} onOpenChange={setOpenRequestDialog}>
         <DialogContent className="sm:max-w-md">
@@ -515,6 +471,7 @@ export default function Leave() {
               />
               
               <div className="mt-2 text-sm text-neutral-500">
+                <label className="block text-sm">Duration<select className="w-full border rounded p-2" value={dayFraction} onChange={e=>setDayFraction(Number(e.target.value))}><option value={1}>Full days</option><option value={0.5}>Half day (one date; policy must allow it)</option></select></label>
                 {form.watch("startDate") && form.watch("endDate") && (
                   <p>
                     Total days: <span className="font-medium">{quote.isFetching?'Calculating…':quote.error?'Unavailable':quote.data?.totalDays??'—'}</span>
@@ -616,7 +573,7 @@ export default function Leave() {
                 </div>
               )}
               
-              {currentUser?.role === 'manager' && selectedLeave.status === 'pending' && (
+              {selectedLeave.canApprove && (
                 <div className="flex space-x-2 justify-end">
                   <Button 
                     variant="outline" 

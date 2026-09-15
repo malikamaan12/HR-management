@@ -1,3 +1,4 @@
+import {AttendanceOperations} from '@/components/operations/Attendance';
 import { useAuth } from '@/contexts/AuthContext';
 import { officeScheduleSummary, type CompanySettings } from '@shared/settings';
 import type { ApiAttendance, ApiEmployee, ApiShift, ApiGeofence } from '@/lib/api-types';
@@ -85,7 +86,7 @@ export default function Attendance() {
         </TabsList>
         
         <TabsContent value="daily-records" className="space-y-4">
-          <DailyAttendance />
+          <DailyAttendance /><AttendanceOperations/>
         </TabsContent>
         
         <TabsContent value="time-clock" className="space-y-4">

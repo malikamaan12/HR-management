@@ -1,3 +1,6 @@
+import {TimePay} from '@/components/operations/TimePay';
+import {Settlements} from '@/components/onboarding/Settlements';
+import {PayrollReconciliation} from '@/components/onboarding/PayrollReconciliation';
 import {useState} from 'react';
 import {useQuery,useMutation,useQueryClient} from '@tanstack/react-query';
 import type {Payroll as PayrollRecord} from '@shared/schema';
@@ -23,7 +26,7 @@ export default function Payroll(){
  const {data:records=[],isLoading,error}=useQuery<Row[]>({queryKey:[`/api/payroll/month/${month}/year/${year}`],enabled:!!month&&!!year});
  const {data:employees=[]}=useQuery<ApiEmployee[]>({queryKey:['/api/employees',{limit:1000}]});
  const canCreate=!!user&&hasPermission(user.role,'payroll_management','create'),canUpdate=!!user&&hasPermission(user.role,'payroll_management','update'),canApprove=!!user&&hasPermission(user.role,'payroll_management','approve');
- const mutation=useMutation({mutationFn:({url,body,method='POST'}:{url:string;body:unknown;method?:string})=>apiJson(url,{method,body}),onSuccess:()=>{cache.invalidateQueries({queryKey:[`/api/payroll/month/${month}/year/${year}`]});setOpen(false);setPaid(null);toast({title:'Payroll saved'});},onError:error=>toast({title:'Unable to save payroll',description:error.message,variant:'destructive'})});
+ const mutation=useMutation({mutationFn:({url,body,method='POST'}:{url:string;body:unknown;method?:string})=>apiJson(url,{method,body}),onSuccess:()=>{cache.invalidateQueries({queryKey:[`/api/payroll/month/${month}/year/${year}`]});cache.invalidateQueries({queryKey:['/api/payroll/reconciliation']});setOpen(false);setPaid(null);toast({title:'Payroll saved'});},onError:error=>toast({title:'Unable to save payroll',description:error.message,variant:'destructive'})});
  const original=records.find(row=>row.id===editing);
  const extraAllowances=Object.fromEntries(Object.entries((original?.allowances||{}) as Record<string,string|number>).filter(([key])=>!['housing','transport','other'].includes(key)));
  const originalDeductions=(original?.deductions||{}) as Record<string,string|number>;
@@ -31,6 +34,7 @@ export default function Payroll(){
  const edit=(row:Row)=>{const allowance=row.allowances as Record<string,string|number>;setCalculation(null);setEditing(row.id);setForm({employeeId:String(row.employeeId),basicSalary:String(row.basicSalary),housing:String(allowance.housing||0),transport:String(allowance.transport||0),otherAllowance:String(allowance.other||0),deductions:String(Object.values(row.deductions as Record<string,string|number>).reduce<number>((sum,value)=>sum+Number(value),0))});setOpen(true);};
  const download=()=>{const lines=[['Employee','Month','Year','Basic salary QAR','Net salary QAR','Status','Payment reference','Rounding adjustment QAR','Rule version'],...records.map(row=>[row.employeeName,row.month,row.year,row.basicSalary,row.netSalary,row.status,row.wpsReference,(row.roundingAdjustmentCents/100).toFixed(2),row.calculationSnapshot?.version||'baseline'])];const url=URL.createObjectURL(new Blob([lines.map(row=>row.map(csvCell).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'}));const link=document.createElement('a');link.href=url;link.download=`payroll-${period}.csv`;link.click();URL.revokeObjectURL(url);};
  return <Card><CardHeader><CardTitle>Payroll</CardTitle></CardHeader><CardContent className="space-y-5">
+  <PayrollReconciliation month={month} year={year}/><Settlements/><TimePay key={period} records={records} canUpdate={canUpdate}/>
   <div className="flex flex-wrap gap-3"><label>Pay period<Input type="month" value={period} onChange={e=>setPeriod(e.target.value)}/></label>{canCreate&&<Button onClick={()=>{setCalculation(null);setEditing(null);setForm(blank);setOpen(true);}}>Create payroll draft</Button>}<Button variant="outline" disabled={!records.length} onClick={download}>Export CSV</Button><Button variant="outline" onClick={()=>window.print()}>Print</Button></div>
   <p className="text-sm text-muted-foreground">Bank submission is not connected. Record a payment reference only after payment has been completed outside this application.</p>
   <p className="text-xl">Total net salary: QAR {money(records.reduce((sum,row)=>sum+Number(row.netSalary),0))}</p>

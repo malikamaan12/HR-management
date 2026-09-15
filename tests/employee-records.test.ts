@@ -6,7 +6,7 @@ import { eq } from 'drizzle-orm';
 import express from 'express';
 import type { Server } from 'node:http';
 import bcrypt from 'bcryptjs';
-import { employees, users, activityLogs, employeeLifecycleEvents, documents, documentVersions, type InsertEmployee } from '../shared/schema';
+import { employees, users, leaveTypes, activityLogs, employeeLifecycleEvents, documents, documentVersions, type InsertEmployee } from '../shared/schema';
 const context = vi.hoisted(() => ({ db: null as any }));
 vi.mock('../server/db', () => ({ get db() { return context.db; }, pool: {} }));
 const files = vi.hoisted(() => ({ upload: vi.fn(), remove: vi.fn(), download:vi.fn() }));
@@ -20,6 +20,7 @@ import { authService } from '../server/services/auth';
 import settingsRouter from '../server/routes/settings';
 import leaveRouter from '../server/routes/leaveRequests';
 import documentRouter from '../server/routes/documents';
+import mobileRouter from '../server/routes/mobile';
 import {defaultCompanySettings} from '../shared/settings';
 
 let pg: PGlite, server: Server, base: string;
@@ -41,23 +42,93 @@ async function create(index = 1, extra: Partial<InsertEmployee> = {}) {
   const [employee] = await context.db.insert(employees).values({ ...input(index), ...extra }).returning();
   return employee;
 }
+test('employees request private contact corrections; only independent HR can apply them',async()=>{
+ const staff=await account('employee'),hr=await account('super_admin'),other=await account('employee','other'),finance=await account('finance');const person=await create(1,{userId:staff.id});
+ const path=`/employees/${person.id}/corrections`,data={expectedVersion:person.recordVersion,patch:{primaryMobile:'new-phone'},reason:'Updated contact number'};
+ expect((await request(other.token,path,'POST',data)).status).toBe(404);
+ expect((await request(staff.token,path,'POST',{...data,patch:{status:'inactive'}})).status).toBe(400);
+ const made=await request(staff.token,path,'POST',data);expect(made.status).toBe(201);
+ expect((await request(finance.token,path)).status).toBe(404);
+ expect((await request(staff.token,path,'POST',data)).status).toBe(409);
+ const decision=`${path}/${made.body.id}/decision`;
+ expect((await request(staff.token,decision,'POST',{action:'approve',reason:'My own approval'})).status).toBe(403);
+ expect((await request(hr.token,decision,'POST',{action:'approve',reason:'Verified with employee'})).status).toBe(200);
+ const updated=await request(staff.token,`/employees/${person.id}`);expect(updated.body.primaryMobile).toBe('new-phone');expect(updated.body.recordVersion).toBeGreaterThan(person.recordVersion);
+ expect((await request(hr.token,decision,'POST',{action:'approve',reason:'Duplicate approval'})).status).toBe(409);
+ expect((await request(staff.token,path)).body.items[0]).toMatchObject({status:'approved',previous_values:{primaryMobile:'private-phone'},patch:{primaryMobile:'new-phone'}});
+});
+test('stale correction cannot overwrite a newer record and can be withdrawn',async()=>{
+ const staff=await account('employee'),hr=await account();const person=await create(1,{userId:staff.id});const path=`/employees/${person.id}/corrections`;
+ const made=await request(staff.token,path,'POST',{expectedVersion:person.recordVersion,patch:{primaryMobile:'requested-phone'},reason:'Changed phone number'});
+ await context.db.update(employees).set({primaryMobile:'verified-newer-phone'}).where(eq(employees.id,person.id));
+ const decision=`${path}/${made.body.id}/decision`;
+ expect((await request(hr.token,decision,'POST',{action:'approve',reason:'Attempt older approval'})).status).toBe(409);
+ expect((await request(staff.token,`/employees/${person.id}`)).body.primaryMobile).toBe('verified-newer-phone');
+ expect((await request(staff.token,decision,'POST',{action:'withdraw',reason:'Newer record is correct'})).status).toBe(200);
+});
+test('correction approval and employee change roll back when auditing fails',async()=>{
+ const staff=await account('employee'),hr=await account();const person=await create(1,{userId:staff.id});const path=`/employees/${person.id}/corrections`;
+ const made=await request(staff.token,path,'POST',{expectedVersion:person.recordVersion,patch:{primaryMobile:'requested-phone'},reason:'Changed phone number'});
+ await pg.exec("CREATE FUNCTION fail_correction_audit() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'test'; END; $$ LANGUAGE plpgsql; CREATE TRIGGER fail_correction_audit BEFORE INSERT ON activity_logs FOR EACH ROW EXECUTE FUNCTION fail_correction_audit();");
+ try{expect((await request(hr.token,`${path}/${made.body.id}/decision`,'POST',{action:'approve',reason:'Verified request'})).status).toBe(500);expect((await request(staff.token,`/employees/${person.id}`)).body.primaryMobile).toBe('private-phone');expect((await request(staff.token,path)).body.items[0].status).toBe('pending');}finally{await pg.exec('DROP TRIGGER fail_correction_audit ON activity_logs; DROP FUNCTION fail_correction_audit();');}
+});
 beforeAll(async () => {
   process.env.JWT_SECRET = 'employee-records-test-access-secret-32-characters';
   process.env.JWT_REFRESH_SECRET = 'employee-records-test-refresh-secret-32-characters';
   pg = new PGlite();
   for (const file of readdirSync(new URL('../migrations', import.meta.url)).filter(n => n.endsWith('.sql')).sort()) await pg.exec(readFileSync(new URL('../migrations/' + file, import.meta.url), 'utf8'));
   context.db = drizzle(pg);
-  const app = express(); app.use(express.json()); app.use('/employees', router); app.use('/settings',settingsRouter); app.use('/leaves',leaveRouter); app.use('/documents',documentRouter);
+  const app = express(); app.use(express.json()); app.use('/employees', router); app.use('/settings',settingsRouter); app.use('/leaves',leaveRouter); app.use('/documents',documentRouter);app.use('/mobile',mobileRouter);
   server = app.listen(0, '127.0.0.1'); await new Promise<void>(resolve => server.once('listening', resolve));
   base = 'http://127.0.0.1:' + (server.address() as { port: number }).port;
 });
 beforeEach(async () => {
-  await pg.exec('TRUNCATE users, employees, activity_logs, app_settings RESTART IDENTITY CASCADE');
+  await pg.exec('TRUNCATE users, employees, leave_types, activity_logs, app_settings RESTART IDENTITY CASCADE');
   files.upload.mockReset().mockResolvedValue('documents/1/test.pdf'); files.remove.mockReset().mockResolvedValue(undefined);
   files.download.mockReset().mockResolvedValue('https://files.example.test/signed');
 });
 afterAll(async () => { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); await pg.close(); });
 
+test('leave ledger allocations reserve pending days, reject overspending and release rejected requests',async()=>{
+  const admin=await account(),self=await account('permanent_employee');const employee=await create(1,{userId:self.id});
+  await context.db.insert(leaveTypes).values({name:'Annual',category:'paid',accrualMethod:'none'});
+  const path=`/leaves/balances/${employee.id}/2026`,allocation={leaveType:'Annual',days:2,reason:'Approved annual allocation',reference:'allocation-2026',expectedVersion:0};
+  expect((await request(self.token,path,'POST',allocation)).status).toBe(403);
+  expect((await request(admin.token,path,'POST',allocation)).status).toBe(201);
+  expect((await request(admin.token,path,'POST',allocation)).status).toBe(201);
+  expect((await request(admin.token,path)).body.entries).toHaveLength(1);
+  const leave={employeeId:employee.id,leaveType:'Annual',startDate:'2026-09-21',endDate:'2026-09-22',reason:'Requested planned absence'};
+  const submitted=await request(self.token,'/mobile/leave-request','POST',leave);expect(submitted.status).toBe(201);expect(submitted.body.leaveId).toBe(submitted.body.id);
+  expect((await request(self.token,path)).body.accounts[0]).toMatchObject({allocated:2,pending:2,used:0,available:0});
+  expect((await request(self.token,'/leaves','POST',{...leave,startDate:'2026-09-23',endDate:'2026-09-23'})).status).toBe(409);
+  expect((await request(admin.token,`/leaves/${submitted.body.id}/status`,'PATCH',{status:'rejected'})).status).toBe(200);
+  expect((await request(self.token,path)).body.accounts[0].available).toBe(2);
+  expect((await request(self.token,'/leaves','POST',{...leave,leaveType:'Invented type'})).status).toBe(400);
+});
+test('leave calendar excludes private reasons and unrelated employees and approval rejects overlapping leave',async()=>{
+  const admin=await account(),self=await account('permanent_employee'),other=await account('permanent_employee','other');
+  const employee=await create(1,{userId:self.id});await create(2,{userId:other.id});
+  const input={employeeId:employee.id,leaveType:'annual',startDate:'2026-09-20',endDate:'2026-09-21',reason:'Private leave reason'};
+  const first=await request(self.token,'/leaves','POST',input),second=await request(self.token,'/leaves','POST',input);
+  const own=(await request(self.token,'/leaves')).body;expect(own[0].canApprove).toBe(false);expect(own[0].canCancel).toBe(true);
+  expect((await request(admin.token,'/leaves')).body[0].canApprove).toBe(true);
+  expect((await request(admin.token,`/leaves/${first.body.id}/status`,'PATCH',{status:'approved'})).status).toBe(200);
+  expect((await request(admin.token,`/leaves/${second.body.id}/status`,'PATCH',{status:'approved'})).status).toBe(409);
+  const path='/leaves/calendar?start=2026-09-01&end=2026-09-30';
+  expect((await request(other.token,path)).body).toEqual([]);
+  const calendar=(await request(self.token,path)).body;expect(calendar).toHaveLength(1);expect(calendar[0].reason).toBeUndefined();
+});
+test('leave allocation stale writes and audit failures leave the account unchanged',async()=>{
+ const admin=await account();const employee=await create();await context.db.insert(leaveTypes).values({name:'Annual',category:'paid',accrualMethod:'none'});
+ const path=`/leaves/balances/${employee.id}/2026`,input={leaveType:'Annual',days:10,reason:'Approved allocation',reference:'initial-credit',expectedVersion:0};
+ expect((await request(admin.token,path,'POST',input)).status).toBe(201);
+ expect((await request(admin.token,path,'POST',{...input,reference:'second-credit'})).status).toBe(409);
+ const balanceAccount=(await request(admin.token,path)).body.accounts[0];
+ await pg.exec("CREATE FUNCTION reject_ledger_audit() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'test'; END; $$ LANGUAGE plpgsql; CREATE TRIGGER reject_ledger_audit BEFORE INSERT ON activity_logs FOR EACH ROW EXECUTE FUNCTION reject_ledger_audit();");
+ try{expect((await request(admin.token,path,'POST',{...input,reference:'second-credit',expectedVersion:balanceAccount.version})).status).toBe(500);
+ expect((await request(admin.token,path)).body.accounts[0].allocated).toBe(10);
+ }finally{await pg.exec('DROP TRIGGER reject_ledger_audit ON activity_logs; DROP FUNCTION reject_ledger_audit();');}
+});
 test('employee endpoints require a valid session', async () => {
   for (const path of ['/employees', '/employees/directory', '/employees/1', '/employees/1/activity']) expect((await request('', path)).status).toBe(401);
 });

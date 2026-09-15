@@ -28,7 +28,7 @@ export const workforceSkillInput=z.object({name:z.string().trim().min(2).max(120
 export const workforceQualificationInput=z.object({skillId:positiveId,proficiencyLevel:z.number().int().min(1).max(5),
   certificationExpiry:z.string().datetime({offset:true}).nullable(),expectedUpdatedAt:z.string().datetime({offset:true}).nullable()}).strict();
 export interface AssignmentView {id:number; employeeId:number; name:string; status:'offered'|'accepted'|'declined'|'cancelled'; cancellationReason:string|null}
-export interface ShiftView {id:number; role:string; station:string|null; headcount:number; startAt:string; endAt:string; breakMinutes:number; requiredSkills:number[]; canSchedule:boolean; assignments:AssignmentView[]}
+export interface ShiftView {version:number;cancelledAt:string|null;supersedesId:number|null;id:number; role:string; station:string|null; headcount:number; startAt:string; endAt:string; breakMinutes:number; requiredSkills:number[]; canSchedule:boolean; assignments:AssignmentView[]}
 export interface WorkforceDashboard {
   team: TeamSummary; canSchedule: boolean; from:string; to:string;
   shifts: ShiftView[];

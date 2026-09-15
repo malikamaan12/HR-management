@@ -1,6 +1,6 @@
 import type {CalculationSnapshot,CalculationRules} from './calculation-rules';
 import { relations, sql } from "drizzle-orm";
-import { type AnyPgColumn, pgTable, text, serial, integer, boolean, timestamp, pgEnum, varchar, date, json, decimal, jsonb, check, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { type AnyPgColumn, pgTable, doublePrecision, text, serial, integer, boolean, timestamp, pgEnum, varchar, date, json, decimal, jsonb, check, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -29,6 +29,7 @@ export const workforceGrants = pgTable('workforce_grants', {
   revokedAt: timestamp('revoked_at', {withTimezone: true}),
 }, t => [check('workforce_grant_dates', sql`${t.endAt} > ${t.startAt}`), index('workforce_grant_user_team').on(t.userId, t.teamId)]);
 export const workforceShifts = pgTable('workforce_shifts', {
+  version:integer('version').notNull().default(1),cancelledAt:timestamp('cancelled_at',{withTimezone:true}),supersedesId:integer('supersedes_id'),
   id: serial('id').primaryKey(), teamId: integer('team_id').notNull().references(() => workforceTeams.id),
   role: text('role').notNull(), station: text('station'), headcount: integer('headcount').notNull(),
   startAt: timestamp('start_at', {withTimezone: true}).notNull(), endAt: timestamp('end_at', {withTimezone: true}).notNull(),
@@ -95,7 +96,28 @@ export const assignmentReviewHistory = pgTable('assignment_review_history', {
 
 // HR helpdesk content is stored separately from organization-wide activity logs.
 export const helpdeskStatus = pgEnum('helpdesk_status', ['open', 'in_progress', 'waiting_employee', 'resolved', 'closed']);
+export const helpdeskArticles = pgTable('helpdesk_articles', {
+ id:serial('id').primaryKey(),title:text('title').notNull(),body:text('body').notNull(),category:text('category').notNull(),
+ published:boolean('published').notNull().default(false),version:integer('version').notNull().default(1),
+ updatedBy:integer('updated_by').notNull().references(()=>users.id),updatedAt:timestamp('updated_at').notNull().defaultNow(),
+});
+export const helpdeskArticleVersions = pgTable('helpdesk_article_versions', {
+ id:serial('id').primaryKey(),articleId:integer('article_id').notNull().references(()=>helpdeskArticles.id),version:integer('version').notNull(),
+ snapshot:jsonb('snapshot').notNull(),createdBy:integer('created_by').notNull().references(()=>users.id),createdAt:timestamp('created_at').notNull().defaultNow(),
+});
+export const helpdeskTargetPolicies=pgTable('helpdesk_target_policies',{
+ id:serial('id').primaryKey(),category:text('category').notNull(),version:integer('version').notNull(),responseHours:integer('response_hours'),resolutionHours:integer('resolution_hours'),
+ reason:text('reason').notNull(),createdBy:integer('created_by').notNull().references(()=>users.id),createdAt:timestamp('created_at').notNull().defaultNow(),
+});
+export const helpdeskRoutingPolicies=pgTable('helpdesk_routing_policies',{
+ id:serial('id').primaryKey(),category:text('category').notNull(),confidential:boolean('confidential').notNull(),version:integer('version').notNull(),
+ assigneeId:integer('assignee_id').references(()=>users.id),reason:text('reason').notNull(),
+ createdBy:integer('created_by').notNull().references(()=>users.id),createdAt:timestamp('created_at').notNull().defaultNow(),
+});
 export const helpdeskCases = pgTable('helpdesk_cases', {
+  escalatedAt:timestamp('escalated_at',{withTimezone:true}),
+  targetSnapshot:jsonb('target_snapshot'),responseDueAt:timestamp('response_due_at',{withTimezone:true}),resolutionDueAt:timestamp('resolution_due_at',{withTimezone:true}),
+  firstResponseAt:timestamp('first_response_at',{withTimezone:true}),resolvedAt:timestamp('resolved_at',{withTimezone:true}),
   id: serial('id').primaryKey(), title: text('title').notNull(), category: text('category').notNull(),
   confidential: boolean('confidential').notNull().default(false), status: helpdeskStatus('status').notNull().default('open'),
   requesterId: integer('requester_id').notNull().references((): AnyPgColumn => users.id),
@@ -442,6 +464,7 @@ export const clockMethodEnum = pgEnum('clock_method', ['qr_code', 'biometric', '
 
 // Attendance table
 export const attendance = pgTable("attendance", {
+  version:integer("version").notNull().default(1),
   calculationSnapshot: jsonb("calculation_snapshot").$type<CalculationSnapshot>(),
   totalBreakMinutes: integer("total_break_minutes").notNull().default(0),
   id: serial("id").primaryKey(),
@@ -473,13 +496,22 @@ export const leaves = pgTable("leaves", {
   leaveType: text("leave_type").notNull(), // annual, sick, emergency, etc.
   startDate: date("start_date").notNull(),
   endDate: date("end_date").notNull(),
-  totalDays: integer("total_days").notNull(),
+  totalDays: doublePrecision("total_days").notNull(),
+  dayFraction:doublePrecision("day_fraction").notNull().default(1),
   reason: text("reason").notNull(),
   status: leaveStatusEnum("status").notNull().default("pending"),
   approvedBy: integer("approved_by").references(() => users.id),
   approvedAt: timestamp("approved_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const leaveLedger = pgTable("leave_ledger", {
+  id: serial("id").primaryKey(), employeeId: integer("employee_id").references(()=>employees.id).notNull(),
+  leaveType: text("leave_type").notNull(), year: integer("year").notNull(), days: doublePrecision("days").notNull(),
+  basis:jsonb("basis"),
+  reason: text("reason").notNull(), reference: text("reference").notNull(), createdBy: integer("created_by").references(()=>users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 // Leave Type Configuration table
@@ -994,6 +1026,7 @@ export const jobOffers = pgTable("job_offers", {
 
 // Onboarding Checklists (templates)
 export const onboardingChecklists = pgTable("onboarding_checklists", {
+  version:integer('version').notNull().default(1),
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   description: text("description"),
@@ -1005,6 +1038,7 @@ export const onboardingChecklists = pgTable("onboarding_checklists", {
 
 // Checklist Tasks (template tasks)
 export const checklistTasks = pgTable("checklist_tasks", {
+  active:boolean('active').notNull().default(true),
   id: serial("id").primaryKey(),
   checklistId: integer("checklist_id").references(() => onboardingChecklists.id).notNull(),
   taskName: text("task_name").notNull(),
@@ -1034,6 +1068,7 @@ export const employeeOnboarding = pgTable("employee_onboarding", {
 
 // Onboarding Tasks (assigned to specific employee)
 export const onboardingTasks = pgTable("onboarding_tasks", {
+  version:integer('version').notNull().default(1),
   id: serial("id").primaryKey(),
   onboardingId: integer("onboarding_id").references(() => employeeOnboarding.id).notNull(),
   taskId: integer("task_id").references(() => checklistTasks.id).notNull(),

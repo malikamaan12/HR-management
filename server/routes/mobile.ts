@@ -1,3 +1,4 @@
+import {createLeaveRequest} from './leaveRequests';
 import attendanceRoutes from './attendance';
 import { documentUpload, createDocument } from './documents';
 import { Router, Request, Response, NextFunction } from 'express';
@@ -175,54 +176,13 @@ router.get('/shift-schedule/:employeeId', verifyJWT, async (req: Request, res: R
 router.post('/submit-document',verifyJWT,documentUpload.single('document'),createDocument);
 
 // Mobile API endpoint for leave request submission
-router.post('/leave-request', verifyJWT, async (req: Request, res: Response) => {
-  try {
-    const { employeeId, leaveType, startDate, endDate, reason, contactDetails } = req.body;
-    
-    if (!employeeId || !leaveType || !startDate || !endDate) {
-      return res.status(400).json({ message: 'Employee ID, leave type, start date, and end date are required' });
-    }
-    
-    // Parse employee ID to number
-    const empId = Number(employeeId);
-    if(!Number.isSafeInteger(empId) || empId < 1)return res.status(400).json({message:'Invalid employee ID'});
-    const owned=await storage.getEmployee(empId);
-    if(!owned || owned.userId !== req.user!.userId)return res.status(403).json({message:'This employee record is not linked to your account'});
-    
-    // Validate date format and range
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    
-    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-      return res.status(400).json({ message: 'Invalid date format' });
-    }
-    
-    if (start > end) {
-      return res.status(400).json({ message: 'Start date cannot be after end date' });
-    }
-    
-    // Create leave request
-    const leaveData=insertLeaveSchema.parse({employeeId:empId,leaveType,startDate,endDate,reason:reason || 'Leave request',
-      totalDays:Math.floor((end.getTime()-start.getTime())/86400000)+1,status:'pending'});
-    
-    // Insert leave request into database
-    const [newLeave] = await db.insert(leaves)
-      .values(leaveData)
-      .returning();
-    
-    // TODO: Send push notification to manager about new leave request
-    
-    res.status(201).json({
-      success: true,
-      leaveId: newLeave.id,
-      message: 'Leave request submitted successfully',
-      status: 'pending'
-    });
-  } catch (error) {
-    res.status(500).json({ message: 'Server error submitting leave request', error: error instanceof Error ? error.message : 'Unknown error' });
-  }
+router.post('/leave-request', verifyJWT, async (req:Request,res:Response)=>{
+  const id=Number(req.body.employeeId);
+  if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({message:'Invalid employee ID'});
+  const [owned]=await db.select({id:employees.id}).from(employees).where(and(eq(employees.id,id),eq(employees.userId,req.user!.userId)));
+  if(!owned)return res.status(403).json({message:'This employee record is not linked to your account'});
+  return createLeaveRequest(req,res);
 });
-
 // Mobile API endpoint to get available shifts
 router.get('/available-shifts/:employeeId', verifyJWT, async (req: Request, res: Response) => {
   try {

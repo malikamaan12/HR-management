@@ -1,5 +1,6 @@
+import {apiJson} from '@/lib/queryClient';
 import { useState, useEffect } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,9 +42,14 @@ export function OnboardingChecklistModal({ isOpen, onClose, checklist, isEditing
   });
 
   const [tasks, setTasks] = useState<ChecklistTask[]>([]);
+  const [reason,setReason]=useState('');
+  const detail=useQuery<any>({queryKey:[`/api/onboarding-checklists/${checklist?.id}`],enabled:isOpen&&isEditing&&!!checklist?.id});
+  const [showHistory,setShowHistory]=useState(false);
+  const history=useQuery<any[]>({queryKey:[`/api/onboarding-checklists/${checklist?.id}/history`],enabled:isOpen&&isEditing&&showHistory});
 
   useEffect(() => {
-    if (checklist && isEditing) {
+    if (checklist && isEditing && detail.data) {
+      const checklist=detail.data;
       setFormData({
         name: checklist.name || "",
         description: checklist.description || "",
@@ -64,46 +70,13 @@ export function OnboardingChecklistModal({ isOpen, onClose, checklist, isEditing
       });
       setTasks([]);
     }
-  }, [checklist, isEditing, isOpen]);
+  }, [checklist, isEditing, isOpen, detail.data]);
 
   const createChecklistMutation = useMutation({
-    mutationFn: async (data: any) => {
-      const response = await fetch('/api/onboarding-checklists', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(data),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to create checklist');
-      }
-
-      return response.json();
-    },
-    onSuccess: async (newChecklist) => {
-      // Create tasks for the new checklist
-      if (tasks.length > 0) {
-        for (const task of tasks) {
-          await fetch('/api/checklist-tasks', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({
-              ...task,
-              checklistId: newChecklist.id
-            }),
-          });
-        }
-      }
-      
-      queryClient.invalidateQueries({ queryKey: ['/api/onboarding-checklists'] });
-      toast({
-        title: "Checklist Created",
-        description: "The onboarding checklist has been created successfully.",
-      });
-      onClose();
+    mutationFn: async (data:any)=>apiJson(isEditing?`/api/onboarding-checklists/${checklist.id}`:'/api/onboarding-checklists',{method:isEditing?'PUT':'POST',body:data}),
+    onSuccess:async()=>{
+      await queryClient.invalidateQueries({predicate:q=>String(q.queryKey[0]).startsWith('/api/onboarding-checklists')});
+      toast({title:'Checklist version saved'});setReason('');onClose();
     },
     onError: (error: Error) => {
       toast({
@@ -126,7 +99,7 @@ export function OnboardingChecklistModal({ isOpen, onClose, checklist, isEditing
       return;
     }
     
-    createChecklistMutation.mutate(formData);
+    createChecklistMutation.mutate({...formData,employeeTypeSpecific:formData.employeeTypeSpecific==='all'?'':formData.employeeTypeSpecific,departmentSpecific:formData.departmentSpecific==='all'?'':formData.departmentSpecific,expectedVersion:isEditing?detail.data?.version:0,reason,tasks:tasks.map(({taskName,description,category,assignedTo,daysFromStart,isRequired})=>({taskName,description:description||'',category,assignedTo,daysFromStart,isRequired:!!isRequired}))});
   };
 
   const handleInputChange = (field: string, value: any) => {
@@ -167,6 +140,10 @@ export function OnboardingChecklistModal({ isOpen, onClose, checklist, isEditing
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        {isEditing&&detail.isLoading&&<p>Loading checklist…</p>}
+        {isEditing&&detail.error&&<p role="alert">Unable to load checklist. Close and reopen before editing.</p>}
+        <label className="grid gap-1">Checklist change reason<Input value={reason} onChange={e=>setReason(e.target.value)} minLength={5} maxLength={500}/></label>
+        {isEditing&&<><Button type="button" variant="outline" onClick={()=>setShowHistory(!showHistory)}>Version history</Button>{showHistory&&(history.error?<p role="alert">Unable to load history.</p>:<ul>{history.data?.map(v=><li key={v.version}>v{v.version} · {v.snapshot.reason} · {v.snapshot.tasks.length} tasks</li>)}</ul>)}</>}
         <DialogHeader>
           <DialogTitle>
             {isEditing ? "Edit Onboarding Checklist" : "Create Onboarding Checklist"}
@@ -218,7 +195,6 @@ export function OnboardingChecklistModal({ isOpen, onClose, checklist, isEditing
                       <SelectItem value="permanent">Permanent</SelectItem>
                       <SelectItem value="contract">Contract</SelectItem>
                       <SelectItem value="temporary">Temporary</SelectItem>
-                      <SelectItem value="intern">Intern</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -370,7 +346,7 @@ export function OnboardingChecklistModal({ isOpen, onClose, checklist, isEditing
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" disabled={createChecklistMutation.isPending}>
+            <Button type="submit" disabled={createChecklistMutation.isPending||reason.trim().length<5||(isEditing&&(!detail.data||detail.isError))}>
               {createChecklistMutation.isPending ? "Creating..." : "Create Checklist"}
             </Button>
           </div>

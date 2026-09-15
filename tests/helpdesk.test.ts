@@ -46,6 +46,136 @@ beforeAll(async()=>{
 beforeEach(async()=>{await pg.exec('DROP TRIGGER IF EXISTS fail_attachment_test ON helpdesk_attachments; TRUNCATE users RESTART IDENTITY CASCADE');context.available=true;context.uploads=[];context.deleted=[];context.signed=[];});
 afterAll(async()=>{await new Promise<void>((resolve,reject)=>server.close(error=>error?reject(error):resolve()));await pg.close();});
 
+test('escalation preserves scope, rejects stale actions and requires triage review to clear',async()=>{
+ const employee=await account('esemployee'),other=await account('esother'),admin=await account('esadmin','admin'),handler=await account('eshandler','hr_manager');
+ const id=await create(employee.token);
+ expect((await request(other.token,`/cases/${id}/actions`,{action:'escalate',version:1,reason:'Needs HR review'})).status).toBe(404);
+ expect((await action(admin.token,id,{action:'assign',assigneeId:handler.id})).status).toBe(200);
+ const before=await detail(employee.token,id);
+ expect(before.capabilities.escalate).toBe(true);
+ expect((await request(employee.token,`/cases/${id}/actions`,{action:'escalate',version:before.case.version,reason:'Urgent clarification needed'})).status).toBe(200);
+ expect((await request(employee.token,`/cases/${id}/actions`,{action:'escalate',version:before.case.version,reason:'Duplicate retry'})).status).toBe(409);
+ const escalated=await detail(employee.token,id);
+ expect(escalated.case.escalatedAt).toBeTruthy();expect(escalated.capabilities.escalate).toBe(false);
+ expect(escalated.events.filter((e:any)=>e.details.startsWith('Escalated for HR review'))).toHaveLength(1);
+ expect((await request(admin.token,'/cases?view=queue&escalated=true')).body.total).toBe(1);
+ expect((await request(other.token,'/cases?escalated=true')).body.total).toBe(0);
+ expect((await action(employee.token,id,{action:'clear_escalation',reason:'I reviewed myself'})).status).toBe(403);
+ expect((await action(handler.token,id,{action:'clear_escalation',reason:'Assigned handler review'})).status).toBe(403);
+ expect((await action(admin.token,id,{action:'clear_escalation',reason:'Triage reviewed and assigned priority'})).status).toBe(200);
+ expect((await request(admin.token,'/cases?view=queue&escalated=true')).body.total).toBe(0);
+ expect((await action(handler.token,id,{action:'escalate',reason:'Additional triage needed'})).status).toBe(200);
+ expect((await action(admin.token,id,{action:'status',status:'resolved',reason:'Resolved after triage review'})).status).toBe(200);
+ expect((await detail(employee.token,id)).case.escalatedAt).toBeNull();
+ expect((await action(employee.token,id,{action:'escalate',reason:'Attempt on resolved case'})).status).toBe(409);
+ expect((await action(employee.token,id,{action:'status',status:'in_progress',reason:'Need further clarification'})).status).toBe(200);
+ expect((await detail(employee.token,id)).case.escalatedAt).toBeNull();
+});
+test('confidential escalations remain private and an audit failure rolls back escalation',async()=>{
+ const employee=await account('privateemployee'),admin=await account('ordinaryadmin','admin'),director=await account('privatedirector','hr_director');
+ const id=await create(employee.token,{confidential:true});
+ await pg.exec("CREATE FUNCTION fail_escalation_event() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'test'; END; $$ LANGUAGE plpgsql; CREATE TRIGGER fail_escalation_event BEFORE INSERT ON helpdesk_events FOR EACH ROW EXECUTE FUNCTION fail_escalation_event();");
+ try{expect((await action(employee.token,id,{action:'escalate',reason:'Confidential review needed'})).status).toBe(500);
+ expect((await detail(employee.token,id)).case).toMatchObject({version:1,escalatedAt:null});
+ }finally{await pg.exec('DROP TRIGGER fail_escalation_event ON helpdesk_events; DROP FUNCTION fail_escalation_event();');}
+ expect((await action(employee.token,id,{action:'escalate',reason:'Confidential review needed'})).status).toBe(200);
+ expect((await request(admin.token,'/cases?view=queue&escalated=true')).body.total).toBe(0);
+ expect((await request(director.token,'/cases?view=queue&escalated=true')).body.total).toBe(1);
+ expect((await request(admin.token,`/cases/${id}/actions`,{action:'clear_escalation',version:2,reason:'Unauthorized clearance'})).status).toBe(404);
+ expect((await action(director.token,id,{action:'clear_escalation',reason:'Confidential triage reviewed'})).status).toBe(200);
+});
+
+test('category routing is versioned, applies to new cases and falls back for unavailable handlers',async()=>{
+ const admin=await account('routeadmin','admin'),hr=await account('routehr','hr_manager'),employee=await account('routestaff');
+ const before=await create(employee.token);
+ const input={category:'payroll',confidential:false,assigneeId:hr.id,expectedVersion:0,reason:'Payroll support ownership'};
+ expect((await request(employee.token,'/routing',input)).status).toBe(403);
+ expect((await request(admin.token,'/routing',input)).status).toBe(201);
+ expect((await request(admin.token,'/routing',input)).status).toBe(409);
+ const id=await create(employee.token);
+ expect((await detail(hr.token,id)).case).toMatchObject({assigneeId:hr.id,status:'in_progress'});
+ expect((await detail(admin.token,before)).case.assigneeId).toBeNull();
+ expect((await detail(employee.token,id)).events.some((e:any)=>e.internal)).toBe(false);
+ expect((await detail(admin.token,id)).events.some((e:any)=>e.details.includes('Automatic routing policy'))).toBe(true);
+ expect((await detail(admin.token,await create(hr.token))).case.assigneeId).toBeNull();
+ await context.db.update(users).set({isActive:false}).where(eq(users.id,hr.id));
+ expect((await detail(admin.token,await create(employee.token))).case.assigneeId).toBeNull();
+ expect((await request(admin.token,'/routing',{...input,expectedVersion:1})).status).toBe(400);
+ expect((await request(admin.token,'/routing',{...input,assigneeId:null,expectedVersion:1})).status).toBe(201);
+ expect((await request(admin.token,'/routing/history?category=payroll&confidential=false')).body.map((r:any)=>r.version)).toEqual([2,1]);
+ expect((await request(employee.token,'/routing/history?category=payroll&confidential=false')).status).toBe(403);
+});
+test('confidential routing never falls back to ordinary routing and requires confidential triage eligibility',async()=>{
+ const root=await account('root','super_admin'),admin=await account('admin','admin'),hr=await account('handler','hr'),director=await account('director','hr_director'),employee=await account('employee');
+ const input={category:'payroll',confidential:true,assigneeId:director.id,expectedVersion:0,reason:'Private payroll support'};
+ expect((await request(admin.token,'/routing',input)).status).toBe(403);
+ expect((await request(root.token,'/routing',{...input,assigneeId:hr.id})).status).toBe(400);
+ expect((await request(root.token,'/routing',{...input,confidential:false,assigneeId:hr.id})).status).toBe(201);
+ const before=await create(employee.token,{confidential:true});
+ expect((await detail(root.token,before)).case.assigneeId).toBeNull();
+ expect((await request(root.token,'/routing',input)).status).toBe(201);
+ const id=await create(employee.token,{confidential:true});
+ expect((await detail(director.token,id)).case.assigneeId).toBe(director.id);
+ expect((await request(hr.token,`/cases/${id}`)).status).toBe(404);
+ expect((await request(admin.token,'/routing')).body.items.every((r:any)=>!r.confidential)).toBe(true);
+ expect((await request(admin.token,'/routing/responders?confidential=true&q=di')).status).toBe(403);
+ expect((await request(root.token,'/routing/responders?confidential=true&q=handler')).body).toEqual([]);
+ await context.db.update(users).set({role:'hr'}).where(eq(users.id,director.id));
+ expect((await detail(root.token,await create(employee.token,{confidential:true}))).case.assigneeId).toBeNull();
+});
+
+test('helpdesk target policies are admin controlled and pinned to new cases',async()=>{
+ const admin=await account('admin','admin'),employee=await account('employee');
+ const input={category:'payroll',responseHours:2,resolutionHours:8,expectedVersion:0,reason:'Approved response targets'};
+ expect((await request(employee.token,'/targets',input)).status).toBe(403);
+ expect((await request(admin.token,'/targets',input)).status).toBe(201);
+ const id=await create(employee.token),first=(await detail(admin.token,id)).case;
+ expect(Date.parse(first.resolutionDueAt)-Date.parse(first.responseDueAt)).toBe(6*3600000);
+ expect((await request(admin.token,'/targets',input)).status).toBe(409);
+ expect((await request(admin.token,'/targets',{...input,responseHours:4,expectedVersion:1})).status).toBe(201);
+ expect((await detail(admin.token,id)).case.responseDueAt).toBe(first.responseDueAt);
+ expect((await reply(admin.token,id,'Internal investigation',true)).status).toBe(201);
+ expect((await detail(admin.token,id)).case.firstResponseAt).toBeNull();
+ expect((await reply(employee.token,id,'More information from employee')).status).toBe(201);
+ expect((await detail(admin.token,id)).case.firstResponseAt).toBeNull();
+ expect((await reply(admin.token,id,'HR response for employee')).status).toBe(201);
+ expect((await detail(admin.token,id)).case.firstResponseAt).toBeTruthy();
+});
+test('overdue helpdesk queues respect confidentiality and completion state',async()=>{
+ const admin=await account('admin','admin'),employee=await account('employee'),director=await account('director','hr_director');
+ const ordinary=await create(employee.token),privateId=await create(employee.token,{confidential:true});
+ await pg.exec("UPDATE helpdesk_cases SET response_due_at = now() - interval '1 hour'");
+ expect((await request(admin.token,'/cases?view=queue&overdue=true')).body.items.map((r:any)=>r.id)).toEqual([ordinary]);
+ expect((await request(director.token,'/cases?view=queue&overdue=true')).body.total).toBe(2);
+ expect((await action(admin.token,ordinary,{action:'status',status:'resolved',reason:'Question answered fully'})).status).toBe(200);
+ expect((await detail(admin.token,ordinary)).case.resolvedAt).toBeTruthy();
+ expect((await request(admin.token,'/cases?view=queue&overdue=true')).body.total).toBe(0);
+ expect((await action(employee.token,ordinary,{action:'status',status:'open',reason:'Clarification still needed'})).status).toBe(200);
+ expect((await detail(admin.token,ordinary)).case.resolvedAt).toBeNull();
+ expect((await request(admin.token,'/cases?view=queue&overdue=true')).body.total).toBe(1);
+});
+test('knowledge drafts and revision history are private; publishing and withdrawal preserve versions',async()=>{
+ const admin=await account('admin','admin'),employee=await account('employee');
+ const input={title:'Leave request guidance',body:'Contact HR with your leave dates and planned coverage.',category:'attendance',published:false,reason:'Initial HR guidance',expectedVersion:0};
+ expect((await request(employee.token,'/articles',input)).status).toBe(403);
+ const created=await request(admin.token,'/articles',input);expect(created.status).toBe(201);
+ expect((await request(employee.token,'/articles')).body.items).toEqual([]);
+ expect((await request(employee.token,`/articles/${created.body.id}/history`)).status).toBe(403);
+ expect((await request(admin.token,`/articles/${created.body.id}`,{...input,published:true,expectedVersion:1})).status).toBe(200);
+ expect((await request(employee.token,'/articles?q=coverage')).body.items).toHaveLength(1);
+ expect((await request(admin.token,`/articles/${created.body.id}`,{...input,published:false,expectedVersion:1})).status).toBe(409);
+ expect((await request(admin.token,`/articles/${created.body.id}`,{...input,published:false,expectedVersion:2})).status).toBe(200);
+ expect((await request(employee.token,'/articles')).body.items).toEqual([]);
+ expect((await request(admin.token,`/articles/${created.body.id}/history`)).body.map((r:any)=>r.version)).toEqual([3,2,1]);
+});
+test('knowledge history failure rolls back the article update',async()=>{
+ const admin=await account('admin','admin'),input={title:'General HR help',body:'General guidance without employee-specific information.',category:'other',published:true,reason:'Initial guidance',expectedVersion:0};
+ const created=await request(admin.token,'/articles',input);
+ await pg.exec("CREATE FUNCTION fail_article() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'test'; END; $$ LANGUAGE plpgsql; CREATE TRIGGER fail_article BEFORE INSERT ON helpdesk_article_versions FOR EACH ROW EXECUTE FUNCTION fail_article();");
+ try{expect((await request(admin.token,`/articles/${created.body.id}`,{...input,title:'Changed help',expectedVersion:1})).status).toBe(500);
+ expect((await request(admin.token,'/articles')).body.items[0]).toMatchObject({title:input.title,version:1});
+ }finally{await pg.exec('DROP TRIGGER fail_article ON helpdesk_article_versions; DROP FUNCTION fail_article();');}
+});
 test('employees see only their own requests and cannot forge ownership or internal-note access',async()=>{
   const alice=await account('alice'),bob=await account('bob'),lead=await account('lead','event_manager');const id=await create(alice.token);
   expect((await request('','/cases')).status).toBe(401);

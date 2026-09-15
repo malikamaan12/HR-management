@@ -247,3 +247,84 @@ test('invalid time zones, backwards and overlong shifts, and invalid breaks are 
     expect((await request(f.lead.token,`/workforce/teams/${f.teamId}/shifts`,{role:'Host',headcount:1,...input})).status).toBe(400);
   expect((await request(f.lead.token,`/workforce/teams/${f.teamId}/dashboard?from=${instant(1)}&to=${instant(40)}`)).status).toBe(400);
 });
+
+test('availability is private, non-overlapping and rechecked on shift acceptance',async()=>{
+ const f=await setup();const offer=await request(f.lead.token,`/workforce/shifts/${f.shiftId}/offers`,{employeeId:f.a.id});
+ const declaration=await request(f.alice.token,'/workforce/availability',{...dates(),kind:'unavailable'});expect(declaration.status).toBe(201);
+ expect((await request(f.alice.token,'/workforce/availability',{...dates(),kind:'available'})).status).toBe(409);
+ expect((await request(f.alice.token,`/workforce/assignments/${offer.body.id}/respond`,{decision:'accepted'})).status).toBe(409);
+ const range=`?from=${instant(0)}&to=${instant(9)}`;
+ expect((await request(f.bob.token,'/workforce/availability'+range)).body).toEqual([]);
+ expect((await request(f.bob.token,`/workforce/availability/${declaration.body.id}/cancel`,{})).status).toBe(404);
+ const candidates=await request(f.lead.token,`/workforce/shifts/${f.shiftId}/candidates`);expect(candidates.status).toBe(200);expect(candidates.body.items.find((p:any)=>p.id===f.a.id).eligible).toBe(false);
+ expect((await request(f.alice.token,`/workforce/availability/${declaration.body.id}/cancel`,{})).status).toBe(200);
+ expect((await request(f.alice.token,`/workforce/assignments/${offer.body.id}/respond`,{decision:'accepted'})).status).toBe(200);
+ expect((await request(f.alice.token,'/workforce/availability',{...dates(),kind:'unavailable'})).status).toBe(409);
+ expect((await request(f.alice.token,'/workforce/availability',{...dates(-3),kind:'available'})).status).toBe(400);
+});
+test('recurring rosters replay safely and roll back all occurrences outside grant dates',async()=>{
+ const f=await setup(),url=`/workforce/teams/${f.teamId}/series`,input={shift:{role:'Recurring host',headcount:2,...dates(4)},count:3,intervalDays:2,requestKey:'c4b482d0-4b08-4cbd-8767-f43f969e062e'};
+ const saved=await request(f.lead.token,url,input);expect(saved.status).toBe(201);expect(saved.body.shifts).toHaveLength(3);
+ expect(saved.body.shifts.map((s:any)=>s.startAt)).toEqual([instant(4),instant(6),instant(8)]);
+ expect((await request(f.lead.token,url,input)).body).toEqual(saved.body);
+ expect((await request(f.lead.token,url,{...input,count:2})).status).toBe(409);
+ const count=await pg.query('select count(*)::int as n from workforce_shifts');
+ expect((await request(f.lead.token,url,{...input,count:5,requestKey:'a4b482d0-4b08-4cbd-8767-f43f969e062e'})).status).toBe(404);
+ expect((await pg.query('select count(*)::int as n from workforce_shifts')).rows).toEqual(count.rows);
+});
+test('replacement cancels the original, retains history and requires new acceptance',async()=>{
+ const f=await setup();const original=await request(f.lead.token,`/workforce/shifts/${f.shiftId}/offers`,{employeeId:f.a.id});await request(f.alice.token,`/workforce/assignments/${original.body.id}/respond`,{decision:'accepted'});
+ const url=`/workforce/assignments/${original.body.id}/replace`,input={employeeId:f.b.id,reason:'Cover approved absence'};
+ expect((await request(f.alice.token,url,input)).status).toBe(404);
+ const saved=await request(f.lead.token,url,input);expect(saved.status).toBe(201);expect((await request(f.lead.token,url,input)).body).toEqual(saved.body);
+ const rows=await context.db.select().from(schema.workforceAssignments);expect(rows.find((a:any)=>a.id===original.body.id).status).toBe('cancelled');expect(rows.find((a:any)=>a.id===saved.body.id).status).toBe('offered');
+ expect((await pg.query('select * from workforce_replacements')).rows).toHaveLength(1);
+ expect((await request(f.bob.token,`/workforce/assignments/${saved.body.id}/respond`,{decision:'accepted'})).status).toBe(200);
+});
+test('shift revision archives responses, checks both windows and rejects stale revisions',async()=>{
+ const f=await setup();const offer=await request(f.lead.token,`/workforce/shifts/${f.shiftId}/offers`,{employeeId:f.a.id});
+ const url=`/workforce/shifts/${f.shiftId}/revise`,input={version:1,shift:{role:'Revised host',headcount:1,...dates(4)},reason:'Venue opening moved'};
+ expect((await request(f.lead.token,url,{...input,shift:{...input.shift,...dates(11)}})).status).toBe(404);
+ const revision=await request(f.lead.token,url,input);expect(revision.status).toBe(201);
+ expect((await request(f.lead.token,url,input)).status).toBe(409);
+ expect((await request(f.alice.token,`/workforce/assignments/${offer.body.id}/respond`,{decision:'accepted'})).status).toBe(409);
+ expect((await request(f.lead.token,`/workforce/shifts/${f.shiftId}/offers`,{employeeId:f.b.id})).status).toBe(409);
+ const rows=await context.db.select().from(schema.workforceShifts);expect(rows.find((s:any)=>s.id===f.shiftId).cancelledAt).toBeTruthy();expect(rows.find((s:any)=>s.id===revision.body.id).supersedesId).toBe(f.shiftId);
+ expect((await request(f.lead.token,`/workforce/shifts/${f.shiftId}/history`)).body).toHaveLength(2);
+ expect((await request(f.alice.token,`/workforce/shifts/${f.shiftId}/history`)).status).toBe(404);
+ expect((await request(f.lead.token,`/workforce/shifts/${revision.body.id}/offers`,{employeeId:f.a.id})).status).toBe(201);
+});
+test('coverage flags pending absences without exposing reasons and inbox preserves lane permissions',async()=>{
+ const f=await setup();const offer=await request(f.lead.token,`/workforce/shifts/${f.shiftId}/offers`,{employeeId:f.a.id});await request(f.alice.token,`/workforce/assignments/${offer.body.id}/respond`,{decision:'accepted'});
+ const [leave]=await context.db.insert(schema.leaves).values({employeeId:f.a.id,leaveType:'Annual',startDate:instant(3).slice(0,10),endDate:instant(3).slice(0,10),totalDays:1,reason:'SECRET medical information'}).returning();
+ const range=`?from=${instant(0,0)}&to=${instant(9,0)}`;
+ const coverage=await request(f.lead.token,`/workforce/teams/${f.teamId}/coverage`+range);expect(coverage.status).toBe(200);expect(coverage.body.items[0].warnings[0].issue).toBe('Absence request pending');expect(JSON.stringify(coverage.body)).not.toContain('SECRET');
+ const inbox=await request(f.admin.token,`/workforce/teams/${f.teamId}/approvals`+range);expect(inbox.status).toBe(200);expect(inbox.body.leave.map((l:any)=>l.id)).toContain(leave.id);expect(JSON.stringify(inbox.body)).not.toContain('SECRET');
+ const leadInbox=await request(f.lead.token,`/workforce/teams/${f.teamId}/approvals`+range);expect(leadInbox.status).toBe(200);expect(leadInbox.body.time).toEqual([]);expect(leadInbox.body.performance).toEqual([]);
+ await context.db.update(schema.workforceGrants).set({revokedAt:new Date()}).where(eq(schema.workforceGrants.id,f.grantId));
+ expect((await request(f.lead.token,`/workforce/teams/${f.teamId}/approvals`+range)).status).toBe(404);
+ expect((await request(f.lead.token,`/workforce/teams/${f.teamId}/coverage`+range)).status).toBe(404);
+});
+test('failed audit rolls back a replacement and a revision completely',async()=>{
+ const f=await setup();const original=await request(f.lead.token,`/workforce/shifts/${f.shiftId}/offers`,{employeeId:f.a.id});
+ await pg.exec("CREATE FUNCTION reject_operations_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'audit unavailable'; END $$; CREATE TRIGGER reject_operations_audit BEFORE INSERT ON activity_logs FOR EACH ROW EXECUTE FUNCTION reject_operations_audit();");
+ try{
+  expect((await request(f.lead.token,`/workforce/assignments/${original.body.id}/replace`,{employeeId:f.b.id,reason:'Coverage required'})).status).toBe(500);
+  expect((await request(f.lead.token,`/workforce/shifts/${f.shiftId}/revise`,{version:1,shift:{role:'Revised host',headcount:1,...dates(4)},reason:'Venue changed'})).status).toBe(500);
+  expect((await context.db.select().from(schema.workforceAssignments)).map((a:any)=>a.status)).toEqual(['offered']);
+  expect((await pg.query('select * from workforce_replacements')).rows).toHaveLength(0);expect((await context.db.select().from(schema.workforceShifts))).toHaveLength(1);
+ }finally{await pg.exec('DROP TRIGGER reject_operations_audit ON activity_logs; DROP FUNCTION reject_operations_audit();');}
+});
+
+test('recurring shifts preserve site clock time across DST and reject ambiguous occurrences atomically',async()=>{
+ const f=await setup();await context.db.update(schema.workforceSites).set({timezone:'America/New_York'});
+ const year=new Date().getUTCFullYear()+1;let sunday=new Date(Date.UTC(year,10,1));while(sunday.getUTCDay()!==0)sunday.setUTCDate(sunday.getUTCDate()+1);
+ const before=new Date(+sunday-7*86400000).toISOString().slice(0,10),after=sunday.toISOString().slice(0,10);
+ const url=`/workforce/teams/${f.teamId}/series`;
+ const result=await request(f.admin.token,url,{shift:{role:'Morning host',headcount:1,startAt:siteTimeToIso(before+'T09:00','America/New_York'),endAt:siteTimeToIso(before+'T17:00','America/New_York')},count:2,intervalDays:7,requestKey:'b4b482d0-4b08-4cbd-8767-f43f969e062e'});
+ expect(result.status).toBe(201);expect(result.body.shifts[1].startAt).toBe(siteTimeToIso(after+'T09:00','America/New_York'));
+ expect(Date.parse(result.body.shifts[1].startAt)-Date.parse(result.body.shifts[0].startAt)).toBe(169*3600000);
+ const count=(await pg.query('select count(*)::int as n from workforce_shifts')).rows;
+ const invalid=await request(f.admin.token,url,{shift:{role:'Night host',headcount:1,startAt:siteTimeToIso(before+'T01:30','America/New_York'),endAt:siteTimeToIso(before+'T04:00','America/New_York')},count:2,intervalDays:7,requestKey:'d4b482d0-4b08-4cbd-8767-f43f969e062e'});
+ expect(invalid.status).toBe(400);expect(invalid.body.message).toMatch(/skipped|repeated/);expect((await pg.query('select count(*)::int as n from workforce_shifts')).rows).toEqual(count);
+});

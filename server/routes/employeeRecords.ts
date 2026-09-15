@@ -1,3 +1,4 @@
+import correctionRouter from './employeeCorrections';
 import { Router, type Response } from 'express';
 import { and, count, desc, eq, ilike, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -12,6 +13,7 @@ import { localDate } from '@shared/workforce';
 
 const router = Router();
 router.use(authenticate);
+router.use(correctionRouter);
 router.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
 const idSchema = z.coerce.number().int().positive();
 const writers = new Set(['super_admin', 'admin', 'hr_director', 'hr']);

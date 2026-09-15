@@ -1,3 +1,4 @@
+import operationsRouter from './workforceOperations';
 import {Router, type Request, type Response} from 'express';
 import {and, eq, gt, gte, ilike, inArray, isNull, lt, lte, or, sql} from 'drizzle-orm';
 import {z} from 'zod';
@@ -8,7 +9,7 @@ import {employees, users, workforceSites as sites, workforceTeams as teams, work
 import {workforceAdmin, positiveId, siteInput, teamInput, memberInput, grantInput, shiftInput, workforceSkillInput, workforceQualificationInput} from '@shared/workforce';
 import {WorkforceError,fail,requireWorkforceAdmin,currentGrants,teamAccess,eligible,audit,capacityCount,lockEmployee} from '../services/workforce';
 
-const router=Router(); router.use(authenticate);
+const router=Router(); router.use(authenticate);router.use(operationsRouter);
 const handle=(fn:(req:Request,res:Response)=>Promise<unknown>)=>async(req:Request,res:Response)=>{
   try {await fn(req,res);} catch(error) {
     if(error instanceof WorkforceError) return res.status(error.status).json({message:error.message});
@@ -167,7 +168,7 @@ router.post('/shifts/:id/offers',handle(async(req,res)=>{
   const result=await db.transaction(async tx=>{
     const [shift]=await tx.select().from(shifts).where(eq(shifts.id,id)).for('update');if(!shift) return fail(404,'Shift not found');
     const team=await teamAccess(tx,req.user!,shift.teamId,'schedule',shift);
-    if(shift.startAt<=new Date()) fail(409,'This shift has already started');
+    if(shift.cancelledAt||shift.startAt<=new Date()) fail(409,'This shift is cancelled or has already started');
     const [existing]=await tx.select().from(assignments).where(and(eq(assignments.shiftId,id),eq(assignments.employeeId,employeeId)));
     if(existing?.status==='offered') return existing; // Safe retry; terminal offers retain their history.
     if(existing) return fail(409,'This employee already responded or the assignment was cancelled');
@@ -196,7 +197,7 @@ router.post('/assignments/:id/respond',handle(async(req,res)=>{
     const [shift]=await tx.select().from(shifts).where(eq(shifts.id,own.assignment.shiftId)).for('update');
     const [assignment]=await tx.select().from(assignments).where(eq(assignments.id,id)).for('update');
     if(assignment.status===decision) return assignment;
-    if(assignment.status!=='offered' || shift.startAt<=new Date()) fail(409,'This offer can no longer be answered');
+    if(shift.cancelledAt||assignment.status!=='offered' || shift.startAt<=new Date()) fail(409,'This offer can no longer be answered');
     if(decision==='accepted') {
       const [site]=await tx.select({timezone:sites.timezone}).from(teams).innerJoin(sites,eq(teams.siteId,sites.id)).where(eq(teams.id,shift.teamId));
       await eligible(tx,assignment.employeeId,shift,site.timezone,id);

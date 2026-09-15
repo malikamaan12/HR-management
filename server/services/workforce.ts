@@ -45,7 +45,10 @@ export async function assertLeaveCompatible(tx:WorkforceTransaction, employeeId:
     fail(409,'Cancel the overlapping accepted workforce assignment before approving leave');
 }
 export async function eligible(tx:WorkforceTransaction, employeeId:number, shift:typeof shifts.$inferSelect, timezone:string, excludeId?:number) {
+  if(shift.cancelledAt)fail(409,'This shift is cancelled or superseded');
   const employee = await lockEmployee(tx,employeeId);
+  const blocked=await tx.execute(sql`SELECT id FROM workforce_availability WHERE employee_id=${employeeId} AND cancelled_at IS NULL AND kind='unavailable' AND start_at<${shift.endAt} AND end_at>${shift.startAt} LIMIT 1`);
+  if(blocked.rows.length)fail(409,'Employee declared unavailability during this shift');
   const startDate=localDate(shift.startAt,timezone),endDate=localDate(new Date(+shift.endAt-1),timezone);
   if (employee.status!=='active' || employee.joiningDate>startDate || (employee.contractEndDate && employee.contractEndDate<endDate)
     || (employee.terminationDate && employee.terminationDate<=endDate)) fail(409,'Employee is not active for the full shift dates');

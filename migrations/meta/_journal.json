@@ -106,6 +106,97 @@
       "when": 1789456800000,
       "tag": "0014_document_renewal_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1789460400000,
+      "tag": "0015_leave_ledger",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1789464000000,
+      "tag": "0016_helpdesk_knowledge",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1789467600000,
+      "tag": "0017_helpdesk_targets",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1789471200000,
+      "tag": "0018_helpdesk_routing",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1789474800000,
+      "tag": "0019_helpdesk_escalation",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1789478400000,
+      "tag": "0020_onboarding_task_version",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1789482000000,
+      "tag": "0021_onboarding_template_versions",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1789485600000,
+      "tag": "0022_recruitment_handoffs",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1789489200000,
+      "tag": "0023_offboarding",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1789492800000,
+      "tag": "0024_final_settlements",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1789496400000,
+      "tag": "0025_employee_corrections",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1789500000000,
+      "tag": "0026_workforce_operations",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1789503600000,
+      "tag": "0027_time_leave_pay",
+      "breakpoints": true
     }
   ]
 }

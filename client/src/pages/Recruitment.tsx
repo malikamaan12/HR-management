@@ -1,3 +1,4 @@
+import {HiringHandoff} from '@/components/onboarding/HiringHandoff';
 import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -615,7 +616,7 @@ export default function Recruitment() {
                           <div className="flex space-x-2">
                             <Button variant="ghost" size="sm">View</Button>
                             {offer.status === "accepted" && (
-                              <Button variant="outline" size="sm">Onboard</Button>
+                              <HiringHandoff offerId={offer.id}/>
                             )}
                           </div>
                         </TableCell>

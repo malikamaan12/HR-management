@@ -17,7 +17,8 @@ export function capabilities(user:TokenPayload,row:typeof cases.$inferSelect):Ca
   const staff=!requester&&(triage||(row.assigneeId===user.userId&&helpdeskResponder(user.role)));
   const reopen:CaseStatus=row.assigneeId?'in_progress':'open';
   const transitions:Record<CaseStatus,CaseStatus[]>={open:['in_progress','waiting_employee','resolved'],in_progress:['waiting_employee','resolved'],waiting_employee:['in_progress','resolved'],resolved:[reopen,'closed'],closed:[reopen]};
-  return {staff,assign:triage,restrict:!row.confidential&&(requester||triage),reply:row.status!=='closed'&&row.status!=='resolved',
+  const active=row.status!=='closed'&&row.status!=='resolved';
+  return {escalate:active&&!row.escalatedAt&&(requester||staff),clearEscalation:active&&!!row.escalatedAt&&triage,staff,assign:triage,restrict:!row.confidential&&(requester||triage),reply:active,
     internal:staff&&row.status!=='closed'&&row.status!=='resolved',statuses:staff?transitions[row.status]:requester?(row.status==='resolved'?[reopen,'closed']:row.status==='closed'?[reopen]:[]):[]};
 }
 export async function readCase(tx:HelpdeskTransaction,user:TokenPayload,id:number,lock=false){

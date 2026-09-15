@@ -11,7 +11,7 @@ const minutes=z.union([z.literal(1),z.literal(5),z.literal(10),z.literal(15),z.l
 const timeRule=z.object({breakTreatment:z.enum(['unpaid','paid']),roundingMinutes:minutes,roundingMode:rounding}).strict();
 export const calculationRulesSchema=z.object({
  attendance:timeRule.extend({lateGraceMinutes:z.number().int().min(0).max(120).nullable()}).strict(),
- leave:z.object({countMethod:z.enum(['working_days','calendar_days']),maxCalendarDays:z.number().int().min(1).max(367),
+ leave:z.object({allowHalfDays:z.boolean().default(false),countMethod:z.enum(['working_days','calendar_days']),maxCalendarDays:z.number().int().min(1).max(367),
   excludeHolidays:z.boolean(),holidays:z.array(z.object({date:civilDate,name:z.string().trim().min(1).max(120)}).strict()).max(366)
    .refine(rows=>new Set(rows.map(r=>r.date)).size===rows.length,'Holiday dates must be unique')}).strict(),
  payroll:z.object({roundingCents:z.union([z.literal(1),z.literal(5),z.literal(10),z.literal(100)]),roundingMode:rounding}).strict(),
@@ -20,7 +20,7 @@ export const calculationRulesSchema=z.object({
 export type CalculationRules=z.infer<typeof calculationRulesSchema>;
 export const defaultCalculationRules:CalculationRules={
  attendance:{breakTreatment:'unpaid',roundingMinutes:1,roundingMode:'nearest',lateGraceMinutes:null},
- leave:{countMethod:'working_days',maxCalendarDays:367,excludeHolidays:false,holidays:[]},
+ leave:{allowHalfDays:false,countMethod:'working_days',maxCalendarDays:367,excludeHolidays:false,holidays:[]},
  payroll:{roundingCents:1,roundingMode:'nearest'},
  timesheets:{breakTreatment:'unpaid',roundingMinutes:1,roundingMode:'nearest',payableMethod:'reviewer'},
 };

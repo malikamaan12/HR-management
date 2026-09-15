@@ -1,3 +1,5 @@
+import {Offboarding} from '@/components/onboarding/Offboarding';
+import {TaskEditor} from '@/components/onboarding/TaskEditor';
 import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -92,6 +94,7 @@ interface OnboardingChecklist {
 }
 
 interface OnboardingTask {
+  version:number;
   id: number;
   onboardingId: number;
   employeeName: string;
@@ -257,6 +260,7 @@ export default function Onboarding() {
         </div>
       )}
 
+      <Offboarding/>
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="dashboard" className="flex items-center">
@@ -567,7 +571,7 @@ export default function Onboarding() {
                           {task.assigneeName || task.assignedTo}
                         </TableCell>
                         <TableCell>{new Date(task.dueDate).toLocaleDateString()}</TableCell>
-                        <TableCell>{getStatusBadge(task.status)}</TableCell>
+                        <TableCell>{getStatusBadge(task.status)}<TaskEditor task={task}/></TableCell>
                         <TableCell>
                           <div className="flex space-x-2">
                             <Button variant="ghost" size="sm">

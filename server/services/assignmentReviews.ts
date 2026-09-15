@@ -8,7 +8,7 @@ import type {TokenPayload} from './auth';
 import type {Request} from 'express';
 import {z} from 'zod';
 
-export const permissionScope=(user:TokenPayload,permission?:'review_performance'|'review_time')=>workforceAdmin(user.role)?sql`true`:sql`exists (select 1 from ${grants} where ${grants.teamId}=${teams.id} and ${currentGrants(user)} ${permission?sql`and ${grants.permission}=${permission}`:sql``} and ${grants.startAt}<=${shifts.startAt} and ${grants.endAt}>=${shifts.endAt})`;
+export const permissionScope=(user:TokenPayload,permission?:'review_performance'|'review_time'|'schedule')=>workforceAdmin(user.role)?sql`true`:sql`exists (select 1 from ${grants} where ${grants.teamId}=${teams.id} and ${currentGrants(user)} ${permission?sql`and ${grants.permission}=${permission}`:sql``} and ${grants.startAt}<=${shifts.startAt} and ${grants.endAt}>=${shifts.endAt})`;
 export const otherEmployee=(user:TokenPayload)=>sql`${employees.userId} IS DISTINCT FROM ${user.userId}`;
 export const ownReview=(user:TokenPayload)=>eq(employees.userId,user.userId);
 export const reviewScope=(user:TokenPayload)=>or(ownReview(user),permissionScope(user,'review_performance'));

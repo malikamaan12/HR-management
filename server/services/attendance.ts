@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql, isNull, isNotNull, desc } from 'drizzle-orm';
 import { attendance, employees } from '@shared/schema';
 import { db } from '../db';
 import {calculationSnapshot} from './calculation-rules';
@@ -10,11 +10,15 @@ export function attendanceDate(now=new Date()):string {
 export async function clockAttendance(userId:number,action:'in'|'out'|'break_start'|'break_end',location?:string,notes?:string,now=new Date()){
   const date=attendanceDate(now);
   return db.transaction(async tx=>{
+    await tx.execute(sql`SELECT set_config('app.attendance_actor',${String(userId)},true)`);
     // Lock the employee so simultaneous clock-ins cannot create duplicate daily records.
     const [employee]=await tx.select().from(employees).where(eq(employees.userId,userId)).for('update');
     if(!employee)throw new Error('Your account needs to be linked to an employee record');
-    const [record]=await tx.select().from(attendance).where(and(eq(attendance.employeeId,employee.id),eq(attendance.date,date)));
-    const snapshot=record?.calculationSnapshot||await calculationSnapshot(employee,date,tx,!!record?.checkIn);
+    const [open]=await tx.select().from(attendance).where(and(eq(attendance.employeeId,employee.id),isNotNull(attendance.checkIn),isNull(attendance.checkOut))).orderBy(desc(attendance.checkIn)).limit(1);
+    if(action==='in'&&open)throw new Error('Already clocked in; finish the active clock session first');
+    const [daily]=await tx.select().from(attendance).where(and(eq(attendance.employeeId,employee.id),eq(attendance.date,date)));
+    const record=action==='in'?daily:open||daily;
+    const snapshot=record?.calculationSnapshot||await calculationSnapshot(employee,record?.date||date,tx,!!record?.checkIn);
     if(action==='in'){
       if(record?.checkIn)throw new Error('Already clocked in today');
       const value={checkIn:now,status:managementLate(now,snapshot)?'late' as const:'present' as const,calculationSnapshot:snapshot,checkInMethod:'mobile_app' as const,location:location || null,notes:notes || null};
@@ -22,6 +26,7 @@ export async function clockAttendance(userId:number,action:'in'|'out'|'break_sta
     }
     if(!record?.checkIn)throw new Error('Clock in first');
     if(record.checkOut)throw new Error('Already clocked out today');
+    if(now.getTime()-record.checkIn.getTime()>86400000)throw new Error('This clock session exceeds 24 hours; ask HR to reconcile it');
     const activeBreak=record.breakStartTime && !record.breakEndTime;
     if(action==='break_start'){
       if(activeBreak)throw new Error('A break is already active');

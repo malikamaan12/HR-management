@@ -1,3 +1,4 @@
+import {OperationalPolicies} from '@/components/operations/Policies';
 import {useEffect,useState} from 'react';
 import {useMutation,useQuery,useQueryClient} from '@tanstack/react-query';
 import {calculationRulesSchema,ruleScopes,ruleScopeLabels,type RuleScope,type CalculationRules as Rules,type CalculationSnapshot} from '@shared/calculation-rules';
@@ -17,7 +18,7 @@ export default function CalculationRules(){
  return <Card><CardHeader><CardTitle>Rules &amp; calculations</CardTitle></CardHeader><CardContent className="space-y-5">
   <p>Admin and Super Admin can publish calculation policies. Each attendance record, leave request, payroll draft and timesheet keeps the rules used when it was created.</p>
   <label className="block max-w-md font-medium">Employee policy group<select className={selectClass} value={scope} onChange={e=>setScope(e.target.value as RuleScope)}>{ruleScopes.map(s=><option key={s} value={s}>{ruleScopeLabels[s]}</option>)}</select></label>
-  <RulesEditor key={scope} scope={scope}/>
+  <RulesEditor key={scope} scope={scope}/><OperationalPolicies/>
  </CardContent></Card>;
 }
 function RulesEditor({scope}:{scope:RuleScope}){
@@ -51,13 +52,13 @@ function RulesEditor({scope}:{scope:RuleScope}){
     <label className="block">Day-count method<select className={selectClass} value={rules.leave.countMethod} onChange={e=>update('leave',{countMethod:e.target.value as Rules['leave']['countMethod']})}><option value="working_days">Working days from employee calendar</option><option value="calendar_days">All calendar days</option></select></label>
     <label className="block">Maximum calendar days per request<Input type="number" min={1} max={367} value={rules.leave.maxCalendarDays} onChange={e=>update('leave',{maxCalendarDays:Number(e.target.value)})}/></label>
     <label className="flex gap-2"><input type="checkbox" checked={rules.leave.excludeHolidays} onChange={e=>update('leave',{excludeHolidays:e.target.checked})}/>Exclude listed holidays from leave</label>
-    <p className="text-sm text-muted-foreground">This controls duration. Leave entitlement, accrual and balance-ledger policies will be added with the next leave module release.</p>
+    <label className="flex gap-2"><input type="checkbox" checked={rules.leave.allowHalfDays??false} onChange={e=>update('leave',{allowHalfDays:e.target.checked})}/>Allow single-date half-day requests</label><p className="text-sm">Accrual and carryover policies are configured below. Half-day leave conservatively blocks workforce offers for that date.</p>
    </fieldset>
    <fieldset className="border rounded-md p-4 space-y-3"><legend className="px-2 font-medium">Payroll totals</legend>
     <p className="text-sm">Net salary = basic salary + allowances − deductions. Rounding is applied once to the final total and recorded as an adjustment.</p>
     <label className="block">Payroll rounding unit<select className={selectClass} value={rules.payroll.roundingCents} onChange={e=>update('payroll',{roundingCents:Number(e.target.value) as Rules['payroll']['roundingCents']})}>{[1,5,10,100].map(n=><option key={n} value={n}>QAR {(n/100).toFixed(2)}</option>)}</select></label>
     <RoundingMode title="Payroll" value={rules.payroll.roundingMode} onChange={value=>update('payroll',{roundingMode:value})}/>
-    <p className="text-sm text-muted-foreground">Overtime, proration and automatic deductions are not enabled. Their approved methods will be configurable when those pay workflows are completed.</p>
+    <p className="text-sm text-muted-foreground">Approved timesheet earnings use the hourly and per-timesheet overtime policy below. Salary proration and automatic absence deductions remain separate pending workflows.</p>
    </fieldset>
    <fieldset className="border rounded-md p-4 space-y-3"><legend className="px-2 font-medium">Event / FEC timesheets</legend>
     <label className="block">Payable time method<select className={selectClass} value={rules.timesheets.payableMethod} onChange={e=>update('timesheets',{payableMethod:e.target.value as Rules['timesheets']['payableMethod']})}><option value="reviewer">Reviewer enters payable minutes with a policy reference</option><option value="calculated">Calculate payable minutes from recorded time</option></select></label>

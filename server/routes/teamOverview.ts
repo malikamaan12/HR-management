@@ -15,7 +15,7 @@ router.get('/',reviewHandle(async(req,res)=>{
     const coverage=tx.select({id:shifts.id,role:shifts.role,startAt:shifts.startAt,endAt:shifts.endAt,headcount:shifts.headcount,
       accepted:sql<number>`(select count(*)::int from ${assignments} where ${assignments.shiftId}=${shifts.id} and ${assignments.status}='accepted')`.as('accepted'),
       pending:sql<number>`case when ${shifts.startAt}>${now} then (select count(*)::int from ${assignments} where ${assignments.shiftId}=${shifts.id} and ${assignments.status}='offered') else 0 end`.as('pending'),
-    }).from(shifts).innerJoin(teams,eq(shifts.teamId,teams.id)).where(and(eq(teams.id,teamId),gt(shifts.endAt,now),lt(shifts.startAt,staffingThrough),permissionScope(req.user!))).as('coverage');
+    }).from(shifts).innerJoin(teams,eq(shifts.teamId,teams.id)).where(and(eq(teams.id,teamId),isNull(shifts.cancelledAt),gt(shifts.endAt,now),lt(shifts.startAt,staffingThrough),permissionScope(req.user!))).as('coverage');
     const [staffingCounts]=await tx.select({shifts:sql<number>`count(*)::int`,required:sql<number>`coalesce(sum(${coverage.headcount}),0)::int`,accepted:sql<number>`coalesce(sum(${coverage.accepted}),0)::int`,unfilled:sql<number>`coalesce(sum(greatest(${coverage.headcount}-${coverage.accepted},0)),0)::int`,pendingOffers:sql<number>`coalesce(sum(${coverage.pending}),0)::int`}).from(coverage);
     const gaps=await tx.select({id:coverage.id,role:coverage.role,startAt:coverage.startAt,endAt:coverage.endAt,unfilled:sql<number>`greatest(${coverage.headcount}-${coverage.accepted},0)::int`}).from(coverage).where(sql`${coverage.headcount}>${coverage.accepted}`).orderBy(coverage.startAt,coverage.id).limit(10);
     let time=null;

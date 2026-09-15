@@ -15,6 +15,7 @@ export function sheetQuery(tx:WorkforceTransaction){return tx.select({...sheetFi
 export async function readSheet(tx:WorkforceTransaction,user:TokenPayload,id:number,lock=false){
   const query=sheetQuery(tx).where(and(eq(sheets.id,id),sheetScope(user)));
   const [row]=lock?await query.for('update',{of:sheets}):await query;
+  if(lock&&row&&(await tx.execute(sql`SELECT id FROM payroll_time_entries WHERE timesheet_id=${row.id} AND released_at IS NULL`)).rows.length)fail(409,'Release the pending payroll time import before changing this timesheet');
   return row||fail(404,'Timesheet not found or outside your current access');
 }
 export function checkVersion(row:{version:number},version:number){if(row.version!==version)fail(409,'This timesheet changed. Refresh and review the latest version.');}

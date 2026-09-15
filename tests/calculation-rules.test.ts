@@ -1,3 +1,4 @@
+import settlementRouter from '../server/routes/settlements';
 import {readFileSync,readdirSync} from 'node:fs';
 import {beforeAll,beforeEach,afterAll,test,expect,vi} from 'vitest';
 import {PGlite} from '@electric-sql/pglite';
@@ -27,12 +28,54 @@ async function publish(token:string,rules=fresh(),extra:Record<string,unknown>={
 beforeAll(async()=>{
  process.env.JWT_SECRET='calculation-rule-access-secret-32-characters';process.env.JWT_REFRESH_SECRET='calculation-rule-refresh-secret-32-characters';process.env.APP_TIMEZONE='Asia/Qatar';
  pg=new PGlite();for(const f of readdirSync(new URL('../migrations',import.meta.url)).filter(n=>n.endsWith('.sql')).sort())await pg.exec(readFileSync(new URL('../migrations/'+f,import.meta.url),'utf8'));
- context.db=drizzle(pg);const app=express();app.use(express.json());app.use('/settings',settingsRouter);app.use('/leaves',leaveRouter);app.use('/payroll',payrollRouter);app.use('/attendance',attendanceRouter);
+ context.db=drizzle(pg);const app=express();app.use(express.json());app.use('/settings',settingsRouter);app.use('/leaves',leaveRouter);app.use('/payroll',payrollRouter);app.use('/settlements',settlementRouter);app.use('/attendance',attendanceRouter);
  server=app.listen(0,'127.0.0.1');await new Promise<void>(r=>server.once('listening',r));base='http://127.0.0.1:'+(server.address() as {port:number}).port;
 });
 beforeEach(async()=>{await pg.exec('TRUNCATE users,employees,app_settings RESTART IDENTITY CASCADE');});
 afterAll(async()=>{await new Promise<void>((r,j)=>server.close(e=>e?j(e):r()));await pg.close();});
 
+test('settlements require independent approval, preserve versions and lock paid records',async()=>{
+ const creator=await account(),approver=await account('super_admin','approver'),staff=await account('employee');const person=await employee(1,staff.id);
+ const lines=[{label:'Verified final salary',kind:'earning',amount:'100.25',basis:'Approved salary calculation record'},{label:'Documented advance',kind:'deduction',amount:'10.10',basis:'Approved advance ledger record'}];
+ const data={employeeId:person.id,exitDate:'2026-09-30',lines,reason:'Prepared verified final payment'};
+ expect((await request(staff.token,'/settlements',data)).status).toBe(403);
+ const made=await request(creator.token,'/settlements',data);expect(made.status).toBe(201);expect(made.body.net_amount).toBe('90.15');const path='/settlements/'+made.body.id+'/actions';
+ expect((await request(creator.token,'/settlements',data)).status).toBe(409);
+ expect((await request(creator.token,path,{action:'pay',version:1,reference:'BANK-1',reason:'Payment attempted early'})).status).toBe(409);
+ expect((await request(creator.token,path,{action:'submit',version:1,reason:'Ready for independent review'})).status).toBe(200);
+ expect((await request(creator.token,path,{action:'approve',version:2,reason:'Self approval attempt'})).status).toBe(403);
+ expect((await request(creator.token,path,{action:'edit',version:2,lines,reason:'Editing submitted data'})).status).toBe(409);
+ expect((await request(approver.token,path,{action:'approve',version:2,reason:'Independently checked supporting records'})).status).toBe(200);
+ expect((await request(approver.token,path,{action:'pay',version:2,reference:'BANK-1',reason:'Stale payment attempt'})).status).toBe(409);
+ expect((await request(approver.token,path,{action:'pay',version:3,reference:'BANK-1',reason:'External transfer completed'})).status).toBe(200);
+ expect((await request(creator.token,path,{action:'edit',version:4,lines,reason:'Editing paid amount'})).status).toBe(409);
+ expect((await request(approver.token,'/settlements/'+made.body.id+'/history')).body.map((r:any)=>r.version)).toEqual([4,3,2,1]);
+ expect((await request(staff.token,'/settlements/'+made.body.id+'/history')).status).toBe(403);
+});
+test('settlement review rollback and prior-preparer restrictions survive correction cycles',async()=>{
+ const creator=await account(),editor=await account('super_admin','editor'),approver=await account('super_admin','approver');const person=await employee(1);
+ const lines=[{label:'Verified salary',kind:'earning',amount:'100.00',basis:'Verified calculation attached to employee file'}];
+ const made=await request(creator.token,'/settlements',{employeeId:person.id,exitDate:'2026-09-30',lines,reason:'Initial preparation'});const path='/settlements/'+made.body.id+'/actions';
+ await request(editor.token,path,{action:'edit',version:1,lines,reason:'Corrected supporting basis'});
+ await request(creator.token,path,{action:'submit',version:2,reason:'Submitted latest draft'});
+ expect((await request(editor.token,path,{action:'approve',version:3,reason:'Prior preparer review attempt'})).status).toBe(403);
+ await pg.exec("CREATE FUNCTION fail_settlement_history() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'test'; END; $$ LANGUAGE plpgsql; CREATE TRIGGER fail_settlement_history BEFORE INSERT ON settlement_history FOR EACH ROW EXECUTE FUNCTION fail_settlement_history();");
+ try{expect((await request(approver.token,path,{action:'approve',version:3,reason:'Review approved'})).status).toBe(500);expect((await request(creator.token,'/settlements')).body.items[0]).toMatchObject({status:'submitted',version:3,approved_by:null});}finally{await pg.exec('DROP TRIGGER fail_settlement_history ON settlement_history; DROP FUNCTION fail_settlement_history();');}
+ expect((await request(approver.token,path,{action:'return',version:3,reason:'Additional evidence requested'})).status).toBe(200);
+ expect((await request(creator.token,'/settlements')).body.items[0].status).toBe('draft');
+});
+test('payroll reconciliation uses saved rules, flags discrepancies and respects employee scope',async()=>{
+ const admin=await account(),staff=await account('employee'),person=await employee(1,staff.id),other=await employee(2);
+ const input={month:9,year:2026,basicSalary:'1000.03',allowances:{housing:'20.10'},deductions:{loan:'5.01'}};
+ const first=await request(admin.token,'/payroll',{...input,employeeId:person.id});expect(first.status).toBe(201);
+ await request(admin.token,'/payroll',{...input,employeeId:other.id});
+ const report=await request(admin.token,'/payroll/reconciliation?month=9&year=2026');expect(report.body.totals).toMatchObject({records:2,flagged:0,storedNet:'2030.24',expectedNet:'2030.24'});
+ const scoped=await request(staff.token,'/payroll/reconciliation?month=9&year=2026');expect(scoped.body.items).toHaveLength(1);expect(scoped.body.items[0].employeeId).toBe(person.id);
+ await pg.exec('UPDATE payroll SET net_salary=1.00 WHERE id='+first.body.id);
+ const changed=await request(admin.token,'/payroll/reconciliation?month=9&year=2026');expect(changed.body.totals.flagged).toBe(1);expect(changed.body.items[0].issues).toContain('Stored net differs from saved-policy calculation');
+ await pg.exec("UPDATE payroll SET calculation_snapshot=NULL,status='processed',wps_reference=NULL WHERE id="+first.body.id);
+ const legacy=await request(admin.token,'/payroll/reconciliation?month=9&year=2026');expect(legacy.body.totals.unverifiable).toBe(1);expect(legacy.body.items[0].expectedNet).toBeNull();expect(legacy.body.items[0].issues).toContain('Processed payroll is missing payment evidence');
+});
 test('bounded methods reject unknown formula code, invalid increments and duplicate or invalid holidays',()=>{
  for(const patch of [{roundingMinutes:0},{roundingMinutes:7},{roundingMode:'eval'},{lateGraceMinutes:-1},{breakTreatment:'ignore'}])expect(calculationRulesSchema.safeParse({...fresh(),attendance:{...fresh().attendance,...patch}}).success).toBe(false);
  expect(calculationRulesSchema.safeParse({...fresh(),formula:'process.exit()'}).success).toBe(false);

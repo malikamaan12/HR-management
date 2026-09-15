@@ -1,3 +1,4 @@
+import {Corrections} from './Corrections';
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ApiEmployeeRecord, ApiEmployeeHistory, ApiDocument } from '@/lib/api-types';
@@ -49,6 +50,7 @@ export default function EmployeeProfile({ employeeId, onClose }: { employeeId: n
       <div><Button variant="ghost" onClick={onClose}>← Back to employees</Button><h1 className="mt-3 text-2xl font-semibold">{e.firstName} {e.lastName}</h1><p className="text-muted-foreground">{e.employeeId} · {e.position} · {e.department}</p></div>
       <div className="flex gap-2"><Button variant="outline" onClick={() => refetch()}>Reload profile</Button>{e.access.canEdit && <Button onClick={() => setEdit(true)}>Edit Employee</Button>}</div>
     </div>
+    {e.access.personal&&<Corrections employeeId={employeeId} version={e.recordVersion!}/>}
     <Tabs value={tab} onValueChange={setTab}>
       <TabsList className="h-auto flex-wrap justify-start">
         <TabsTrigger value="employment">Employment</TabsTrigger>

@@ -18,9 +18,10 @@ const handle=(fn:(req:Request,res:Response)=>Promise<unknown>)=>async(req:Reques
 }};
 function windowQuery(req:Request){const now=new Date();return z.object({from:z.coerce.date(),to:z.coerce.date()}).refine(v=>v.to>v.from&&+v.to-+v.from<=90*86400000,'Choose a window of up to 90 days').parse({from:req.query.from||new Date(+now-31*86400000),to:req.query.to||now});}
 async function caps(tx:WorkforceTransaction,user:NonNullable<Request['user']>,row:Awaited<ReturnType<typeof readSheet>>){
+  const reserved=(await tx.execute(sql`SELECT id FROM payroll_time_entries WHERE timesheet_id=${row.id} AND released_at IS NULL`)).rows.length>0;
   const own=row.ownerUserId===user.userId;
   const [review]=await sheetQuery(tx).where(and(eq(sheets.id,row.id),reviewScope(user)));
-  return {edit:own&&['draft','returned'].includes(row.status),submit:own&&['draft','returned'].includes(row.status),review:!own&&!!review&&row.status==='submitted',reopen:!own&&workforceAdmin(user.role)&&row.status==='approved',payrollLock:!own&&payrollTimeAccess(user.role,'approve')&&row.status==='approved'};
+  return {edit:own&&['draft','returned'].includes(row.status),submit:own&&['draft','returned'].includes(row.status),review:!own&&!!review&&row.status==='submitted',reopen:!reserved&&!own&&workforceAdmin(user.role)&&row.status==='approved',payrollLock:!reserved&&!own&&payrollTimeAccess(user.role,'approve')&&row.status==='approved'};
 }
 router.get('/config',handle(async(req,res)=>{
   const [grant]=await db.select({id:grants.id}).from(grants).where(and(currentGrants(req.user!),eq(grants.permission,'review_time'))).limit(1);

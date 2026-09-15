@@ -155,3 +155,16 @@ test('history failures roll back publication and sessions/date windows fail clos
   try{expect((await request(f.lead.token,'/reviews/',{assignmentId:f.assignment.id,confirmed:true,ratings:ratings()})).status).toBe(500);expect((await pg.query('select id from assignment_reviews')).rows).toHaveLength(0);}finally{await pg.exec('DROP TRIGGER fail_review_history ON assignment_review_history; DROP FUNCTION fail_review_history();');}
   await context.db.update(schema.users).set({isActive:false}).where(eq(schema.users.id,f.lead.id));expect((await request(f.lead.token,'/reviews/config')).status).toBe(401);
 });
+
+test('unified approval lanes show only current actionable records under each separate grant',async()=>{
+ const f=await setup(),row=await submit(f),url=`/workforce/teams/${f.team.id}/approvals`;
+ const first=await request(f.lead.token,url);expect(first.status).toBe(200);expect(first.body.time.map((t:any)=>t.id)).toEqual([row.id]);expect(first.body.performance).toEqual([]);
+ await request(f.lead.token,`/timesheets/${row.id}/review`,approval(row.version));
+ expect((await request(f.lead.token,url)).body.time).toEqual([]);expect((await request(f.lead.token,url)).body.performance).toEqual([]);
+ const [grant]=await context.db.insert(schema.workforceGrants).values({teamId:f.team.id,userId:f.lead.id,permission:'review_performance',startAt:new Date(instant(-10)),endAt:new Date(instant(10))}).returning();
+ const reviews=await request(f.lead.token,url);expect(reviews.status).toBe(200);expect(reviews.body.performance.map((r:any)=>r.id)).toEqual([f.assignment.id]);expect(JSON.stringify(reviews.body)).not.toMatch(/private-phone|private-bank|Completed hosting/);
+ await context.db.update(schema.workforceGrants).set({startAt:new Date(instant(-1))}).where(eq(schema.workforceGrants.id,grant.id));
+ expect((await request(f.lead.token,url)).body.performance).toEqual([]);
+ await context.db.update(schema.workforceGrants).set({startAt:new Date(instant(-10))}).where(eq(schema.workforceGrants.id,grant.id));
+ await publish(f);expect((await request(f.lead.token,url)).body.performance).toEqual([]);
+});

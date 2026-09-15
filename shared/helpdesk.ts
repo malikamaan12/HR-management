@@ -15,9 +15,11 @@ export const caseActionInput=z.discriminatedUnion('action',[
   z.object({action:z.literal('assign'),version:idInput,assigneeId:idInput.nullable()}).strict(),
   z.object({action:z.literal('status'),version:idInput,status:z.enum(caseStatuses),reason:z.string().trim().min(5).max(1000)}).strict(),
   z.object({action:z.literal('restrict'),version:idInput}).strict(),
+  z.object({action:z.literal('escalate'),version:idInput,reason:z.string().trim().min(5).max(1000)}).strict(),
+  z.object({action:z.literal('clear_escalation'),version:idInput,reason:z.string().trim().min(5).max(1000)}).strict(),
 ]);
-export interface CaseSummary {id:number;title:string;category:typeof caseCategories[number];confidential:boolean;status:CaseStatus;requesterId:number;assigneeId:number|null;version:number;createdAt:string;updatedAt:string;requesterName:string;assigneeName:string|null}
-export interface CaseCapabilities {staff:boolean;assign:boolean;restrict:boolean;reply:boolean;internal:boolean;statuses:CaseStatus[]}
+export interface CaseSummary {escalatedAt:string|null;id:number;title:string;category:typeof caseCategories[number];confidential:boolean;status:CaseStatus;requesterId:number;assigneeId:number|null;version:number;createdAt:string;updatedAt:string;requesterName:string;assigneeName:string|null;responseDueAt:string|null;resolutionDueAt:string|null;firstResponseAt:string|null;resolvedAt:string|null}
+export interface CaseCapabilities {escalate:boolean;clearEscalation:boolean;staff:boolean;assign:boolean;restrict:boolean;reply:boolean;internal:boolean;statuses:CaseStatus[]}
 export interface CaseDetail {case:CaseSummary;capabilities:CaseCapabilities;messages:{id:number;body:string;internal:boolean;authorName:string;createdAt:string;attachments:{id:number;filename:string;size:number}[]}[];events:{id:number;actorName:string;details:string;internal:boolean;createdAt:string}[]}
 export interface CaseList {items:CaseSummary[];total:number;page:number;limit:number}
-export interface HelpdeskConfig {canWorkQueue:boolean;confidentialTriage:boolean;attachmentsAvailable:boolean}
+export interface HelpdeskConfig {canConfigureRouting:boolean;canWorkQueue:boolean;confidentialTriage:boolean;attachmentsAvailable:boolean}

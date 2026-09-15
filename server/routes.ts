@@ -1,3 +1,5 @@
+import settlementRouter from './routes/settlements';
+import offboardingRouter from './routes/offboarding';
 import employeeRecordsRouter from './routes/employeeRecords';
 import { moduleAccess } from './middleware/moduleAccess';
 import multer from 'multer';
@@ -115,6 +117,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/users', userRoutes);
 
   app.use('/api/employees', employeeRecordsRouter);
+  app.use('/api/offboarding',offboardingRouter);
+  app.use('/api/settlements',settlementRouter);
 
   app.use('/api/documents',documentRoutes);
   app.get('/api/employees/:id/documents',async(req,res)=>{
@@ -217,7 +221,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch('/api/leave-types/:id', async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);
-      const leaveTypeData = req.body;
+      const leaveTypeData = insertLeaveTypeSchema.partial().strict().parse(req.body);
       
       // Check if the leave type exists
       const leaveType = await storage.getLeaveType(id);
@@ -225,6 +229,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Leave type not found' });
       }
       
+      if(leaveTypeData.name&&leaveTypeData.name!==leaveType.name)return res.status(400).json({message:'Leave type names are permanent accounting keys; create a new type instead'});
       const updatedLeaveType = await storage.updateLeaveType(id, leaveTypeData);
       
       // Log activity

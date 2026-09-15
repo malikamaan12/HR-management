@@ -1,3 +1,5 @@
+import {saveTemplate} from '../services/onboarding-templates';
+import {startOnboarding,changeOnboardingTask,OnboardingError} from '../services/onboarding-workflow';
 import { Router } from "express";
 import { db } from "../db";
 import { 
@@ -23,6 +25,7 @@ router.get('/onboarding-checklists', async (req, res) => {
     const checklists = await db
       .select({
         id: onboardingChecklists.id,
+        version: onboardingChecklists.version,
         name: onboardingChecklists.name,
         description: onboardingChecklists.description,
         departmentSpecific: onboardingChecklists.departmentSpecific,
@@ -30,7 +33,7 @@ router.get('/onboarding-checklists', async (req, res) => {
         createdAt: onboardingChecklists.createdAt,
         taskCount: sql<number>`(
           SELECT COUNT(*) FROM ${checklistTasks} 
-          WHERE ${checklistTasks.checklistId} = ${onboardingChecklists.id}
+          WHERE ${checklistTasks.checklistId} = ${onboardingChecklists.id} AND ${checklistTasks.active} = true
         )`
       })
       .from(onboardingChecklists)
@@ -60,7 +63,7 @@ router.get('/onboarding-checklists/:id', async (req, res) => {
     const tasks = await db
       .select()
       .from(checklistTasks)
-      .where(eq(checklistTasks.checklistId, id))
+      .where(and(eq(checklistTasks.checklistId, id),eq(checklistTasks.active,true)))
       .orderBy(checklistTasks.daysFromStart, checklistTasks.category);
     
     res.json({ ...checklist[0], tasks });
@@ -70,23 +73,14 @@ router.get('/onboarding-checklists/:id', async (req, res) => {
   }
 });
 
-router.post('/onboarding-checklists', async (req, res) => {
-  try {
-    const validatedData = insertOnboardingChecklistSchema.parse(req.body);
-    
-    const result = await db
-      .insert(onboardingChecklists)
-      .values(validatedData)
-      .returning();
-    
-    res.status(201).json(result[0]);
-  } catch (error) {
-    console.error('Error creating onboarding checklist:', error);
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Validation error', details: error.errors });
-    }
-    res.status(500).json({ error: 'Failed to create onboarding checklist' });
-  }
+router.post('/onboarding-checklists',async(req,res)=>{
+ try{res.status(201).json(await saveTemplate(null,req.body,req.user!.userId));}catch(error){res.status(error instanceof OnboardingError?error.status:error instanceof z.ZodError?400:500).json({error:error instanceof OnboardingError||error instanceof z.ZodError?error.message:'Unable to save checklist'});}
+});
+router.put('/onboarding-checklists/:id',async(req,res)=>{
+ try{res.json(await saveTemplate(z.coerce.number().int().positive().parse(req.params.id),req.body,req.user!.userId));}catch(error){res.status(error instanceof OnboardingError?error.status:error instanceof z.ZodError?400:500).json({error:error instanceof OnboardingError||error instanceof z.ZodError?error.message:'Unable to save checklist'});}
+});
+router.get('/onboarding-checklists/:id/history',async(req,res)=>{
+ try{const id=z.coerce.number().int().positive().parse(req.params.id);const result=await db.execute(sql`SELECT version, snapshot, created_at FROM onboarding_template_versions WHERE checklist_id = ${id} ORDER BY version DESC LIMIT 100`);res.json(result.rows);}catch{res.status(400).json({error:'Unable to load checklist history'});}
 });
 
 // Checklist Tasks Routes
@@ -94,10 +88,10 @@ router.get('/checklist-tasks', async (req, res) => {
   try {
     const { checklistId } = req.query;
     
-    let query = db.select().from(checklistTasks).$dynamic();
+    let query = db.select().from(checklistTasks).where(eq(checklistTasks.active,true)).$dynamic();
     
     if (checklistId) {
-      query = query.where(eq(checklistTasks.checklistId, parseInt(checklistId as string)));
+      query = query.where(and(eq(checklistTasks.active,true),eq(checklistTasks.checklistId, parseInt(checklistId as string))));
     }
     
     const tasks = await query.orderBy(checklistTasks.daysFromStart, checklistTasks.category);
@@ -109,24 +103,7 @@ router.get('/checklist-tasks', async (req, res) => {
   }
 });
 
-router.post('/checklist-tasks', async (req, res) => {
-  try {
-    const validatedData = insertChecklistTaskSchema.parse(req.body);
-    
-    const result = await db
-      .insert(checklistTasks)
-      .values(validatedData)
-      .returning();
-    
-    res.status(201).json(result[0]);
-  } catch (error) {
-    console.error('Error creating checklist task:', error);
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Validation error', details: error.errors });
-    }
-    res.status(500).json({ error: 'Failed to create checklist task' });
-  }
-});
+router.post('/checklist-tasks',(_req,res)=>res.status(409).json({error:'Save tasks together through the checklist editor to preserve version history'}));
 
 // Employee Onboarding Routes
 router.get('/employee-onboarding', async (req, res) => {
@@ -146,7 +123,7 @@ router.get('/employee-onboarding', async (req, res) => {
       .select({
         id: employeeOnboarding.id,
         employeeId: employeeOnboarding.employeeId,
-        employeeName: sql<string>`'Employee ' || ${employeeOnboarding.employeeId}`,
+        employeeName: sql<string>`(SELECT first_name || ' ' || last_name FROM employees WHERE id = ${employeeOnboarding.employeeId})`,
         checklistName: onboardingChecklists.name,
         startDate: employeeOnboarding.startDate,
         endDate: employeeOnboarding.endDate,
@@ -184,8 +161,8 @@ router.get('/employee-onboarding/:id', async (req, res) => {
       .select({
         id: employeeOnboarding.id,
         employeeId: employeeOnboarding.employeeId,
-        employeeName: sql<string>`'Employee ' || ${employeeOnboarding.employeeId}`,
-        employeeEmail: sql<string>`'employee' || ${employeeOnboarding.employeeId} || '@company.com'`,
+        employeeName: sql<string>`(SELECT first_name || ' ' || last_name FROM employees WHERE id = ${employeeOnboarding.employeeId})`,
+        employeeEmail: sql<string|null>`(SELECT work_email FROM employees WHERE id = ${employeeOnboarding.employeeId})`,
         checklistId: employeeOnboarding.checklistId,
         checklistName: onboardingChecklists.name,
         startDate: employeeOnboarding.startDate,
@@ -208,12 +185,13 @@ router.get('/employee-onboarding/:id', async (req, res) => {
     const tasks = await db
       .select({
         id: onboardingTasks.id,
+        version: onboardingTasks.version,
         taskName: checklistTasks.taskName,
         description: checklistTasks.description,
         category: checklistTasks.category,
         assignedTo: onboardingTasks.assignedTo,
         assigneeId: onboardingTasks.assigneeId,
-        assigneeName: sql<string>`'Assignee ' || ${onboardingTasks.assigneeId}`,
+        assigneeName: sql<string|null>`(SELECT first_name || ' ' || last_name FROM employees WHERE id = ${onboardingTasks.assigneeId})`,
         dueDate: onboardingTasks.dueDate,
         completedDate: onboardingTasks.completedDate,
         status: onboardingTasks.status,
@@ -234,50 +212,9 @@ router.get('/employee-onboarding/:id', async (req, res) => {
   }
 });
 
-router.post('/employee-onboarding', async (req, res) => {
-  try {
-    const validatedData = insertEmployeeOnboardingSchema.parse(req.body);
-    
-    // Create the onboarding record
-    const onboardingResult = await db
-      .insert(employeeOnboarding)
-      .values(validatedData)
-      .returning();
-    
-    const newOnboarding = onboardingResult[0];
-    
-    // Get the checklist tasks and create onboarding tasks
-    const checklistTasksList = await db
-      .select()
-      .from(checklistTasks)
-      .where(eq(checklistTasks.checklistId, validatedData.checklistId));
-    
-    if (checklistTasksList.length > 0) {
-      const startDate = new Date(validatedData.startDate);
-      const onboardingTasksData = checklistTasksList.map(task => {
-        const dueDate = new Date(startDate);
-        dueDate.setDate(dueDate.getDate() + task.daysFromStart);
-        
-        return {
-          onboardingId: newOnboarding.id,
-          taskId: task.id,
-          assignedTo: task.assignedTo,
-          dueDate: dueDate.toISOString().split('T')[0],
-          status: 'not_started' as const
-        };
-      });
-      
-      await db.insert(onboardingTasks).values(onboardingTasksData);
-    }
-    
-    res.status(201).json(newOnboarding);
-  } catch (error) {
-    console.error('Error creating employee onboarding:', error);
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Validation error', details: error.errors });
-    }
-    res.status(500).json({ error: 'Failed to create employee onboarding' });
-  }
+router.post('/employee-onboarding', async (req,res)=>{
+ try{res.status(201).json(await startOnboarding(req.body,req.user!.userId));}
+ catch(error){res.status(error instanceof OnboardingError?error.status:error instanceof z.ZodError?400:500).json({error:error instanceof OnboardingError||error instanceof z.ZodError?error.message:'Unable to start onboarding'});}
 });
 
 // Onboarding Tasks Routes
@@ -299,14 +236,15 @@ router.get('/onboarding-tasks', async (req, res) => {
     const tasks = await db
       .select({
         id: onboardingTasks.id,
+        version: onboardingTasks.version,
         onboardingId: onboardingTasks.onboardingId,
-        employeeName: sql<string>`'Employee ' || ${employeeOnboarding.employeeId}`,
+        employeeName: sql<string>`(SELECT first_name || ' ' || last_name FROM employees WHERE id = ${employeeOnboarding.employeeId})`,
         taskName: checklistTasks.taskName,
         description: checklistTasks.description,
         category: checklistTasks.category,
         assignedTo: onboardingTasks.assignedTo,
         assigneeId: onboardingTasks.assigneeId,
-        assigneeName: sql<string>`'Assignee ' || ${onboardingTasks.assigneeId}`,
+        assigneeName: sql<string|null>`(SELECT first_name || ' ' || last_name FROM employees WHERE id = ${onboardingTasks.assigneeId})`,
         dueDate: onboardingTasks.dueDate,
         completedDate: onboardingTasks.completedDate,
         status: onboardingTasks.status,
@@ -327,42 +265,9 @@ router.get('/onboarding-tasks', async (req, res) => {
   }
 });
 
-router.put('/onboarding-tasks/:id', async (req, res) => {
-  try {
-    const id = parseInt(req.params.id);
-    const { status, comments, documentUrl, assigneeId } = req.body;
-    
-    const updateData: any = {};
-    if (status !== undefined) updateData.status = status;
-    if (comments !== undefined) updateData.comments = comments;
-    if (documentUrl !== undefined) updateData.documentUrl = documentUrl;
-    if (assigneeId !== undefined) updateData.assigneeId = assigneeId;
-    
-    if (status === 'completed') {
-      updateData.completedDate = new Date().toISOString().split('T')[0];
-    }
-    
-    updateData.updatedAt = new Date();
-    
-    const result = await db
-      .update(onboardingTasks)
-      .set(updateData)
-      .where(eq(onboardingTasks.id, id))
-      .returning();
-    
-    if (result.length === 0) {
-      return res.status(404).json({ error: 'Onboarding task not found' });
-    }
-    
-    // Update overall onboarding progress
-    const task = result[0];
-    await updateOnboardingProgress(task.onboardingId);
-    
-    res.json(result[0]);
-  } catch (error) {
-    console.error('Error updating onboarding task:', error);
-    res.status(500).json({ error: 'Failed to update onboarding task' });
-  }
+router.put('/onboarding-tasks/:id',async(req,res)=>{
+ try{const id=z.coerce.number().int().positive().parse(req.params.id);res.json(await changeOnboardingTask(id,req.body,req.user!.userId));}
+ catch(error){res.status(error instanceof OnboardingError?error.status:error instanceof z.ZodError?400:500).json({error:error instanceof OnboardingError||error instanceof z.ZodError?error.message:'Unable to update onboarding task'});}
 });
 
 // Dashboard/Stats Routes
@@ -380,7 +285,7 @@ router.get('/onboarding-stats', async (req, res) => {
     const recentOnboardings = await db
       .select({
         id: employeeOnboarding.id,
-        employeeName: sql<string>`'Employee ' || ${employeeOnboarding.employeeId}`,
+        employeeName: sql<string>`(SELECT first_name || ' ' || last_name FROM employees WHERE id = ${employeeOnboarding.employeeId})`,
         startDate: employeeOnboarding.startDate,
         status: employeeOnboarding.status,
         progress: employeeOnboarding.progress
@@ -392,8 +297,9 @@ router.get('/onboarding-stats', async (req, res) => {
     const upcomingTasks = await db
       .select({
         id: onboardingTasks.id,
+        version: onboardingTasks.version,
         taskName: checklistTasks.taskName,
-        employeeName: sql<string>`'Employee ' || ${employeeOnboarding.employeeId}`,
+        employeeName: sql<string>`(SELECT first_name || ' ' || last_name FROM employees WHERE id = ${employeeOnboarding.employeeId})`,
         dueDate: onboardingTasks.dueDate,
         assignedTo: onboardingTasks.assignedTo,
         status: onboardingTasks.status
@@ -419,33 +325,5 @@ router.get('/onboarding-stats', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch onboarding stats' });
   }
 });
-
-// Helper function to update onboarding progress
-async function updateOnboardingProgress(onboardingId: number) {
-  try {
-    const taskStats = await db
-      .select({
-        total: count(),
-        completed: sql<number>`COUNT(CASE WHEN status = 'completed' THEN 1 END)`
-      })
-      .from(onboardingTasks)
-      .where(eq(onboardingTasks.onboardingId, onboardingId));
-    
-    const { total, completed } = taskStats[0];
-    const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
-    
-    await db
-      .update(employeeOnboarding)
-      .set({ 
-        progress,
-        status: progress === 100 ? 'completed' : 'in_progress',
-        endDate: progress === 100 ? new Date().toISOString().split('T')[0] : null,
-        updatedAt: new Date()
-      })
-      .where(eq(employeeOnboarding.id, onboardingId));
-  } catch (error) {
-    console.error('Error updating onboarding progress:', error);
-  }
-}
 
 export default router;

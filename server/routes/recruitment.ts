@@ -1,3 +1,4 @@
+import handoffRouter from './recruitmentHandoff';
 import { randomUUID } from 'node:crypto';
 import { Router } from "express";
 import { db } from "../db";
@@ -24,6 +25,7 @@ import { eq, desc, count, sql, and, or, like } from "drizzle-orm";
 import { z } from "zod";
 
 const router = Router();
+router.use(handoffRouter);
 
 // Job Requisitions Routes
 router.get('/job-requisitions', async (req, res) => {
