@@ -1,6 +1,6 @@
 # E3 HR module status — 16 September 2026
 
-The requested attendance/leave → payroll → recruitment/onboarding/offboarding implementation is complete for the core workflows described below. The combined release is deployed at [e3-hr.onrender.com](https://e3-hr.onrender.com), with the latest dashboard and coverage code in revision `de6c4d1`. Administrators manage changing company policies and employee-specific overrides in **HR Rules**; effective dates and saved snapshots preserve history.
+The requested attendance/leave → payroll → recruitment/onboarding/offboarding implementation is complete for the core workflows described below. The combined release is deployed at [e3-hr.onrender.com](https://e3-hr.onrender.com), with the latest team tasks, reporting and reminders code in revision `f69d238`. Administrators manage changing company policies and employee-specific overrides in **HR Rules**; effective dates and saved snapshots preserve history.
 
 ## Current status
 
@@ -16,9 +16,9 @@ The requested attendance/leave → payroll → recruitment/onboarding/offboardin
 | Timesheets and assignment reviews | Core workflows deployed | Approved time, rubric-based reviews/disputes and team overview. |
 | HR helpdesk | Core workflow and support operations deployed | Confidential cases, messages/files/history, dated company and employee routing rules, response targets, overdue queue, explicit escalation and searchable versioned knowledge articles. |
 | Performance and development | Core review cycle deployed | Configurable weighted criteria/rating labels, employee deadlines, self-assessment, assigned manager review, independent HR calibration/publication, acknowledgement, objectives/development actions and scoped reports with sample counts. |
-| Documents and reports | Core reporting workflow deployed | Private upload/download, document versions, scoped renewal requests and independent review; headcount, attendance, turnover, leave, staffing-cost and compliance reports with filters, drill-down rows and CSV/PDF export. Retention automation and advanced metrics remain. |
+| Documents and reports | Core reporting workflow deployed | Private upload/download, document versions, scoped renewal requests and independent review; headcount, attendance, turnover, leave, staffing-cost and compliance reports with site/team/department filters, reconciled totals, saved views, drill-down rows and CSV/PDF export. |
 | Learning, benefits and expenses | Core workflows implemented | Learning catalogue/enrolment/completion certificates; configurable benefit entitlements and approvals; itemised expenses, private receipts, approvals and reimbursement references. |
-| Team lead dashboard | Core workflow deployed | Scoped team overview includes staffing coverage, leave/time/review queues and a unified approval queue with direct drill-down links. Advanced absence coverage and task ownership remain optional. |
+| Team lead dashboard | Core workflow deployed | Scoped team overview includes staffing coverage, leave/time/review queues, a unified approval queue, and task ownership with owner assignment and open/in-progress/completed tracking. |
 
 See [the workflow and configuration guide](docs/Attendance-Payroll-Lifecycle-Guide.md) for operating instructions, calculation conventions and legacy-data reconciliation. See [the module checklist](docs/MODULE-COMPLETION-CHECKLIST.md) for the remaining backlog.
 
@@ -27,7 +27,7 @@ See [the workflow and configuration guide](docs/Attendance-Payroll-Lifecycle-Gui
 1. **Business setup:** configure actual company/employee rules and assign operational roles before entering employee records. Deployment and database migrations are complete. Migrations 0015–0024 are new in this combined release; deployed migrations 0000–0014 are preserved. No production demonstration records were added.
 2. **Workforce enhancements:** whole-series roster changes, external certificate validation/evidence uploads and device/offline attendance integrations. Weekly unavailability, date exceptions, qualification renewal due lists, configurable reminder windows and HR verification are now implemented alongside the earlier staffing workflows.
 3. **Performance and helpdesk extensions:** core review cycles, objectives/development plans, calibration, routing, response targets, explicit escalation and knowledge articles are now implemented. Bulk review assignment/participant withdrawal, automated reminders/escalation and business-hour target calendars remain optional extensions. See [the operating guide](docs/Performance-Helpdesk-Guide.md).
-4. **Documents and reports:** production file-delivery acceptance, retention automation, agreed metrics, filters and scoped drill-downs. Document versions and independently reviewed renewal requests are implemented.
+4. **Documents and reports:** production file-delivery acceptance and retention automation remain. Site/team filters, reconciled totals, saved report views and exports are implemented.
 5. **Learning, benefits and expenses:** optional extensions include LMS synchronisation, automated reminders, payroll deductions and country-specific benefit/tax rules. Core request, approval, evidence, entitlement and reimbursement workflows are implemented in migration 0024.
 6. **Integrations:** EOS API adapter, verified Resend sender and live delivery, WhatsApp/biometric devices, and bank/WPS submission. These remain separate work.
 
@@ -43,4 +43,4 @@ Group calculation rules continue to control attendance/timesheet rounding, paid 
 
 See [Deployment-Guide.md](docs/Deployment-Guide.md) for the exact live revision and deployment acceptance. External email, device and bank integrations remain separate configuration/work.
 
-Deployment succeeded on 16 September 2026 at 16:06 Asia/Qatar for revision `de6c4d1` (absence coverage on Team Overview). Render startup confirmed `Database migrations completed`, and the service reported live at the primary URL.
+Deployment succeeded on 16 September 2026 at 18:46 Asia/Qatar for revision `f69d238` (team task ownership, advanced reporting and operational reminders). Render startup confirmed `Database migrations completed`, and the service reported live at the primary URL.
