@@ -17,7 +17,7 @@ The requested attendance/leave → payroll → recruitment/onboarding/offboardin
 | HR helpdesk | Core workflow and support operations deployed | Confidential cases, messages/files/history, dated company and employee routing rules, response targets, overdue queue, explicit escalation and searchable versioned knowledge articles. |
 | Performance and development | Core review cycle deployed | Configurable weighted criteria/rating labels, employee deadlines, self-assessment, assigned manager review, independent HR calibration/publication, acknowledgement, objectives/development actions and scoped reports with sample counts. |
 | Documents and reports | Document renewal core implemented; reporting enhancements remain | Private upload/download, document versions, scoped renewal requests and independent review; base exports and scoped reporting. Retention automation and reporting refinements remain. |
-| Learning, benefits and expenses | Partial | Existing screens/basic APIs require complete request, approval, entitlement, completion and reimbursement workflows. |
+| Learning, benefits and expenses | Core workflows implemented | Learning catalogue/enrolment/completion certificates; configurable benefit entitlements and approvals; itemised expenses, private receipts, approvals and reimbursement references. |
 | Team lead dashboard | Partial | Scoped team overview includes leave, time and assignment review queues; further unified approvals and operational drill-downs remain. |
 
 See [the workflow and configuration guide](docs/Attendance-Payroll-Lifecycle-Guide.md) for operating instructions, calculation conventions and legacy-data reconciliation. See [the module checklist](docs/MODULE-COMPLETION-CHECKLIST.md) for the remaining backlog.
@@ -28,7 +28,7 @@ See [the workflow and configuration guide](docs/Attendance-Payroll-Lifecycle-Gui
 2. **Workforce enhancements:** whole-series roster changes, external certificate validation/evidence uploads and device/offline attendance integrations. Weekly unavailability, date exceptions, qualification renewal due lists, configurable reminder windows and HR verification are now implemented alongside the earlier staffing workflows.
 3. **Performance and helpdesk extensions:** core review cycles, objectives/development plans, calibration, routing, response targets, explicit escalation and knowledge articles are now implemented. Bulk review assignment/participant withdrawal, automated reminders/escalation and business-hour target calendars remain optional extensions. See [the operating guide](docs/Performance-Helpdesk-Guide.md).
 4. **Documents and reports:** production file-delivery acceptance, retention automation, agreed metrics, filters and scoped drill-downs. Document versions and independently reviewed renewal requests are implemented.
-5. **Learning, benefits and expenses:** complete and verify their request, approval, entitlement and reimbursement workflows. They are not represented as completed modules.
+5. **Learning, benefits and expenses:** optional extensions include LMS synchronisation, automated reminders, payroll deductions and country-specific benefit/tax rules. Core request, approval, evidence, entitlement and reimbursement workflows are implemented in migration 0024.
 6. **Integrations:** EOS API adapter, verified Resend sender and live delivery, WhatsApp/biometric devices, and bank/WPS submission. These remain separate work.
 
 The current release supports full-day leave and monthly payroll. Half-day leave, multi-stage approvals, automatic unpaid-leave deductions, statutory tax/EOS calculations and country-specific payslip/WPS formats require additional policy options or integrations. The UI records external payment references and does not transfer funds.
@@ -43,4 +43,4 @@ Group calculation rules continue to control attendance/timesheet rounding, paid 
 
 See [Deployment-Guide.md](docs/Deployment-Guide.md) for the exact live revision and deployment acceptance. External email, device and bank integrations remain separate configuration/work.
 
-Deployment succeeded on 16 September 2026 at 00:40 Asia/Qatar. All 24 production migration hashes match the release, `/readyz` returns HTTP 200, and authenticated live checks verified Performance review cycles, Helpdesk operations and the Documents renewal queue. [Render deployment](https://dashboard.render.com/web/srv-dajuem0jo6nc73fb36r0/deploys/dep-dakrlnm7bikc73fo8j00).
+Deployment succeeded on 16 September 2026 at 00:40 Asia/Qatar for the previous release. The current Learning/Benefits/Expenses release is pending its Render deployment after the 211-test validation below.

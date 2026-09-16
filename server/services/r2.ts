@@ -61,3 +61,11 @@ export async function caseAttachmentUrl(key:string){
   if(!caseKey.test(key))throw new Error('Invalid case attachment');
   const {client,bucket}=configuration();try{return await getSignedUrl(client,new GetObjectCommand({Bucket:bucket,Key:key,ResponseContentDisposition:'attachment',ResponseContentType:'application/octet-stream'}),{expiresIn:60});}finally{client.destroy();}
 }
+
+const serviceKey=/^employee-services\/(learning|benefit|expense)\/\d+\/[a-f0-9-]+\.(pdf|png|jpg)$/;
+export async function uploadServiceFile(kind:'learning'|'benefit'|'expense',id:number,file:Express.Multer.File){
+  const extension=validateDocumentFile(file),{client,bucket}=configuration(),key=`employee-services/${kind}/${id}/${randomUUID()}.${extension}`;
+  try{await client.send(new PutObjectCommand({Bucket:bucket,Key:key,Body:file.buffer,ContentType:'application/octet-stream',ContentDisposition:'attachment'}));return key;}finally{client.destroy();}
+}
+export async function deleteServiceFile(key:string){if(!serviceKey.test(key))throw new Error('Invalid service file');const {client,bucket}=configuration();try{await client.send(new DeleteObjectCommand({Bucket:bucket,Key:key}));}finally{client.destroy();}}
+export async function serviceFileUrl(key:string){if(!serviceKey.test(key))throw new Error('Invalid service file');const {client,bucket}=configuration();try{return await getSignedUrl(client,new GetObjectCommand({Bucket:bucket,Key:key,ResponseContentDisposition:'attachment',ResponseContentType:'application/octet-stream'}),{expiresIn:60});}finally{client.destroy();}}

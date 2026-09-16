@@ -108,40 +108,74 @@
       "breakpoints": true
     },
     {
-      "idx": 15, "version": "7", "when": 1789488000000,
-      "tag": "0015_attendance_leave_rules", "breakpoints": true
+      "idx": 15,
+      "version": "7",
+      "when": 1789488000000,
+      "tag": "0015_attendance_leave_rules",
+      "breakpoints": true
     },
     {
-      "idx": 16, "version": "7", "when": 1789488001000,
-      "tag": "0016_payroll_review", "breakpoints": true
+      "idx": 16,
+      "version": "7",
+      "when": 1789488001000,
+      "tag": "0016_payroll_review",
+      "breakpoints": true
     },
     {
-      "idx": 17, "version": "7", "when": 1789488002000,
-      "tag": "0017_employee_lifecycle", "breakpoints": true
+      "idx": 17,
+      "version": "7",
+      "when": 1789488002000,
+      "tag": "0017_employee_lifecycle",
+      "breakpoints": true
     },
     {
-      "idx": 18, "version": "7", "when": 1789488003000,
-      "tag": "0018_hiring_versions", "breakpoints": true
+      "idx": 18,
+      "version": "7",
+      "when": 1789488003000,
+      "tag": "0018_hiring_versions",
+      "breakpoints": true
     },
     {
-      "idx": 19, "version": "7", "when": 1789488004000,
-      "tag": "0019_workforce_rosters", "breakpoints": true
+      "idx": 19,
+      "version": "7",
+      "when": 1789488004000,
+      "tag": "0019_workforce_rosters",
+      "breakpoints": true
     },
     {
-      "idx": 20, "version": "7", "when": 1789488005000,
-      "tag": "0020_workforce_staffing", "breakpoints": true
+      "idx": 20,
+      "version": "7",
+      "when": 1789488005000,
+      "tag": "0020_workforce_staffing",
+      "breakpoints": true
     },
     {
-      "idx": 21, "version": "7", "when": 1789488006000,
-      "tag": "0021_workforce_operations", "breakpoints": true
+      "idx": 21,
+      "version": "7",
+      "when": 1789488006000,
+      "tag": "0021_workforce_operations",
+      "breakpoints": true
     },
     {
-      "idx": 22, "version": "7", "when": 1789488007000,
-      "tag": "0022_workforce_renewals", "breakpoints": true
+      "idx": 22,
+      "version": "7",
+      "when": 1789488007000,
+      "tag": "0022_workforce_renewals",
+      "breakpoints": true
     },
     {
-      "idx": 23, "version": "7", "when": 1789488008000,
-      "tag": "0023_performance_helpdesk", "breakpoints": true
+      "idx": 23,
+      "version": "7",
+      "when": 1789488008000,
+      "tag": "0023_performance_helpdesk",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1789527600000,
+      "tag": "0024_learning_benefits_expenses",
+      "breakpoints": true
     }
   ]
 }

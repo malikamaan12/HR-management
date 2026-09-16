@@ -2673,3 +2673,49 @@ export const calculationRuleVersions=pgTable('calculation_rule_versions',{
  rules:jsonb('rules').$type<CalculationRules>().notNull(),reason:text('reason').notNull(),
  createdBy:integer('created_by').notNull().references(()=>users.id),createdAt:timestamp('created_at').notNull().defaultNow(),
 });
+// Reviewed learning, benefits and expense workflows keep their original rule snapshots.
+export const learningCourses = pgTable('learning_courses', {
+  id: serial('id').primaryKey(), version: integer('version').notNull().default(1),
+  definition: jsonb('definition').$type<import('./employee-services').CourseDefinition>().notNull(),
+  createdBy: integer('created_by').notNull().references((): AnyPgColumn => users.id),
+  history: jsonb('history').$type<import('./employee-services').WorkflowEvent[]>().notNull().default([]),
+  createdAt: timestamp('created_at', {withTimezone: true}).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', {withTimezone: true}).defaultNow().notNull(),
+});
+export const learningEnrollments = pgTable('learning_enrollments', {
+  id: serial('id').primaryKey(), courseId: integer('course_id').notNull().references(() => learningCourses.id),
+  employeeId: integer('employee_id').notNull().references((): AnyPgColumn => employees.id),
+  version: integer('version').notNull().default(1), status: text('status').notNull().default('requested'),
+  courseSnapshot: jsonb('course_snapshot').$type<import('./employee-services').CourseDefinition & {version:number;override?:unknown}>().notNull(),
+  dueDate: date('due_date'), requestedBy: integer('requested_by').notNull().references((): AnyPgColumn => users.id),
+  approverId: integer('approver_id').notNull().references((): AnyPgColumn => users.id), progress: integer('progress').notNull().default(0),
+  completionNote: text('completion_note'), score: integer('score'), submittedBy: integer('submitted_by').references((): AnyPgColumn => users.id),
+  completedAt: timestamp('completed_at', {withTimezone: true}), expiresOn: date('expires_on'), certificateNumber: text('certificate_number'),
+  verifiedBy: integer('verified_by').references((): AnyPgColumn => users.id),
+  history: jsonb('history').$type<import('./employee-services').WorkflowEvent[]>().notNull().default([]),
+  createdAt: timestamp('created_at', {withTimezone: true}).defaultNow().notNull(), updatedAt: timestamp('updated_at', {withTimezone: true}).defaultNow().notNull(),
+});
+export const servicePolicies = pgTable('service_policies', {
+  id: serial('id').primaryKey(), kind: text('kind').$type<import('./employee-services').ServiceKind>().notNull(), key: text('key').notNull(), name: text('name').notNull(),
+  employeeId: integer('employee_id').references((): AnyPgColumn => employees.id), effectiveFrom: date('effective_from').notNull(),
+  config: jsonb('config').$type<import('./employee-services').EligibilityRule>().notNull(), reason: text('reason').notNull(),
+  createdBy: integer('created_by').notNull().references((): AnyPgColumn => users.id), createdAt: timestamp('created_at', {withTimezone: true}).defaultNow().notNull(),
+});
+export const serviceRequests = pgTable('service_requests', {
+  id: serial('id').primaryKey(), kind: text('kind').$type<import('./employee-services').ServiceKind>().notNull(), policyKey: text('policy_key').notNull(),
+  employeeId: integer('employee_id').notNull().references((): AnyPgColumn => employees.id), requestDate: date('request_date').notNull(),
+  title: text('title').notNull(), details: text('details').notNull(), amount: decimal('amount', {precision:12,scale:2}).notNull(),
+  items: jsonb('items').$type<{description:string;amount:string}[]>().notNull().default([]),
+  policySnapshot: jsonb('policy_snapshot').$type<{id:number;name:string;config:import('./employee-services').EligibilityRule}>(),
+  status: text('status').notNull().default('draft'), version: integer('version').notNull().default(1),
+  createdBy: integer('created_by').notNull().references((): AnyPgColumn => users.id), approverId: integer('approver_id').references((): AnyPgColumn => users.id),
+  approvedBy: integer('approved_by').references((): AnyPgColumn => users.id), fulfilledBy: integer('fulfilled_by').references((): AnyPgColumn => users.id),
+  fulfillmentReference: text('fulfillment_reference'), fulfilledAt: timestamp('fulfilled_at',{withTimezone:true}),
+  history: jsonb('history').$type<import('./employee-services').WorkflowEvent[]>().notNull().default([]),
+  createdAt: timestamp('created_at',{withTimezone:true}).defaultNow().notNull(), updatedAt: timestamp('updated_at',{withTimezone:true}).defaultNow().notNull(),
+});
+export const serviceFiles = pgTable('service_files', {
+  id: serial('id').primaryKey(), enrollmentId: integer('enrollment_id').references(() => learningEnrollments.id), requestId: integer('request_id').references(() => serviceRequests.id),
+  objectKey: text('object_key').notNull(), filename: text('filename').notNull(), size: integer('size').notNull(),
+  uploadedBy: integer('uploaded_by').notNull().references((): AnyPgColumn => users.id), createdAt: timestamp('created_at',{withTimezone:true}).defaultNow().notNull(),
+});

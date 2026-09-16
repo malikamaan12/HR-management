@@ -22,6 +22,9 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
+  {name:"Learning & Training", icon:"fas fa-graduation-cap", href:"/learning", module:"training_development"},
+  {name:"Benefits & Entitlements", icon:"fas fa-heart", href:"/benefits", module:"benefits_perks"},
+  {name:"Expenses & Reimbursements", icon:"fas fa-receipt", href:"/expenses", module:"expense_management"},
   { name: "Dashboard", icon: "fas fa-tachometer-alt", href: "/", module: "reports_analytics", requiredPermission: "read" },
   { name: "Employee Database", icon: "fas fa-users", href: "/employees", module: "employee_database", requiredPermission: "read" },
   { name: "Bulk Import", icon: "fas fa-upload", href: "/bulk-import", module: "employee_database", requiredPermission: "create" },

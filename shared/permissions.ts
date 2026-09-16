@@ -17,6 +17,7 @@ export type HRModule =
   | 'reports_analytics'
   | 'training_development'
   | 'benefits_perks'
+  | 'expense_management'
   | 'system_configuration';
 
 // Scope types for data access
@@ -43,6 +44,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Record<HRModule, RolePermissions
     reports_analytics: { permissions: ['read', 'admin'], scope: 'all', description: 'Access to all reports and analytics' },
     training_development: { permissions: ['create', 'read', 'update', 'delete', 'admin'], scope: 'all', description: 'Complete training system administration' },
     benefits_perks: { permissions: ['create', 'read', 'update', 'delete', 'admin'], scope: 'all', description: 'Full benefits system control' },
+    expense_management: { permissions: ['admin'], scope: 'all', description: 'Expense requests and reimbursement records' },
     system_configuration: { permissions: ['admin'], scope: 'all', description: 'System configuration and maintenance' }
   },
 
@@ -59,6 +61,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Record<HRModule, RolePermissions
     reports_analytics: { permissions: ['read'], scope: 'all', description: 'Access to all strategic reports' },
     training_development: { permissions: ['read'], scope: 'all', description: 'Dashboard view of training metrics' },
     benefits_perks: { permissions: ['read'], scope: 'all', description: 'Overview of benefits costs and utilization' },
+    expense_management: { permissions: ['read'], scope: 'all', description: 'Expense requests and reimbursement records' },
     system_configuration: { permissions: ['none'], scope: 'none', description: 'No system configuration access' }
   },
 
@@ -75,6 +78,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Record<HRModule, RolePermissions
     reports_analytics: { permissions: ['admin'], scope: 'all', description: 'Access to all HR reports and analytics configuration' },
     training_development: { permissions: ['admin'], scope: 'all', description: 'Training program oversight and configuration' },
     benefits_perks: { permissions: ['admin'], scope: 'all', description: 'Benefits program configuration and management' },
+    expense_management: { permissions: ['create', 'read', 'update', 'approve'], scope: 'all', description: 'Expense requests and reimbursement records' },
     system_configuration: { permissions: ['none'], scope: 'none', description: 'No technical system configuration access' }
   },
 
@@ -91,6 +95,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Record<HRModule, RolePermissions
     reports_analytics: { permissions: ['read'], scope: 'department', description: 'Reports for assigned departments' },
     training_development: { permissions: ['create', 'read', 'update', 'delete'], scope: 'department', description: 'Training coordination for assigned departments' },
     benefits_perks: { permissions: ['create', 'read', 'update', 'delete'], scope: 'department', description: 'Benefits administration for assigned departments' },
+    expense_management: { permissions: ['create', 'read', 'update', 'approve'], scope: 'department', description: 'Expense requests and reimbursement records' },
     system_configuration: { permissions: ['none'], scope: 'none', description: 'No system configuration access' }
   },
 
@@ -107,6 +112,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Record<HRModule, RolePermissions
     reports_analytics: { permissions: ['read'], scope: 'all', description: 'Recruitment analytics and reports' },
     training_development: { permissions: ['none'], scope: 'none', description: 'No training access' },
     benefits_perks: { permissions: ['none'], scope: 'none', description: 'No benefits access' },
+    expense_management: { permissions: ['none'], scope: 'none', description: 'Expense requests and reimbursement records' },
     system_configuration: { permissions: ['none'], scope: 'none', description: 'No system configuration access' }
   },
 
@@ -123,6 +129,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Record<HRModule, RolePermissions
     reports_analytics: { permissions: ['read'], scope: 'all', description: 'Payroll and financial reports' },
     training_development: { permissions: ['none'], scope: 'none', description: 'No training access' },
     benefits_perks: { permissions: ['read'], scope: 'all', description: 'Benefits data for payroll processing' },
+    expense_management: { permissions: ['read', 'approve'], scope: 'all', description: 'Expense requests and reimbursement records' },
     system_configuration: { permissions: ['none'], scope: 'none', description: 'No system configuration access' }
   },
 
@@ -139,6 +146,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Record<HRModule, RolePermissions
     reports_analytics: { permissions: ['read'], scope: 'team', description: 'Team performance and productivity reports' },
     training_development: { permissions: ['create', 'read', 'approve'], scope: 'team', description: 'Team training coordination and approval' },
     benefits_perks: { permissions: ['read'], scope: 'team', description: 'Team benefits overview' },
+    expense_management: { permissions: ['create', 'read', 'approve'], scope: 'team', description: 'Expense requests and reimbursement records' },
     system_configuration: { permissions: ['none'], scope: 'none', description: 'No system configuration access' }
   },
 
@@ -155,6 +163,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Record<HRModule, RolePermissions
     reports_analytics: { permissions: ['read'], scope: 'event_staff', description: 'Event staff reports and analytics' },
     training_development: { permissions: ['create', 'read', 'update'], scope: 'event_staff', description: 'Event staff training coordination' },
     benefits_perks: { permissions: ['none'], scope: 'none', description: 'No benefits access' },
+    expense_management: { permissions: ['create', 'read', 'approve'], scope: 'event_staff', description: 'Expense requests and reimbursement records' },
     system_configuration: { permissions: ['none'], scope: 'none', description: 'No system configuration access' }
   },
 
@@ -171,6 +180,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Record<HRModule, RolePermissions
     reports_analytics: { permissions: ['read'], scope: 'all', description: 'Financial and compliance reports for auditing' },
     training_development: { permissions: ['none'], scope: 'none', description: 'No training access' },
     benefits_perks: { permissions: ['read'], scope: 'all', description: 'Benefits cost analysis for auditing' },
+    expense_management: { permissions: ['read'], scope: 'all', description: 'Expense requests and reimbursement records' },
     system_configuration: { permissions: ['none'], scope: 'none', description: 'No system configuration access' }
   },
 
@@ -187,6 +197,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Record<HRModule, RolePermissions
     reports_analytics: { permissions: ['read'], scope: 'self', description: 'Own performance and attendance reports' },
     training_development: { permissions: ['create', 'read', 'update'], scope: 'self', description: 'Own training records and requests' },
     benefits_perks: { permissions: ['create', 'read', 'update'], scope: 'self', description: 'Own benefits enrollment and management' },
+    expense_management: { permissions: ['create', 'read', 'update'], scope: 'self', description: 'Expense requests and reimbursement records' },
     system_configuration: { permissions: ['none'], scope: 'none', description: 'No system configuration access' }
   },
 
@@ -203,6 +214,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Record<HRModule, RolePermissions
     reports_analytics: { permissions: ['read'], scope: 'self', description: 'Own work history and ratings' },
     training_development: { permissions: ['create', 'read', 'update'], scope: 'self', description: 'Event-specific training requirements' },
     benefits_perks: { permissions: ['none'], scope: 'none', description: 'No benefits access' },
+    expense_management: { permissions: ['create', 'read', 'update'], scope: 'self', description: 'Expense requests and reimbursement records' },
     system_configuration: { permissions: ['none'], scope: 'none', description: 'No system configuration access' }
   },
 
@@ -220,6 +232,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Record<HRModule, RolePermissions
     reports_analytics: { permissions: ['read'], scope: 'self', description: 'Legacy: Own reports' },
     training_development: { permissions: ['read', 'update'], scope: 'self', description: 'Legacy: Own training' },
     benefits_perks: { permissions: ['read', 'update'], scope: 'self', description: 'Legacy: Own benefits' },
+    expense_management: { permissions: ['create', 'read', 'update'], scope: 'self', description: 'Expense requests and reimbursement records' },
     system_configuration: { permissions: ['none'], scope: 'none', description: 'Legacy: No config access' }
   },
 
@@ -236,6 +249,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Record<HRModule, RolePermissions
     reports_analytics: { permissions: ['read', 'admin'], scope: 'all', description: 'Legacy: Full analytics access' },
     training_development: { permissions: ['create', 'read', 'update', 'delete', 'admin'], scope: 'all', description: 'Legacy: Full training access' },
     benefits_perks: { permissions: ['create', 'read', 'update', 'delete', 'admin'], scope: 'all', description: 'Legacy: Full benefits access' },
+    expense_management: { permissions: ['admin'], scope: 'all', description: 'Expense requests and reimbursement records' },
     system_configuration: { permissions: ['admin'], scope: 'all', description: 'Legacy: System configuration' }
   },
 
@@ -252,6 +266,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Record<HRModule, RolePermissions
     reports_analytics: { permissions: ['read'], scope: 'all', description: 'Legacy: HR analytics access' },
     training_development: { permissions: ['create', 'read', 'update'], scope: 'all', description: 'Legacy: HR training access' },
     benefits_perks: { permissions: ['create', 'read', 'update'], scope: 'all', description: 'Legacy: HR benefits access' },
+    expense_management: { permissions: ['create', 'read', 'update', 'approve'], scope: 'all', description: 'Expense requests and reimbursement records' },
     system_configuration: { permissions: ['none'], scope: 'none', description: 'Legacy: No config access' }
   },
 
@@ -268,6 +283,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Record<HRModule, RolePermissions
     reports_analytics: { permissions: ['read'], scope: 'all', description: 'Legacy: Finance analytics access' },
     training_development: { permissions: ['read'], scope: 'all', description: 'Legacy: Finance training view' },
     benefits_perks: { permissions: ['read'], scope: 'all', description: 'Legacy: Finance benefits view' },
+    expense_management: { permissions: ['read', 'approve'], scope: 'all', description: 'Expense requests and reimbursement records' },
     system_configuration: { permissions: ['none'], scope: 'none', description: 'Legacy: No config access' }
   },
 
@@ -284,6 +300,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Record<HRModule, RolePermissions
     reports_analytics: { permissions: ['read'], scope: 'team', description: 'Legacy: Manager analytics access' },
     training_development: { permissions: ['read', 'approve'], scope: 'team', description: 'Legacy: Manager training approval' },
     benefits_perks: { permissions: ['read'], scope: 'team', description: 'Legacy: Manager benefits view' },
+    expense_management: { permissions: ['read', 'approve'], scope: 'team', description: 'Expense requests and reimbursement records' },
     system_configuration: { permissions: ['none'], scope: 'none', description: 'Legacy: No config access' }
   }
 };

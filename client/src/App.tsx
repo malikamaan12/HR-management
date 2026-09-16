@@ -1,3 +1,5 @@
+import Learning from '@/pages/Learning';
+import {Benefits, Expenses} from '@/pages/EmployeeServices';
 import { Switch, Route, useLocation, Redirect } from "wouter";
 import MainLayout from "@/components/layouts/MainLayout";
 import NotFound from "@/pages/not-found";
@@ -98,6 +100,9 @@ function App() {
       case '/hr-rules': return 'HR Rules';
       case '/communications': return 'Communication Hub';
       case '/performance': return 'Performance Management';
+      case '/learning': return 'Learning & Training';
+      case '/benefits': return 'Benefits & Entitlements';
+      case '/expenses': return 'Expenses & Reimbursements';
       case '/settings': return 'Settings';
       case '/reports': return 'Reports & Analytics';
       case '/user-management': return 'User Management';
@@ -152,6 +157,9 @@ function App() {
           <Route path="/onboarding" component={Onboarding} />
           <Route path="/communications" component={Communications} />
           <Route path="/performance" component={Performance} />
+          <Route path="/learning" component={Learning} />
+          <Route path="/benefits" component={Benefits} />
+          <Route path="/expenses" component={Expenses} />
           <Route path="/settings" component={Settings} />
           <Route path="/reports" component={Reports} />
           <Route path="/user-management" component={UserManagement} />
