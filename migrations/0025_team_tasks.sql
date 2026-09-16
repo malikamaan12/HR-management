@@ -1,0 +1,3 @@
+CREATE TABLE team_action_tasks (id serial PRIMARY KEY,team_id integer NOT NULL REFERENCES workforce_teams(id),title text NOT NULL,description text,kind text NOT NULL DEFAULT 'follow_up',source_type text,source_id integer,owner_user_id integer REFERENCES users(id),status text NOT NULL DEFAULT 'open' CHECK(status IN ('open','in_progress','completed')),due_date date,created_by integer NOT NULL REFERENCES users(id),completed_at timestamptz,created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now());
+--> statement-breakpoint
+CREATE INDEX team_action_tasks_team_status ON team_action_tasks(team_id,status,due_date);

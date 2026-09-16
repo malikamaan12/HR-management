@@ -6,6 +6,7 @@ import { validateAuthConfiguration } from './services/auth';
 import { validateAppConfiguration } from './config';
 import { createReadinessHandler } from './services/readiness';
 import { pool } from './db';
+import {runOperationalReminders} from './services/operational-reminders';
 validateAuthConfiguration();
 validateAppConfiguration();
 const app = express();
@@ -65,5 +66,7 @@ app.use((req, res, next) => {
     host: "0.0.0.0",
   }, () => {
     log(`serving on port ${port}`);
+    setTimeout(() => void runOperationalReminders().catch(error => console.error('Operational reminders failed', error)), 30000).unref();
+    setInterval(() => void runOperationalReminders().catch(error => console.error('Operational reminders failed', error)), 6 * 60 * 60 * 1000).unref();
   });
 })();

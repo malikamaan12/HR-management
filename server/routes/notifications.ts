@@ -3,6 +3,7 @@ import { z } from "zod";
 import notificationService from "../services/notifications";
 import { insertNotificationSchema } from "@shared/schema";
 import { authenticate, authorize } from "../middleware/auth";
+import {runOperationalReminders} from '../services/operational-reminders';
 
 const router = express.Router();
 
@@ -62,6 +63,11 @@ router.post("/", authenticate, authorize(["admin", "hr"]), async (req, res) => {
     console.error("Error creating notification:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
+});
+
+router.post('/reminders/run', authenticate, authorize(['admin','super_admin','hr','hr_director']), async (_req,res)=>{
+  try{return res.json(await runOperationalReminders());}
+  catch(error){return res.status(500).json({message:error instanceof Error?error.message:'Unable to run reminders'});}
 });
 
 export default router;

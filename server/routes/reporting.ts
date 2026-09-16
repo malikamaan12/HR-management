@@ -18,7 +18,8 @@ router.get('/dashboard/stats', async (req: Request, res: Response) => {
 router.get('/employee-headcount', async (req: Request, res: Response) => {
   try {
     const department = req.query.department as string | undefined;
-    const data = await reportingService.getEmployeeHeadcount(department);
+    const site = req.query.site as string | undefined;
+    const data = await reportingService.getEmployeeHeadcount(department, site);
     res.status(200).json(data);
   } catch (error) {
     res.status(500).json({ message: 'Error generating employee headcount report', error: error instanceof Error ? error.message : 'Unknown error' });
@@ -31,11 +32,33 @@ router.get('/attendance-summary', async (req: Request, res: Response) => {
     const department = req.query.department as string | undefined;
     const startDate = req.query.startDate ? new Date(req.query.startDate as string) : undefined;
     const endDate = req.query.endDate ? new Date(req.query.endDate as string) : undefined;
-    const data = await reportingService.getAttendanceSummary(department, startDate, endDate);
+    const site = req.query.site as string | undefined;
+    const teamId = req.query.teamId ? parseInt(req.query.teamId as string, 10) : undefined;
+    const data = await reportingService.getAttendanceSummary(department, startDate, endDate, site, teamId);
     res.status(200).json(data);
   } catch (error) {
     res.status(500).json({ message: 'Error generating attendance summary report', error: error instanceof Error ? error.message : 'Unknown error' });
   }
+});
+
+router.get('/saved-views', authenticate, async (req, res) => {
+  try { return res.json(await reportingService.getReportDefinitions(req.user!.userId, false)); }
+  catch (error) { return res.status(500).json({message: error instanceof Error ? error.message : 'Unable to load saved views'}); }
+});
+router.post('/saved-views', authenticate, async (req, res) => {
+  try {
+    const name = String(req.body?.name || '').trim();
+    if (name.length < 2 || name.length > 120) return res.status(400).json({message:'View name must be 2–120 characters'});
+    return res.status(201).json(await reportingService.createReportDefinition({name,description:'Saved Reports & Analytics view',createdBy:req.user!.userId,isPublic:false,queryDefinition:req.body?.queryDefinition||{}}));
+  } catch (error) { return res.status(400).json({message: error instanceof Error ? error.message : 'Unable to save view'}); }
+});
+router.delete('/saved-views/:id', authenticate, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const view = await reportingService.getReportDefinition(id);
+    if (!view || view.createdBy !== req.user!.userId) return res.status(404).json({message:'Saved view not found'});
+    await reportingService.deleteReportDefinition(id); return res.status(204).end();
+  } catch (error) { return res.status(400).json({message: error instanceof Error ? error.message : 'Unable to delete view'}); }
 });
 
 // Get turnover rate report
@@ -44,8 +67,8 @@ router.get('/turnover-rate', async (req: Request, res: Response) => {
     const department = req.query.department as string | undefined;
     const startDate = req.query.startDate ? new Date(req.query.startDate as string) : undefined;
     const endDate = req.query.endDate ? new Date(req.query.endDate as string) : undefined;
-    
-    const data = await reportingService.getTurnoverRate(department, startDate, endDate);
+    const site = req.query.site as string | undefined;
+    const data = await reportingService.getTurnoverRate(department, startDate, endDate, site);
     res.status(200).json(data);
   } catch (error) {
     res.status(500).json({ message: 'Error generating turnover rate report', error: error instanceof Error ? error.message : 'Unknown error' });
@@ -57,8 +80,8 @@ router.get('/leave-utilization', async (req: Request, res: Response) => {
   try {
     const department = req.query.department as string | undefined;
     const year = req.query.year ? parseInt(req.query.year as string) : undefined;
-    
-    const data = await reportingService.getLeaveUtilization(department, year);
+    const site = req.query.site as string | undefined;
+    const data = await reportingService.getLeaveUtilization(department, year, site);
     res.status(200).json(data);
   } catch (error) {
     res.status(500).json({ message: 'Error generating leave utilization report', error: error instanceof Error ? error.message : 'Unknown error' });

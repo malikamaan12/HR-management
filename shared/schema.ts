@@ -2719,3 +2719,13 @@ export const serviceFiles = pgTable('service_files', {
   objectKey: text('object_key').notNull(), filename: text('filename').notNull(), size: integer('size').notNull(),
   uploadedBy: integer('uploaded_by').notNull().references((): AnyPgColumn => users.id), createdAt: timestamp('created_at',{withTimezone:true}).defaultNow().notNull(),
 });
+
+// Team lead follow-up tasks are linked to a team and optionally to a source record.
+export const teamActionTasks = pgTable('team_action_tasks', {
+  id: serial('id').primaryKey(), teamId: integer('team_id').notNull().references(() => workforceTeams.id),
+  title: text('title').notNull(), description: text('description'), kind: text('kind').notNull().default('follow_up'),
+  sourceType: text('source_type'), sourceId: integer('source_id'), ownerUserId: integer('owner_user_id').references(() => users.id),
+  status: text('status').notNull().default('open'), dueDate: date('due_date'),
+  createdBy: integer('created_by').notNull().references(() => users.id), completedAt: timestamp('completed_at', {withTimezone:true}),
+  createdAt: timestamp('created_at', {withTimezone:true}).defaultNow().notNull(), updatedAt: timestamp('updated_at', {withTimezone:true}).defaultNow().notNull(),
+});

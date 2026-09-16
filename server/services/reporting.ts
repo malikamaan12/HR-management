@@ -12,14 +12,14 @@ import {
   reportSchedules,
   reportExecutionHistory
 } from '@shared/schema';
+import { workforceAssignments, workforceShifts } from '@shared/schema';
 import { formatISO, format, parseISO, differenceInDays } from 'date-fns';
 
 // Employee headcount report
-export async function getEmployeeHeadcount(department?: string) {
+export async function getEmployeeHeadcount(department?: string, site?: string) {
   try {
-    const query = department 
-      ? db.select().from(employees).where(eq(employees.department, department))
-      : db.select().from(employees);
+    const filters = [department ? eq(employees.department, department) : undefined, site ? eq(employees.location, site) : undefined];
+    const query = db.select().from(employees).where(and(...filters));
     
     const employeeData = await query;
     
@@ -58,7 +58,8 @@ export async function getEmployeeHeadcount(department?: string) {
     return {
       total,
       byDepartment,
-      byType
+      byType,
+      site: site || 'All Sites'
     };
   } catch (error) {
     console.error('Error generating employee headcount report:', error);
@@ -67,7 +68,7 @@ export async function getEmployeeHeadcount(department?: string) {
 }
 
 // Attendance summary report
-export async function getAttendanceSummary(department?: string, startDate?: Date, endDate?: Date) {
+export async function getAttendanceSummary(department?: string, startDate?: Date, endDate?: Date, site?: string, teamId?: number) {
   const defaultStart = new Date();
   defaultStart.setDate(defaultStart.getDate() - 30);
   const period = {
@@ -79,6 +80,8 @@ export async function getAttendanceSummary(department?: string, startDate?: Date
     sql`${attendance.date} <= ${period.endDate}`,
   ];
   if (department) conditions.push(eq(employees.department, department));
+  if (site) conditions.push(eq(employees.location, site));
+  if (teamId) conditions.push(sql`exists (select 1 from ${workforceAssignments} wa inner join ${workforceShifts} ws on ws.id = wa.shift_id where wa.employee_id = ${attendance.employeeId} and ws.team_id = ${teamId} and wa.status = 'accepted' and ws.start_at::date <= ${attendance.date} and ws.end_at::date >= ${attendance.date})`);
   const rows = await db.select({
     id: attendance.id,
     employeeId: attendance.employeeId,
@@ -102,6 +105,8 @@ export async function getAttendanceSummary(department?: string, startDate?: Date
   return {
     period,
     department: department || 'All Departments',
+    site: site || 'All Sites',
+    teamId: teamId || null,
     totalRecords: rows.length,
     totalWorkMinutes: rows.reduce((sum, row) => sum + Number(row.workMinutes || 0), 0),
     totalOvertimeMinutes: rows.reduce((sum, row) => sum + Number(row.overtimeMinutes || 0), 0),
@@ -113,7 +118,7 @@ export async function getAttendanceSummary(department?: string, startDate?: Date
 }
 
 // Turnover rate report
-export async function getTurnoverRate(department?: string, startDate?: Date, endDate?: Date) {
+export async function getTurnoverRate(department?: string, startDate?: Date, endDate?: Date, site?: string) {
   try {
     const defaultStartDate = new Date();
     defaultStartDate.setMonth(defaultStartDate.getMonth() - 1);
@@ -124,32 +129,19 @@ export async function getTurnoverRate(department?: string, startDate?: Date, end
     };
     
     // Get total employee count
-    const employeeQuery = department
-      ? db.select().from(employees).where(eq(employees.department, department))
-      : db.select().from(employees);
+    const employeeQuery = db.select().from(employees).where(and(department ? eq(employees.department, department) : undefined, site ? eq(employees.location, site) : undefined));
     
     const employeeData = await employeeQuery;
     const totalEmployeeCount = employeeData.length;
     
     // Get terminated employee count in the period
-    const terminatedQuery = department
-      ? db.select().from(employees)
-          .where(
-            and(
-              eq(employees.department, department),
-              eq(employees.status, 'terminated'),
-              sql`${employees.terminationDate} >= ${period.startDate}`,
-              sql`${employees.terminationDate} <= ${period.endDate}`
-            )
-          )
-      : db.select().from(employees)
-          .where(
-            and(
-              eq(employees.status, 'terminated'),
-              sql`${employees.terminationDate} >= ${period.startDate}`,
-              sql`${employees.terminationDate} <= ${period.endDate}`
-            )
-          );
+    const terminatedQuery = db.select().from(employees).where(and(
+      department ? eq(employees.department, department) : undefined,
+      site ? eq(employees.location, site) : undefined,
+      eq(employees.status, 'terminated'),
+      sql`${employees.terminationDate} >= ${period.startDate}`,
+      sql`${employees.terminationDate} <= ${period.endDate}`
+    ));
     
     const terminatedData = await terminatedQuery;
     const terminatedCount = terminatedData.length;
@@ -164,7 +156,8 @@ export async function getTurnoverRate(department?: string, startDate?: Date, end
       period,
       terminatedCount,
       totalEmployeeCount,
-      department: department || 'All Departments'
+      department: department || 'All Departments',
+      site: site || 'All Sites'
     };
   } catch (error) {
     console.error('Error generating turnover rate report:', error);
@@ -173,7 +166,7 @@ export async function getTurnoverRate(department?: string, startDate?: Date, end
 }
 
 // Leave utilization report
-export async function getLeaveUtilization(department?: string, year: number = new Date().getFullYear()) {
+export async function getLeaveUtilization(department?: string, year: number = new Date().getFullYear(), site?: string) {
   try {
     const startOfYear = `${year}-01-01`;
     const endOfYear = `${year}-12-31`;
@@ -193,7 +186,8 @@ export async function getLeaveUtilization(department?: string, year: number = ne
         .innerJoin(employees, eq(leaves.employeeId, employees.id))
         .where(
           and(
-            eq(employees.department, department),
+            department ? eq(employees.department, department) : undefined,
+            site ? eq(employees.location, site) : undefined,
             sql`${leaves.startDate} >= ${startOfYear}`,
             sql`${leaves.startDate} <= ${endOfYear}`,
             eq(leaves.status, 'approved')
@@ -212,6 +206,7 @@ export async function getLeaveUtilization(department?: string, year: number = ne
         .innerJoin(employees, eq(leaves.employeeId, employees.id))
         .where(
           and(
+            site ? eq(employees.location, site) : undefined,
             sql`${leaves.startDate} >= ${startOfYear}`,
             sql`${leaves.startDate} <= ${endOfYear}`,
             eq(leaves.status, 'approved')
@@ -288,7 +283,8 @@ export async function getLeaveUtilization(department?: string, year: number = ne
       totalDays,
       byLeaveType,
       byDepartment: byDepartment.length > 0 ? byDepartment : undefined,
-      department: department || 'All Departments'
+      department: department || 'All Departments',
+      site: site || 'All Sites'
     };
   } catch (error) {
     console.error('Error generating leave utilization report:', error);
