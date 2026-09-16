@@ -25,6 +25,19 @@ router.get('/employee-headcount', async (req: Request, res: Response) => {
   }
 });
 
+// Get attendance summary report
+router.get('/attendance-summary', async (req: Request, res: Response) => {
+  try {
+    const department = req.query.department as string | undefined;
+    const startDate = req.query.startDate ? new Date(req.query.startDate as string) : undefined;
+    const endDate = req.query.endDate ? new Date(req.query.endDate as string) : undefined;
+    const data = await reportingService.getAttendanceSummary(department, startDate, endDate);
+    res.status(200).json(data);
+  } catch (error) {
+    res.status(500).json({ message: 'Error generating attendance summary report', error: error instanceof Error ? error.message : 'Unknown error' });
+  }
+});
+
 // Get turnover rate report
 router.get('/turnover-rate', async (req: Request, res: Response) => {
   try {

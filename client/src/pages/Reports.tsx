@@ -6,7 +6,7 @@ import {csvCell} from '@shared/money';
 import {Card,CardHeader,CardTitle,CardContent} from '@/components/ui/card';
 import {Input} from '@/components/ui/input';
 import {Button} from '@/components/ui/button';
-const reports={'employee-headcount':'Employee headcount','turnover-rate':'Employee turnover','leave-utilization':'Leave utilization','event-staff-cost':'Event staffing cost estimate','compliance-status':'Document compliance'};
+const reports={'employee-headcount':'Employee headcount','attendance-summary':'Attendance summary','turnover-rate':'Employee turnover','leave-utilization':'Leave utilization','event-staff-cost':'Event staffing cost estimate','compliance-status':'Document compliance'};
 const label=(value:string)=>value.replace(/([a-z])([A-Z])/g,'$1 $2').replaceAll('_',' ').replace(/^./,letter=>letter.toUpperCase());
 function flatten(value:unknown,path=''):Array<[string,string]>{
  if(Array.isArray(value))return value.flatMap((item,index)=>flatten(item,`${path} / ${index+1}`));
@@ -29,7 +29,7 @@ export default function Reports(){
  return <Card><CardHeader><CardTitle>Reports</CardTitle></CardHeader><CardContent className="space-y-6"><form className="flex flex-wrap gap-4 items-end" onSubmit={e=>{e.preventDefault();generate.mutate();}}>
  <label>Report<select className="block border rounded p-2" value={report} onChange={e=>{setReport(e.target.value as keyof typeof reports);generate.reset();}}>{Object.entries(reports).map(([key,name])=><option key={key} value={key}>{name}</option>)}</select></label>
  <label>Department (optional)<Input value={department} onChange={e=>setDepartment(e.target.value)}/></label><label>From<Input type="date" required value={start} onChange={e=>setStart(e.target.value)}/></label><label>To<Input type="date" min={start} required value={end} onChange={e=>setEnd(e.target.value)}/></label><Button disabled={generate.isPending}>Generate report</Button>
- </form><p className="text-sm text-muted-foreground">Headcount and document compliance show current records. Leave utilization uses the selected start year. Turnover and event estimates use the date range.</p>
+ </form><p className="text-sm text-muted-foreground">Headcount and document compliance show current records. Attendance, turnover and event estimates use the date range. Leave utilization uses the selected start year. Attendance rows include status, work minutes, overtime and location for drill-down.</p>
  {generate.isPending&&<p>Generating report…</p>}{generate.error&&<p role="alert">{generate.error.message}</p>}
  {generate.data!==undefined&&<><div className="flex gap-3"><Button variant="outline" onClick={download}>Download CSV</Button><Button variant="outline" onClick={()=>window.print()}>Print / save PDF</Button></div><ReportValue value={generate.data}/></>}
  </CardContent></Card>;

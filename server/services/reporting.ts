@@ -66,6 +66,52 @@ export async function getEmployeeHeadcount(department?: string) {
   }
 }
 
+// Attendance summary report
+export async function getAttendanceSummary(department?: string, startDate?: Date, endDate?: Date) {
+  const defaultStart = new Date();
+  defaultStart.setDate(defaultStart.getDate() - 30);
+  const period = {
+    startDate: startDate ? format(startDate, 'yyyy-MM-dd') : format(defaultStart, 'yyyy-MM-dd'),
+    endDate: endDate ? format(endDate, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'),
+  };
+  const conditions = [
+    sql`${attendance.date} >= ${period.startDate}`,
+    sql`${attendance.date} <= ${period.endDate}`,
+  ];
+  if (department) conditions.push(eq(employees.department, department));
+  const rows = await db.select({
+    id: attendance.id,
+    employeeId: attendance.employeeId,
+    employeeName: sql<string>`${employees.firstName} || ' ' || ${employees.lastName}`,
+    department: employees.department,
+    date: attendance.date,
+    status: attendance.status,
+    workMinutes: sql<number>`coalesce(${attendance.totalWorkHours}, 0)`,
+    overtimeMinutes: sql<number>`coalesce(${attendance.overtimeHours}, 0)`,
+    location: attendance.location,
+  }).from(attendance).innerJoin(employees, eq(attendance.employeeId, employees.id)).where(and(...conditions)).orderBy(desc(attendance.date), desc(attendance.id));
+  const byStatus = Object.entries(rows.reduce((counts, row) => {
+    counts[row.status] = (counts[row.status] || 0) + 1;
+    return counts;
+  }, {} as Record<string, number>)).map(([status, count]) => ({ status, count }));
+  const byDepartment = department ? undefined : Object.entries(rows.reduce((counts, row) => {
+    const key = row.department || 'Unassigned';
+    counts[key] = (counts[key] || 0) + 1;
+    return counts;
+  }, {} as Record<string, number>)).map(([name, count]) => ({ department: name, count }));
+  return {
+    period,
+    department: department || 'All Departments',
+    totalRecords: rows.length,
+    totalWorkMinutes: rows.reduce((sum, row) => sum + Number(row.workMinutes || 0), 0),
+    totalOvertimeMinutes: rows.reduce((sum, row) => sum + Number(row.overtimeMinutes || 0), 0),
+    byStatus,
+    byDepartment,
+    records: rows.slice(0, 500),
+    truncated: rows.length > 500,
+  };
+}
+
 // Turnover rate report
 export async function getTurnoverRate(department?: string, startDate?: Date, endDate?: Date) {
   try {
