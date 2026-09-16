@@ -1,6 +1,6 @@
 # E3 HR module status — 16 September 2026
 
-The requested attendance/leave → payroll → recruitment/onboarding/offboarding implementation is complete for the core workflows described below. The combined release is deployed at [e3-hr.onrender.com](https://e3-hr.onrender.com), with the latest Learning/Benefits/Expenses code in revision `80eb010`. Administrators manage changing company policies and employee-specific overrides in **HR Rules**; effective dates and saved snapshots preserve history.
+The requested attendance/leave → payroll → recruitment/onboarding/offboarding implementation is complete for the core workflows described below. The combined release is deployed at [e3-hr.onrender.com](https://e3-hr.onrender.com), with the latest dashboard and reporting code in revision `7e642da`. Administrators manage changing company policies and employee-specific overrides in **HR Rules**; effective dates and saved snapshots preserve history.
 
 ## Current status
 
@@ -16,9 +16,9 @@ The requested attendance/leave → payroll → recruitment/onboarding/offboardin
 | Timesheets and assignment reviews | Core workflows deployed | Approved time, rubric-based reviews/disputes and team overview. |
 | HR helpdesk | Core workflow and support operations deployed | Confidential cases, messages/files/history, dated company and employee routing rules, response targets, overdue queue, explicit escalation and searchable versioned knowledge articles. |
 | Performance and development | Core review cycle deployed | Configurable weighted criteria/rating labels, employee deadlines, self-assessment, assigned manager review, independent HR calibration/publication, acknowledgement, objectives/development actions and scoped reports with sample counts. |
-| Documents and reports | Document renewal core implemented; reporting enhancements remain | Private upload/download, document versions, scoped renewal requests and independent review; base exports and scoped reporting. Retention automation and reporting refinements remain. |
+| Documents and reports | Core reporting workflow deployed | Private upload/download, document versions, scoped renewal requests and independent review; headcount, attendance, turnover, leave, staffing-cost and compliance reports with filters, drill-down rows and CSV/PDF export. Retention automation and advanced metrics remain. |
 | Learning, benefits and expenses | Core workflows implemented | Learning catalogue/enrolment/completion certificates; configurable benefit entitlements and approvals; itemised expenses, private receipts, approvals and reimbursement references. |
-| Team lead dashboard | Partial | Scoped team overview includes leave, time and assignment review queues; further unified approvals and operational drill-downs remain. |
+| Team lead dashboard | Core workflow deployed | Scoped team overview includes staffing coverage, leave/time/review queues and a unified approval queue with direct drill-down links. Advanced absence coverage and task ownership remain optional. |
 
 See [the workflow and configuration guide](docs/Attendance-Payroll-Lifecycle-Guide.md) for operating instructions, calculation conventions and legacy-data reconciliation. See [the module checklist](docs/MODULE-COMPLETION-CHECKLIST.md) for the remaining backlog.
 
@@ -43,4 +43,4 @@ Group calculation rules continue to control attendance/timesheet rounding, paid 
 
 See [Deployment-Guide.md](docs/Deployment-Guide.md) for the exact live revision and deployment acceptance. External email, device and bank integrations remain separate configuration/work.
 
-Deployment succeeded on 16 September 2026 at 15:36 Asia/Qatar for revision `80eb010` (migration `0024_learning_benefits_expenses`). Render startup confirmed `Database migrations completed`, and `/readyz` returned HTTP 200. The authenticated Learning, Benefits and Expenses pages loaded successfully with their catalogue, request, approval and admin-rule controls.
+Deployment succeeded on 16 September 2026 at 15:49 Asia/Qatar for revision `7e642da` (attendance summary report and unified team approval queue). Render startup confirmed `Database migrations completed`, and the service reported live at the primary URL.
