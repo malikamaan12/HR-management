@@ -1,6 +1,6 @@
 # E3 HR module status — 16 September 2026
 
-The requested attendance/leave → payroll → recruitment/onboarding/offboarding implementation is complete for the core workflows described below. The combined release is deployed at [e3-hr.onrender.com](https://e3-hr.onrender.com), with the latest dashboard and reporting code in revision `7e642da`. Administrators manage changing company policies and employee-specific overrides in **HR Rules**; effective dates and saved snapshots preserve history.
+The requested attendance/leave → payroll → recruitment/onboarding/offboarding implementation is complete for the core workflows described below. The combined release is deployed at [e3-hr.onrender.com](https://e3-hr.onrender.com), with the latest dashboard and coverage code in revision `de6c4d1`. Administrators manage changing company policies and employee-specific overrides in **HR Rules**; effective dates and saved snapshots preserve history.
 
 ## Current status
 
@@ -43,4 +43,4 @@ Group calculation rules continue to control attendance/timesheet rounding, paid 
 
 See [Deployment-Guide.md](docs/Deployment-Guide.md) for the exact live revision and deployment acceptance. External email, device and bank integrations remain separate configuration/work.
 
-Deployment succeeded on 16 September 2026 at 15:49 Asia/Qatar for revision `7e642da` (attendance summary report and unified team approval queue). Render startup confirmed `Database migrations completed`, and the service reported live at the primary URL.
+Deployment succeeded on 16 September 2026 at 16:06 Asia/Qatar for revision `de6c4d1` (absence coverage on Team Overview). Render startup confirmed `Database migrations completed`, and the service reported live at the primary URL.

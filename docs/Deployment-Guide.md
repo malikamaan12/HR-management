@@ -1,6 +1,6 @@
 # E3 HR free deployment
 
-Updated 16 September 2026. The existing Free service is live at [e3-hr.onrender.com](https://e3-hr.onrender.com), sourced from `malikamaan12/HR-management` on `main`. The latest combined module release (revision `7e642da`) is deployed successfully. Production has no operational employee records yet. The existing administrator and private storage remain configured; Resend sender setup remains pending. Automatic deployments remain off.
+Updated 16 September 2026. The existing Free service is live at [e3-hr.onrender.com](https://e3-hr.onrender.com), sourced from `malikamaan12/HR-management` on `main`. The latest combined module release (revision `de6c4d1`) is deployed successfully. Production has no operational employee records yet. The existing administrator and private storage remain configured; Resend sender setup remains pending. Automatic deployments remain off.
 
 ## Budget and services
 
@@ -54,6 +54,12 @@ Validation completed before deployment: 211 tests across 16 suites passed, TypeS
 - Git revision: `7e642dabdf4b882493ce65d9d5a70e9044f87a0d`; manual Render deployment: [dep-dal901ajnfac73csja1g](https://dashboard.render.com/web/srv-dajuem0jo6nc73fb36r0/deploys/dep-dal901ajnfac73csja1g).
 - Render: **Deploy succeeded**; startup log confirmed `Database migrations completed` and the service is live at `https://e3-hr.onrender.com`.
 - The release adds the unified Team Overview approval queue and the Attendance summary report with date/department filters and row-level drill-down output.
+
+## Absence coverage deployment acceptance — 16 September 2026
+
+- Git revision: `de6c4d10baf4dd7604605c0380644bce9dedcbbe`; manual Render deployment: [dep-dal97u67bikc73eqebo0](https://dashboard.render.com/web/srv-dajuem0jo6nc73fb36r0/deploys/dep-dal97u67bikc73eqebo0).
+- Render: **Deploy succeeded**; startup log confirmed `Database migrations completed` and the service is live at `https://e3-hr.onrender.com`.
+- Team Overview now lists approved leave overlapping accepted shifts in the next 14 days, with links back to roster management.
 
 ## Operations
 
