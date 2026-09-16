@@ -1,6 +1,6 @@
 # HR module completion plan
 
-Updated 16 September 2026. Attendance/leave, payroll and recruitment/onboarding/offboarding core workflows are now deployed in release `c2727e7`. The application is live at https://e3-hr.onrender.com on Render Free and Supabase Free. This checklist separates the current foundation from workflows that still need implementation and acceptance. It does not certify every module as finished.
+Updated 16 September 2026. Attendance/leave, payroll and recruitment/onboarding/offboarding core workflows are deployed, and Learning, Benefits and Expenses are now live in release `80eb010`. The application is live at https://e3-hr.onrender.com on Render Free and Supabase Free. This checklist separates the current foundation from workflows that still need implementation and acceptance. It does not certify every module as finished.
 
 ## Release standard
 
@@ -48,6 +48,10 @@ See [the operations guide](Attendance-Payroll-Lifecycle-Guide.md) for implemente
 ## Employee foundation validation record
 
 Employee API tests cover permissions, more than 100 records, filters and wildcards, account-versus-employee identity, private fields, duplicates, dates, protected writes, stale edits, manager cycles and atomic audit failure. The original 90 tests and 12 employee tests pass, as do TypeScript and frontend/server builds. Isolated browser checks passed for directory search beyond 100 records, create/edit, saved civil dates, manager selection, explicit save, history and employee-locked document selection. Browser file attachment and role-by-role screen acceptance remain separate checks.
+
+## Learning, benefits and expenses release
+
+Migration `0024_learning_benefits_expenses` is deployed in release `80eb010`. The live pages and core workflows are accepted: course enrolment/completion certificates, configurable benefit eligibility/reservations/activation, and itemised expense claims with private receipts, approvals and reimbursement references. Optional LMS, payroll/tax and country-specific integrations remain.
 
 ## Performance and helpdesk release
 

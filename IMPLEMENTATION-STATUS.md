@@ -1,6 +1,6 @@
 # E3 HR module status — 16 September 2026
 
-The requested attendance/leave → payroll → recruitment/onboarding/offboarding implementation is complete for the core workflows described below. The combined release is deployed at [e3-hr.onrender.com](https://e3-hr.onrender.com), revision `c2727e7`. Administrators manage changing company policies and employee-specific overrides in **HR Rules**; effective dates and saved snapshots preserve history.
+The requested attendance/leave → payroll → recruitment/onboarding/offboarding implementation is complete for the core workflows described below. The combined release is deployed at [e3-hr.onrender.com](https://e3-hr.onrender.com), with the latest Learning/Benefits/Expenses code in revision `80eb010`. Administrators manage changing company policies and employee-specific overrides in **HR Rules**; effective dates and saved snapshots preserve history.
 
 ## Current status
 
@@ -24,7 +24,7 @@ See [the workflow and configuration guide](docs/Attendance-Payroll-Lifecycle-Gui
 
 ## What remains
 
-1. **Business setup:** configure actual company/employee rules and assign operational roles before entering employee records. Deployment and database migrations are complete. Migrations 0015–0023 are new in this combined release; deployed migrations 0000–0014 are preserved. No production demonstration records were added.
+1. **Business setup:** configure actual company/employee rules and assign operational roles before entering employee records. Deployment and database migrations are complete. Migrations 0015–0024 are new in this combined release; deployed migrations 0000–0014 are preserved. No production demonstration records were added.
 2. **Workforce enhancements:** whole-series roster changes, external certificate validation/evidence uploads and device/offline attendance integrations. Weekly unavailability, date exceptions, qualification renewal due lists, configurable reminder windows and HR verification are now implemented alongside the earlier staffing workflows.
 3. **Performance and helpdesk extensions:** core review cycles, objectives/development plans, calibration, routing, response targets, explicit escalation and knowledge articles are now implemented. Bulk review assignment/participant withdrawal, automated reminders/escalation and business-hour target calendars remain optional extensions. See [the operating guide](docs/Performance-Helpdesk-Guide.md).
 4. **Documents and reports:** production file-delivery acceptance, retention automation, agreed metrics, filters and scoped drill-downs. Document versions and independently reviewed renewal requests are implemented.
@@ -35,12 +35,12 @@ The current release supports full-day leave and monthly payroll. Half-day leave,
 
 ## Release validation — 16 September 2026
 
-The combined release contains both the existing live document renewal, employee lifecycle, calculation-rule and skill controls and the new operational modules. TypeScript and both production builds passed. Across the full suite and the focused fixture-correction rerun, all 202 tests in 15 suites pass. The existing frontend bundle-size warning remains.
+The combined release contains both the existing live document renewal, employee lifecycle, calculation-rule and skill controls and the new operational modules. TypeScript and both production builds passed. Across the full suite and the focused fixture-correction rerun, all 211 tests in 16 suites pass. The existing frontend bundle-size warning remains.
 
-A private read-only snapshot of 88 application/migration tables (362 rows) was saved outside Git. All 15 deployed migration hashes match the preserved SQL after normalizing Windows line endings. The snapshot was restored in isolated PGlite, the nine new migrations were applied, and every existing application table retained its row count. Production had no employee, leave, payroll, document or workforce-team records at backup time. No production demonstration records were added.
+A private read-only snapshot of 88 application/migration tables (362 rows) was saved outside Git. All 15 pre-existing migration hashes match the preserved SQL after normalizing Windows line endings. The snapshot was restored in isolated PGlite, migrations 0015–0024 were applied, and every existing application table retained its row count. Production had no employee, leave, payroll, document or workforce-team records at backup time. No production demonstration records were added.
 
 Group calculation rules continue to control attendance/timesheet rounding, paid breaks, leave counting/holiday exclusions and payroll rounding. New HR Rules supply dated company or employee entitlements, calendars, pay rates and approvers. Attendance corrections preserve calculation snapshots and require independent approval; payroll adjustments retain the generated period snapshot.
 
 See [Deployment-Guide.md](docs/Deployment-Guide.md) for the exact live revision and deployment acceptance. External email, device and bank integrations remain separate configuration/work.
 
-Deployment succeeded on 16 September 2026 at 00:40 Asia/Qatar for the previous release. The current Learning/Benefits/Expenses release is pending its Render deployment after the 211-test validation below.
+Deployment succeeded on 16 September 2026 at 15:36 Asia/Qatar for revision `80eb010` (migration `0024_learning_benefits_expenses`). Render startup confirmed `Database migrations completed`, and `/readyz` returned HTTP 200. The authenticated Learning, Benefits and Expenses pages loaded successfully with their catalogue, request, approval and admin-rule controls.

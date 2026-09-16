@@ -1,6 +1,6 @@
 # E3 HR free deployment
 
-Updated 16 September 2026. The existing Free service is live at [e3-hr.onrender.com](https://e3-hr.onrender.com), sourced from `malikamaan12/HR-management` on `main`. The previous combined module release is live; the Learning/Benefits/Expenses release is ready for manual deployment after 211 passing tests and production builds. Production has no operational employee records yet. The existing administrator and private storage remain configured; Resend sender setup remains pending. Automatic deployments remain off.
+Updated 16 September 2026. The existing Free service is live at [e3-hr.onrender.com](https://e3-hr.onrender.com), sourced from `malikamaan12/HR-management` on `main`. The latest combined module release (revision `80eb010`) is deployed successfully. Production has no operational employee records yet. The existing administrator and private storage remain configured; Resend sender setup remains pending. Automatic deployments remain off.
 
 ## Budget and services
 
@@ -41,6 +41,13 @@ Check dashboards for current limits and usage. Quotas can interrupt service; the
 The release adds migration `0024_learning_benefits_expenses` and these scoped routes: `/api/learning`, `/api/benefits` and `/api/expenses`. Learning stores course versions, enrollment snapshots, completion evidence and independently verified certificates. Benefits stores dated employee/company policies, annual reservations, approvals and activation references. Expenses stores itemized claims, private receipts, policy snapshots, approvals and reimbursement references. All policy and request changes retain versioned audit history.
 
 Validation completed before deployment: 211 tests across 16 suites passed, TypeScript passed, and production frontend/server builds passed. The focused service suite contains 9 tests; migration rerun checks passed. No production demonstration records are created by this release.
+
+## Learning, benefits and expenses deployment acceptance — 16 September 2026
+
+- Git revision: `80eb010d60cfcddf8d67f48887aa60ba45425685`; manual Render deployment: [dep-dal8pkoae00c73furgc0](https://dashboard.render.com/web/srv-dajuem0jo6nc73fb36r0/deploys/dep-dal8pkoae00c73furgc0).
+- Render: **Deploy succeeded**; startup log confirmed `Database migrations completed` and the service is live at `https://e3-hr.onrender.com`.
+- Public readiness: `/readyz` returned HTTP 200.
+- Authenticated smoke checks: `/learning` (course catalogue and enrolments/approvals), `/benefits` (requests, eligibility/balances and admin rules), and `/expenses` (itemised claims, receipts, approvals and reimbursement states) loaded with the expected controls. No operational records were created.
 
 ## Operations
 
