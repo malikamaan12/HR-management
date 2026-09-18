@@ -19,6 +19,8 @@ Final isolated browser acceptance verified report generation and the candidate c
 
 ## Deployment boundaries
 
+Released to the existing Render Free service on 18 September 2026 at approximately 19:19 Asia/Qatar. Render deployment `dep-damm7usri2ms73drt3ig` succeeded for commit `d64f3c21fef5c2bd838b7a9f31b6911f8597b4e8`; its startup logs confirm database migrations completed. Public `/healthz` and `/readyz` both returned HTTP 200, and the homepage serves the expected `index-DevnPKcg.js` release asset. The authenticated live Reports page loaded its saved-run list and reporting policy successfully. Production smoke checks were read-only; no demonstration data or policy changes were submitted.
+
 Use only the existing Render Free service srv-dajuem0jo6nc73fb36r0 and Supabase. The new additive migration is 0026_report_snapshots_candidate_corrections. Preserve the prior migration journal; do not replace it with the older enhancement branch's different 0015–0038 history. No paid resources, credentials, production policy values or operational employee records are changed by this release.
 
 Earlier local batches are preserved in GitHub enhancement commit b0b3e2a (enhance/admin-calculation-rules). That branch has 295 passing tests on its own schema, but is **not safe to deploy directly over live main**. Employee import review, extended document/onboarding governance, equipment/handbook, probation/transfers/incidents, employment continuity, EOS-side contracts and other unpublished local workflows need explicit code/data reconciliation against the live architecture. This release does not claim those branches have all been merged.

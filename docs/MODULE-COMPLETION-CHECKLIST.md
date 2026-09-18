@@ -1,6 +1,8 @@
 # HR module completion plan
 
-18 September 2026 release candidate: reporting snapshots, candidate corrections and shared event/FEC navigation have been reconciled onto the existing live baseline. See [REPORTING-CORRECTIONS-RELEASE.md](REPORTING-CORRECTIONS-RELEASE.md) for validation and branch compatibility limits. Deployment is pending verification.
+18 September 2026: reporting snapshots, candidate corrections and shared event/FEC navigation are deployed in release `d64f3c2`. Render deployment `dep-damm7usri2ms73drt3ig`, startup migration completion, public health/readiness responses and the authenticated Reports screen were verified. See [REPORTING-CORRECTIONS-RELEASE.md](REPORTING-CORRECTIONS-RELEASE.md) for validation and branch compatibility limits.
+
+The next development batch is employee import review and employee/document workflow reconciliation against this live baseline. Older local implementations are preserved in enhancement commit `b0b3e2a`, but their different migration history prevents direct deployment. Reuse compatible behavior through new additive migrations and scoped APIs; preserve the existing live employee, onboarding and document workflows. Complete a combined regression/build check after the batch. EOS integration, Resend sender setup and WhatsApp remain separate deferred work.
 
 Updated 16 September 2026. Attendance/leave, payroll and recruitment/onboarding/offboarding core workflows are deployed, and Learning, Benefits, Expenses, team task ownership, advanced reporting, operational reminders and absence coverage are live in release `f69d238`. The application is live at https://e3-hr.onrender.com on Render Free and Supabase Free. This checklist separates the current foundation from workflows that still need implementation and acceptance. It does not certify every module as finished.
 
