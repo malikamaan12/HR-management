@@ -13,7 +13,7 @@ import {
   reportExecutionHistory
 } from '@shared/schema';
 import { workforceAssignments, workforceShifts } from '@shared/schema';
-import { formatISO, format, parseISO, differenceInDays } from 'date-fns';
+import { formatISO, format, parseISO } from 'date-fns';
 
 // Employee headcount report
 export async function getEmployeeHeadcount(department?: string, site?: string) {
@@ -179,6 +179,7 @@ export async function getLeaveUtilization(department?: string, year: number = ne
           leaveType: leaves.leaveType,
           startDate: leaves.startDate,
           endDate: leaves.endDate,
+          totalDays: leaves.totalDays,
           status: leaves.status,
           department: employees.department
         })
@@ -199,6 +200,7 @@ export async function getLeaveUtilization(department?: string, year: number = ne
           leaveType: leaves.leaveType,
           startDate: leaves.startDate,
           endDate: leaves.endDate,
+          totalDays: leaves.totalDays,
           status: leaves.status,
           department: employees.department
         })
@@ -215,17 +217,9 @@ export async function getLeaveUtilization(department?: string, year: number = ne
     
     const leaveData = await leaveQuery;
     
-    // Calculate days for each leave
-    const leavesWithDuration = leaveData.map(leave => {
-      const startDate = new Date(leave.startDate);
-      const endDate = new Date(leave.endDate);
-      const duration = differenceInDays(endDate, startDate) + 1; // +1 to include both start and end days
-      
-      return {
-        ...leave,
-        duration
-      };
-    });
+    // Saved charged days preserve half-days, holidays and the employee's work
+    // calendar instead of counting every calendar date between the endpoints.
+    const leavesWithDuration = leaveData.map(leave => ({...leave,duration:Number(leave.totalDays)}));
     
     // Calculate by leave type
     const leaveTypeCounts = leavesWithDuration.reduce((acc, leave) => {
@@ -400,7 +394,7 @@ export async function getComplianceStatus() {
       status: documents.status,
       expiryDate: documents.expiryDate
     })
-    .from(documents);
+    .from(documents).where(sql`NOT EXISTS(SELECT 1 FROM hr_document_archives WHERE document_id=${documents.id} AND archived)`);
     
     // Get employee data to include in the report
     const employeeData = await db.select({
@@ -526,10 +520,10 @@ export async function getDashboardStats() {
     const expiringDocuments = await db.select({ count: count() })
       .from(documents)
       .where(
-        or(
+        and(sql`NOT EXISTS(SELECT 1 FROM hr_document_archives WHERE document_id=${documents.id} AND archived)`,or(
           eq(documents.status, 'expired'),
           eq(documents.status, 'expiring_soon')
-        )
+        ))
       );
     
     // Return stats

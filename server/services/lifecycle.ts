@@ -5,6 +5,7 @@ import { employeeScope } from './access';
 import { fail, type WorkforceTransaction } from './workforce';
 import { businessToday, audit } from './hr-rules';
 import type { TokenPayload } from './auth';
+import {isDocumentArchived} from './retention';
 
 export async function lifecyclePolicy(tx: WorkforceTransaction | any) {
   const result = await tx.execute(sql`SELECT version, task_kinds, review_days FROM lifecycle_review_policies ORDER BY version DESC LIMIT 1`);
@@ -42,6 +43,7 @@ export function publicLifecycleTask(task: typeof tasks.$inferSelect) {
   return {...rest, documentEvidence: snapshot ? {id:snapshot.id,version:snapshot.version,documentType:snapshot.documentType,expiryDate:snapshot.expiryDate} : null};
 }
 export async function validateLifecycleEvidence(tx: WorkforceTransaction, employeeId: number, task: typeof tasks.$inferSelect, pin: boolean) {
+  if(task.kind==='document'&&task.documentId&&await isDocumentArchived(tx,task.documentId))fail(409,'Restore the archived document before using it as checklist evidence');
   if (!task.evidence || task.evidence.trim().length < 5) fail(400,'Record completion evidence');
   if (task.kind === 'asset_return' && !task.assetTag) fail(400,'Record the returned asset identifier');
   if (task.kind !== 'document') return null;

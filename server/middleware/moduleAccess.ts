@@ -8,6 +8,7 @@ import { eq,and } from 'drizzle-orm';
 export async function moduleAccess(req:Request,res:Response,next:NextFunction){
   if(!req.user)return res.status(401).json({message:'Authentication required'});
   const path=req.path.toLowerCase(),read=req.method==='GET'||req.method==='HEAD';
+  if(!read&&/^\/geofences(?:\/|$)/.test(path))return res.status(409).json({message:'Manage enforced attendance locations at /api/attendance/location/locations'});
   if(!read&&/^\/(job-|candidates|interviews|onboarding-|employee-onboarding|checklist-tasks|leave-balances|leave-approvals|leave-supporting-documents)/.test(path))return res.status(409).json({message:'Use the reviewed recruitment, employee lifecycle or leave workflow for changes'});
   // These legacy management endpoints return organization-wide records.
   let module:HRModule|undefined;

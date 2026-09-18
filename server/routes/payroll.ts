@@ -11,6 +11,7 @@ import { handle } from './hr-rules';
 import { generatePayroll, payrollRecord, versionMatch, addHistory, payrollAmounts } from '../services/payroll-review';
 import { fail } from '../services/workforce';
 import { hasPermission } from '@shared/permissions';
+import {requireApprovedPresence} from '../services/attendance-location';
 const router = Router();
 router.use(authenticate);
 router.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
@@ -59,6 +60,7 @@ router.post('/:id/mark-paid', handle(async (req, res) => {
         const lines = await tx.select().from(payrollTimeLines).where(eq(payrollTimeLines.payrollId, row.record.id));
         for (const line of lines) {
             const [sheet] = await tx.select().from(sheets).where(eq(sheets.id, line.timesheetId)).for('update');
+            await requireApprovedPresence(tx,sheet.assignmentId,sheet.actualEndAt);
             if (sheet.status !== 'approved' || sheet.version !== line.timesheetVersion)
                 fail(409, 'Included time changed; return payroll for reconciliation');
             const [locked] = await tx.update(sheets).set({ status: 'payroll_locked', payrollId: row.record.id, lockedBy: req.user!.userId, lockedAt: new Date(), version: sheet.version + 1, updatedAt: new Date() }).where(eq(sheets.id, sheet.id)).returning();

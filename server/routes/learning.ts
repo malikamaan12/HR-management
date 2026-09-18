@@ -14,8 +14,11 @@ import {privateStorageConfigured} from '../services/r2';
 import {fail} from '../services/workforce';
 import {handle} from './hr-rules';
 import {serviceFileRoutes} from './service-files';
+import inductionRouter from './induction';
+import {internalCourse,internalEnrollment,completeInternalInduction,inductionAudience} from '../services/induction-learning';
 const router=Router(),active=['requested','approved','in_progress','completion_submitted'];
 router.use(authenticate);router.use((req,res,next)=>{res.set('Cache-Control','no-store');if(!hasPermission(req.user!.role,'training_development','read'))return res.status(403).json({message:'Learning access is required'});next();});
+router.use('/induction',inductionRouter);
 router.get('/directory',handle(async(req,res)=>res.json(await db.transaction(async tx=>({employees:await directory(tx,req.user!,'training_development',z.string().max(100).parse(req.query.q||'')),approvers:learningAdmin(req.user!.role)?(await tx.select({id:users.id,name:sql<string>`${users.firstName} || ' ' || ${users.lastName}`,role:users.role}).from(users).where(and(eq(users.isActive,true),eq(users.approvalStatus,'approved')))).filter(u=>hasPermission(u.role,'training_development','approve')):[]})))));
 router.get('/courses',handle(async(req,res)=>{
   const admin=learningAdmin(req.user!.role),page=z.coerce.number().int().min(1).default(1).parse(req.query.page),q=z.string().max(100).parse(req.query.q||''),term='%'+q.replace(/[\\%_]/g,'\\$&')+'%';
@@ -24,12 +27,12 @@ router.get('/courses',handle(async(req,res)=>{
   res.json({items:items.map(c=>admin?c:{...c,history:[]}),total:total.count,canManage:admin,canOverride:policyAdmin(req.user!.role)});
 }));
 router.post('/courses',handle(async(req,res)=>{
-  if(!learningAdmin(req.user!.role))fail(403,'Training administration access required');const definition=courseDefinition.parse(req.body);
+  if(!learningAdmin(req.user!.role))fail(403,'Training administration access required');const definition=courseDefinition.parse(req.body);if(definition.delivery==='internal')fail(400,'Create internal courses in the induction course builder');
   res.status(201).json(await db.transaction(async tx=>{await approver(tx,definition.approverId,'training_development');const [row]=await tx.insert(courses).values({definition,createdBy:req.user!.userId,history:event([],req.user!,'Created','Course created',1,definition)}).returning();await audit(tx,req.user!,'learning_course',row.id,'Created course');return row;}));
 }));
 router.patch('/courses/:id',handle(async(req,res)=>{
   if(!learningAdmin(req.user!.role))fail(403,'Training administration access required');const input=z.object({version:versionInput,definition:courseDefinition,reason}).strict().parse(req.body);
-  res.json(await db.transaction(async tx=>{const [row]=await tx.select().from(courses).where(eq(courses.id,positiveId.parse(req.params.id))).for('update');if(!row)fail(404,'Course not found');versionCheck(row.version,input.version);await approver(tx,input.definition.approverId,'training_development');const [count]=await tx.select({count:sql<number>`count(*)::int`}).from(enrollments).where(and(eq(enrollments.courseId,row.id),inArray(enrollments.status,active)));if(input.definition.capacity!==null&&count.count>input.definition.capacity)fail(409,'Capacity cannot be lower than active enrollments');const [saved]=await tx.update(courses).set({definition:input.definition,version:row.version+1,updatedAt:new Date(),history:event(row.history,req.user!,'Revised',input.reason,row.version+1,input.definition)}).where(eq(courses.id,row.id)).returning();await audit(tx,req.user!,'learning_course',row.id,'Course revised');return saved;}));
+  res.json(await db.transaction(async tx=>{const [row]=await tx.select().from(courses).where(eq(courses.id,positiveId.parse(req.params.id))).for('update');if(!row)fail(404,'Course not found');if(input.definition.delivery==='internal'||await internalCourse(tx,row.id))fail(409,'Revise internal courses in the induction course builder');versionCheck(row.version,input.version);await approver(tx,input.definition.approverId,'training_development');const [count]=await tx.select({count:sql<number>`count(*)::int`}).from(enrollments).where(and(eq(enrollments.courseId,row.id),inArray(enrollments.status,active)));if(input.definition.capacity!==null&&count.count>input.definition.capacity)fail(409,'Capacity cannot be lower than active enrollments');const [saved]=await tx.update(courses).set({definition:input.definition,version:row.version+1,updatedAt:new Date(),history:event(row.history,req.user!,'Revised',input.reason,row.version+1,input.definition)}).where(eq(courses.id,row.id)).returning();await audit(tx,req.user!,'learning_course',row.id,'Course revised');return saved;}));
 }));
 router.get('/enrollments',handle(async(req,res)=>{
   const page=z.coerce.number().int().min(1).default(1).parse(req.query.page),status=z.string().max(30).parse(req.query.status||'');
@@ -42,6 +45,7 @@ router.post('/enrollments',handle(async(req,res)=>{
   res.status(201).json(await db.transaction(async tx=>{
     const e=await scopedEmployee(tx,req.user!,input.employeeId,'training_development','read',true);requireWriter(req.user!,e,'training_development');employed(e);
     const [course]=await tx.select().from(courses).where(eq(courses.id,input.courseId)).for('update');if(!course||course.definition.status!=='published')fail(409,'Choose a published course');
+    if(await internalCourse(tx,course.id))fail(409,'Use the induction academy to assign or enroll in this internal course');
     if(input.dueDate&&input.dueDate<businessToday())fail(400,'Choose a current or future due date');
     await approver(tx,course.definition.approverId,'training_development',e);if(course.definition.approverId===req.user!.userId)fail(409,'A different preparer must request enrollment for this course');
     const current=await tx.select({employeeId:enrollments.employeeId}).from(enrollments).where(and(eq(enrollments.courseId,course.id),inArray(enrollments.status,active)));
@@ -55,6 +59,8 @@ router.post('/enrollments/:id/actions',handle(async(req,res)=>{
   const input=z.object({version:versionInput,action:z.enum(['approve','reject','withdraw','progress','submit_completion','return','verify','reassign']),reason,progress:z.number().int().min(0).max(99).optional(),score:z.number().int().min(0).max(100).optional(),approverId:positiveId.optional()}).strict().parse(req.body);
   res.json(await db.transaction(async tx=>{
     const {row,employee}=await enrollmentRecord(tx,req.user!,positiveId.parse(req.params.id),true);versionCheck(row.version,input.version);
+    const internal=await internalEnrollment(tx,row.id);
+    if(internal&&['progress','submit_completion','withdraw'].includes(input.action))fail(409,input.action==='withdraw'?'An independent HR administrator must record an induction exemption':'Complete the lessons and quiz in the internal induction academy');
     const prepare=employee.userId===req.user!.userId||row.requestedBy===req.user!.userId&&hasPermission(req.user!.role,'training_development','create');
     const patch:Partial<typeof enrollments.$inferInsert>={};
     if(input.action==='reassign'){
@@ -68,9 +74,10 @@ router.post('/enrollments/:id/actions',handle(async(req,res)=>{
       }
     }else {
       if(row.approverId!==req.user!.userId||[employee.userId,row.requestedBy,row.submittedBy].includes(req.user!.userId))fail(403,'The independent assigned reviewer must decide');await approver(tx,req.user!.userId,'training_development',employee);
-      if(input.action==='approve'||input.action==='reject'){if(row.status!=='requested')fail(409,'This enrollment has already been decided');if(input.action==='approve')employed(employee);patch.status=input.action==='approve'?'approved':'rejected';}
+      if(input.action==='approve'||input.action==='reject'){if(row.status!=='requested')fail(409,'This enrollment has already been decided');if(input.action==='approve'){employed(employee);if(internal&&!inductionAudience(employee,internal.content))fail(409,'This employee is outside the audience for the assigned course release');}patch.status=input.action==='approve'?'approved':'rejected';}
       else {if(row.status!=='completion_submitted')fail(409,'Completion evidence must be submitted first');
-        if(input.action==='return'){patch.status='in_progress';patch.progress=99;patch.submittedBy=null;}
+        if(input.action==='return'){patch.status='in_progress';patch.progress=internal?90:99;patch.submittedBy=null;}
+        else if(internal){employed(employee);Object.assign(patch,await completeInternalInduction(tx,req.user!,row,internal,req.user!.userId));}
         else {if(input.score===undefined)fail(400,'Record the verified score');patch.score=input.score;patch.verifiedBy=req.user!.userId;patch.status=input.score>=row.courseSnapshot.passScore?'completed':'failed';if(patch.status==='completed'){const now=new Date();patch.completedAt=now;patch.certificateNumber=`E3-LRN-${row.id}`;if(row.courseSnapshot.validMonths){const target=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth()+row.courseSnapshot.validMonths,1));const last=new Date(Date.UTC(target.getUTCFullYear(),target.getUTCMonth()+1,0)).getUTCDate();target.setUTCDate(Math.min(now.getUTCDate(),last));patch.expiresOn=target.toISOString().slice(0,10);}}}
       }
     }

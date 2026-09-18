@@ -1,4 +1,6 @@
 import {useAuth} from '@/contexts/AuthContext';
+import EmployeeCompensation from '@/components/employees/EmployeeCompensation';
+import {compensationDetailedReaders} from '@shared/compensation';
 import {Corrections} from './Corrections';
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -57,6 +59,7 @@ export default function EmployeeProfile({ employeeId, onClose }: { employeeId: n
         <TabsTrigger value="employment">Employment</TabsTrigger>
         {e.access.personal && <TabsTrigger value="personal">Personal & emergency</TabsTrigger>}
         {e.access.banking && <TabsTrigger value="banking">Banking</TabsTrigger>}
+        {(e.userId===user?.userId||compensationDetailedReaders(user?.role||'')) && <TabsTrigger value="compensation">Salary & benefits</TabsTrigger>}
         {e.access.documents && <TabsTrigger value="documents">Documents</TabsTrigger>}
         {e.access.history && <TabsTrigger value="lifecycle">Lifecycle</TabsTrigger>}
         {e.access.history && <TabsTrigger value="activity">Activity</TabsTrigger>}
@@ -87,6 +90,7 @@ export default function EmployeeProfile({ employeeId, onClose }: { employeeId: n
       {e.access.banking && <TabsContent value="banking"><Info title="Bank details" fields={[
         ['Bank', e.bankName], ['Account name', e.accountName], ['IBAN', e.ibanNumber], ['SWIFT code', e.swiftCode], ['Branch', e.bankBranch],
       ]} /></TabsContent>}
+      {(e.userId===user?.userId||compensationDetailedReaders(user?.role||'')) && <TabsContent value="compensation"><EmployeeCompensation employeeId={e.id}/></TabsContent>}
       {e.access.documents && <TabsContent value="documents"><Card><CardHeader className="flex flex-row items-center justify-between"><CardTitle>Employee documents</CardTitle>{e.access.uploadDocuments && <Button onClick={() => setUpload(true)}>Add Document</Button>}</CardHeader><CardContent>
         {docs.isLoading ? <p>Loading documents…</p> : docs.error ? <div role="alert"><p>Unable to load documents.</p><Button variant="outline" onClick={() => docs.refetch()}>Retry</Button></div> : !docs.data?.length ? <p>No documents recorded for this employee.</p> :
           <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left"><th className="p-3">Document</th><th className="p-3">Number</th><th className="p-3">Expires</th><th className="p-3">File</th></tr></thead><tbody>{docs.data.map(document => <tr className="border-t" key={document.id}>

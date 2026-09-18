@@ -50,17 +50,22 @@ export async function accrue(tx: WorkforceTransaction, employee: typeof employee
             await tx.insert(leaveLedger).values({ employeeId: employee.id, leaveType: type, year, units: credit, sourceKey: key + ':' + source, reason: `${source} entitlement under rule #${rule.id}` }).onConflictDoNothing();
     }
 }
-export async function leavePlan(tx: WorkforceTransaction, employee: typeof employees.$inferSelect, type: string, start: string, end: string) {
+export async function leavePlan(tx: WorkforceTransaction, employee: typeof employees.$inferSelect, type: string, start: string, end: string, dayPortion:'full'|'first_half'|'second_half'='full') {
     if (employee.status !== 'active')
         fail(409, 'Leave requires active employment');
     const dates = dateRange(start, end), rules: unknown[] = [], daysByYear: Record<string, number> = {};
-    let balanceRequired: boolean | undefined, approverId: number | null | undefined;
+    let balanceRequired: boolean | undefined, approverId: number | null | undefined, approvalChain:Array<number|null>|undefined;
+    if(dayPortion!=='full'&&(start!==end||employee.workSchedule==='shift_based'))fail(400,'Half-day leave requires one office work date; shift workers use full roster days');
     const assigned = employee.workSchedule === 'shift_based' ? await tx.select({ start: workforceShifts.startAt, timezone: workforceSites.timezone }).from(workforceAssignments).innerJoin(workforceShifts, eq(workforceAssignments.shiftId, workforceShifts.id)).innerJoin(workforceTeams, eq(workforceShifts.teamId, workforceTeams.id)).innerJoin(workforceSites, eq(workforceTeams.siteId, workforceSites.id)).where(and(eq(workforceAssignments.employeeId, employee.id), eq(workforceAssignments.status, 'accepted'), gte(workforceShifts.startAt, new Date(Date.parse(start) - 86400000)), lte(workforceShifts.startAt, new Date(Date.parse(end) + 2 * 86400000)))) : [];
     for (const day of dates) {
         const rule = await ruleFor(tx, employee.id, 'leave', type, day);
         if (!rule)
             fail(409, `An administrator must configure ${type} rules for this employee and date`);
         const policy = leaveRule.parse(rule.config);
+        if(dayPortion!=='full'&&!policy.allowHalfDays)fail(400,'Half-day requests are disabled by the applicable leave rule');
+        const chain=[policy.approverId,...policy.additionalApproverIds];
+        if(approvalChain&&JSON.stringify(approvalChain)!==JSON.stringify(chain))fail(400,'Split the request where approval stages change');
+        approvalChain=chain;
         if (balanceRequired !== undefined && (balanceRequired !== policy.balanceRequired || approverId !== policy.approverId))
             fail(400, 'Split the request where the balance or approver rule changes');
         balanceRequired = policy.balanceRequired;
@@ -72,6 +77,7 @@ export async function leavePlan(tx: WorkforceTransaction, employee: typeof emplo
         if (Date.parse(day) - Date.parse(employee.joiningDate) < policy.minServiceDays * 86400000)
             fail(400, 'Minimum service requirement has not been met');
         const calendar = await attendancePolicy(tx, employee, day);
+        if(dayPortion!=='full'&&!calendar.hasSchedule)fail(400,'Assign an office work calendar before requesting half-day leave');
         const working = employee.workSchedule === 'shift_based' ? assigned.some(s => dayAt(s.start, s.timezone) === day) : calendar.workingDays.includes(new Date(day).getUTCDay());
         const calculation = await calculationSnapshot(employee, day, tx);
         const counting = calculation.rules.leave;
@@ -79,13 +85,13 @@ export async function leavePlan(tx: WorkforceTransaction, employee: typeof emplo
             fail(400, 'Leave exceeds the configured calendar-day limit');
         const counted = (counting.countMethod === 'calendar_days' || working) && !calendar.holidays.some(h => h.date === day) && !(counting.excludeHolidays && counting.holidays.some(h => h.date === day));
         if (counted)
-            daysByYear[day.slice(0, 4)] = (daysByYear[day.slice(0, 4)] || 0) + 1;
-        rules.push({ day, counted, leaveRuleId: rule.id, leavePolicy: policy, calendar, calculation });
+            daysByYear[day.slice(0, 4)] = (daysByYear[day.slice(0, 4)] || 0) + (dayPortion==='full'?1:0.5);
+        rules.push({ day, counted, dayPortion, leaveRuleId: rule.id, leavePolicy: policy, calendar, calculation });
     }
     const totalDays = Object.values(daysByYear).reduce((a, b) => a + b, 0);
-    if (totalDays < 1)
+    if (totalDays <= 0)
         fail(400, 'No scheduled working days in this range');
-    return { totalDays, daysByYear, rules, balanceRequired: balanceRequired!, approverId: approverId ?? null };
+    return { totalDays, daysByYear, rules, balanceRequired: balanceRequired!, approverId: approverId ?? null, approvalChain:approvalChain||[null], dayPortion };
 }
 export async function assertFunds(tx: WorkforceTransaction, employee: typeof employees.$inferSelect, type: string, plan: {
     daysByYear: Record<string, number>;

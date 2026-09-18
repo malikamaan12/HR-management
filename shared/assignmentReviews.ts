@@ -33,7 +33,7 @@ export interface AssignmentReviewDetail {review:AssignmentReviewRow;capabilities
 export interface ReviewConfig {canReview:boolean;canResolve:boolean;rubric:typeof reviewRubric}
 export interface TeamOverview {
   team:{id:number;name:string;siteName:string;timezone:string};from:string;to:string;staffingThrough:string;
-  staffing:{shifts:number;required:number;accepted:number;unfilled:number;pendingOffers:number;gaps:{id:number;role:string;startAt:string;endAt:string;unfilled:number}[];absences:{leaveId:number;employeeId:number;employeeName:string;leaveType:string;startDate:string;endDate:string;shiftId:number;role:string;shiftStartAt:string;shiftEndAt:string}[]};
+  staffing:{shifts:number;required:number;accepted:number;unfilled:number;pendingOffers:number;gaps:{id:number;role:string;startAt:string;endAt:string;unfilled:number}[];absencesMore?:boolean;absences:{leaveId:number;employeeId:number;employeeName:string;leaveType:string;startDate:string;endDate:string;totalDays:number;dayPortion:string;absenceStartAt:string|null;absenceEndAt:string|null;shiftId:number;role:string;shiftStartAt:string;shiftEndAt:string}[]};
   time:null|{pending:number;items:{id:number;employeeName:string;role:string;startAt:string;workedMinutes:number}[]};
   reviews:null|{missing:number;disputed:number;withdrawn:number;included:number;awaitingResponse:number;unverified:number;missingItems:ReviewAssignment[];trend:{month:string;reviews:number;punctuality:number|null;punctualityCount:number;service:number|null;serviceCount:number;teamwork:number|null;teamworkCount:number}[]};
 }

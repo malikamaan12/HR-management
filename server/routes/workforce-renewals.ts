@@ -2,15 +2,20 @@ import {Router} from 'express';
 import {and,desc,eq,inArray,isNull,lte,ne,or,sql} from 'drizzle-orm';
 import {z} from 'zod';
 import {db} from '../db';
-import {employees,workforceQualifications as qualifications,employeeQualifications as credentials,workforceRenewalPolicies as policies,workforceRenewals as renewals,workforceRenewalHistory as history} from '@shared/schema';
+import {documents,employees,workforceQualifications as qualifications,employeeQualifications as credentials,workforceRenewalPolicies as policies,workforceRenewals as renewals,workforceRenewalHistory as history} from '@shared/schema';
 import {positiveId,workforceAdmin,localDate} from '@shared/workforce';
-import {renewalPolicyInput,renewalCreate,renewalResubmit,renewalDecision,defaultRenewalPolicy,type RenewalDue} from '@shared/workforce-renewals';
+import {renewalPolicy,renewalPolicyInput,renewalCreate,renewalResubmit,renewalDecision,defaultRenewalPolicy,type RenewalDue} from '@shared/workforce-renewals';
 import {fail,audit,requireWorkforceAdmin,type WorkforceTransaction} from '../services/workforce';
 import {effectiveRenewalPolicies,policyFor,nextDate} from '../services/workforce-renewals';
 import type {TokenPayload} from '../services/auth';
 import {handle} from './hr-rules';
+import {employeeScope} from '../services/access';
+import {isDocumentArchived} from '../services/retention';
+import {documentDownloadUrl} from '../services/r2';
+import {readRenewalEvidence,publicRenewalEvidence,pinRenewalEvidence,saveRenewalEvidence} from '../services/workforce-evidence';
 const router=Router();
 const employeeName=sql<string>`${employees.firstName} || ' ' || ${employees.lastName}`;
+const savedRenewalPolicy=(snapshot:unknown)=>z.object({config:renewalPolicy}).parse(snapshot).config;
 async function employeeAccess(tx:WorkforceTransaction,user:TokenPayload,id:number){
   const [employee]=await tx.select().from(employees).where(and(eq(employees.id,id),workforceAdmin(user.role)?undefined:eq(employees.userId,user.userId))).for('update');
   return employee||fail(404,'Employee not found or outside your access');
@@ -21,7 +26,8 @@ async function renewalAccess(tx:WorkforceTransaction,user:TokenPayload,id:number
   const [row]=await tx.select().from(renewals).where(eq(renewals.id,id)).for('update');return {row,employee};
 }
 async function recordHistory(tx:WorkforceTransaction,user:TokenPayload,row:typeof renewals.$inferSelect,action:string,reason:string){
-  await tx.insert(history).values({renewalId:row.id,version:row.version,actorId:user.userId,action,reason,snapshot:row});
+  const documentEvidence=publicRenewalEvidence(await readRenewalEvidence(tx,row.id));
+  await tx.insert(history).values({renewalId:row.id,version:row.version,actorId:user.userId,action,reason,snapshot:{...row,documentEvidence}});
   await audit(tx,user,'renewal',row.id,'Qualification renewal '+action);
 }
 router.get('/renewal-policies',handle(async(req,res)=>{
@@ -67,6 +73,7 @@ router.get('/renewals',handle(async(req,res)=>{
   const page=req.query.page?positiveId.parse(req.query.page):1,status=z.enum(['all','submitted','returned','verified','cancelled']).parse(req.query.status||'submitted');
   const rows=await db.select({id:renewals.id,employeeId:employees.id,employeeName,qualificationName:qualifications.name,previousCredentialId:credentials.id,previousValidFrom:credentials.validFrom,previousValidThrough:credentials.validThrough,
     status:renewals.status,version:renewals.version,reference:renewals.reference,note:renewals.note,reviewNote:renewals.reviewNote,newCredentialId:renewals.newCredentialId,createdAt:renewals.createdAt,
+    documentEvidence:sql`(SELECT jsonb_build_object('id',e.document_id,'version',e.snapshot->'version','documentType',e.snapshot->'documentType','issueDate',e.snapshot->'issueDate','expiryDate',e.snapshot->'expiryDate') FROM workforce_renewal_evidence e WHERE e.renewal_id=${renewals.id})`,
     canReview:sql<boolean>`${workforceAdmin(req.user!.role)} and ${renewals.submittedBy} <> ${req.user!.userId} and (${employees.userId} is null or ${employees.userId} <> ${req.user!.userId})`})
     .from(renewals).innerJoin(employees,eq(renewals.employeeId,employees.id)).innerJoin(credentials,eq(renewals.previousCredentialId,credentials.id)).innerJoin(qualifications,eq(credentials.qualificationId,qualifications.id))
     .where(and(workforceAdmin(req.user!.role)?undefined:eq(employees.userId,req.user!.userId),status==='all'?undefined:eq(renewals.status,status))).orderBy(desc(renewals.id)).limit(26).offset((page-1)*25);
@@ -75,6 +82,35 @@ router.get('/renewals',handle(async(req,res)=>{
 router.get('/renewals/:id/history',handle(async(req,res)=>{
   const id=positiveId.parse(req.params.id);res.json(await db.transaction(async tx=>{await renewalAccess(tx,req.user!,id);return tx.select().from(history).where(eq(history.renewalId,id)).orderBy(history.version);}));
 }));
+router.get('/staffing/qualifications/:id/evidence',handle(async(req,res)=>{
+  const id=positiveId.parse(req.params.id),renewalId=positiveId.optional().parse(req.query.renewalId);
+  res.json(await db.transaction(async tx=>{
+    const [credential]=await tx.select().from(credentials).where(eq(credentials.id,id));if(!credential)fail(404,'Qualification not found');
+    await employeeAccess(tx,req.user!,credential.employeeId);
+    const [allowed]=await tx.select({id:employees.id}).from(employees).where(and(eq(employees.id,credential.employeeId),employeeScope(req.user!,'compliance_documents')));
+    if(!allowed)fail(403,'Private document access is required');
+    let config=policyFor(await effectiveRenewalPolicies(tx,credential.qualificationId),credential.qualificationId,credential.employeeId).config;
+    if(renewalId){const {row}=await renewalAccess(tx,req.user!,renewalId);if(row.previousCredentialId!==id)fail(404,'Renewal does not match the selected qualification');config=savedRenewalPolicy(row.policySnapshot);}
+    const page=z.coerce.number().int().min(1).default(1).parse(req.query.page),today=localDate(new Date(),config.timezone);
+    const rows=await tx.select({id:documents.id,documentType:documents.documentType,issueDate:documents.issueDate,expiryDate:documents.expiryDate,
+      version:sql<number>`coalesce((select max(version) from document_versions where document_id=${documents.id}),0)::integer`})
+      .from(documents).where(and(eq(documents.employeeId,credential.employeeId),sql`${documents.documentFile} ~ ${`^documents/${credential.employeeId}/[a-f0-9-]+\\.(pdf|png|jpg)$`}`,
+        lte(documents.issueDate,today),sql`${documents.expiryDate}>=${today}`,config.documentType?eq(documents.documentType,config.documentType):undefined))
+      .orderBy(desc(documents.id)).limit(26).offset((page-1)*25);
+    const items=[];for(const row of rows.slice(0,25))if(!await isDocumentArchived(tx,row.id))items.push(row);
+    return {items,hasMore:rows.length>25,page,policy:config};
+  }));
+}));
+router.get('/renewals/:id/evidence/download',handle(async(req,res)=>{
+  const id=positiveId.parse(req.params.id);
+  const key=await db.transaction(async tx=>{
+    const {employee}=await renewalAccess(tx,req.user!,id),evidence=await readRenewalEvidence(tx,id);if(!evidence)fail(404,'No certificate evidence is attached');
+    const [allowed]=await tx.select({id:employees.id}).from(employees).where(and(eq(employees.id,employee.id),employeeScope(req.user!,'compliance_documents')));
+    if(!allowed)fail(403,'Private document access is required');
+    if(await isDocumentArchived(tx,evidence.id))fail(409,'Restore the archived document before downloading it');
+    return evidence.documentFile;
+  });res.set('Cache-Control','no-store');res.redirect(await documentDownloadUrl(key));
+}));
 router.post('/staffing/qualifications/:id/renew',handle(async(req,res)=>{
   const id=positiveId.parse(req.params.id),input=renewalCreate.parse(req.body);
   const result=await db.transaction(async tx=>{
@@ -82,13 +118,16 @@ router.post('/staffing/qualifications/:id/renew',handle(async(req,res)=>{
     const employee=await employeeAccess(tx,req.user!,initial.employeeId);
     const [existing]=await tx.select().from(renewals).where(and(eq(renewals.employeeId,employee.id),eq(renewals.requestKey,input.requestKey)));
     if(existing){if(existing.previousCredentialId!==id)fail(409,'This request key belongs to another qualification');const [first]=await tx.select().from(history).where(and(eq(history.renewalId,existing.id),eq(history.version,1)));
-      const original=first?.snapshot as typeof renewals.$inferSelect|undefined;if(original?.reference!==input.reference||original?.note!==input.note)fail(409,'This request key was already used with different details');return {id:existing.id,replayed:true};}
+      const original=first?.snapshot as (typeof renewals.$inferSelect&{documentEvidence?:{id:number}|null})|undefined;if(original?.reference!==input.reference||original?.note!==input.note||(original?.documentEvidence?.id||null)!==input.documentId)fail(409,'This request key was already used with different details');return {id:existing.id,replayed:true};}
     const [old]=await tx.select().from(credentials).where(eq(credentials.id,id)).for('update');
     if(employee.status!=='active'||old.revokedAt||!old.validThrough)fail(409,'Renewal requires an active employee and a non-revoked qualification with an expiry date');
     const [child]=await tx.select({id:credentials.id}).from(credentials).where(eq(credentials.renewsCredentialId,id));if(child)fail(409,'This record already has a renewal. Use the latest qualification or ask HR to record a correction.');
     const [active]=await tx.select({id:renewals.id}).from(renewals).where(and(eq(renewals.previousCredentialId,id),inArray(renewals.status,['submitted','returned'])));if(active)fail(409,'A renewal is already awaiting verification or changes');
     const policySnapshot=policyFor(await effectiveRenewalPolicies(tx,old.qualificationId),old.qualificationId,employee.id);
-    const [row]=await tx.insert(renewals).values({...input,employeeId:employee.id,previousCredentialId:id,submittedBy:req.user!.userId,policySnapshot}).returning();
+    const evidence=await pinRenewalEvidence(tx,req.user!,employee.id,input.documentId,policySnapshot.config);
+    const {documentId,...submission}=input;
+    const [row]=await tx.insert(renewals).values({...submission,employeeId:employee.id,previousCredentialId:id,submittedBy:req.user!.userId,policySnapshot}).returning();
+    await saveRenewalEvidence(tx,req.user!,row.id,evidence);
     await recordHistory(tx,req.user!,row,'submitted','Renewal evidence submitted');return {id:row.id,replayed:false};
   });res.status(result.replayed?200:201).json(result);
 }));
@@ -96,7 +135,9 @@ router.post('/renewals/:id/resubmit',handle(async(req,res)=>{
   const id=positiveId.parse(req.params.id),input=renewalResubmit.parse(req.body);
   res.json(await db.transaction(async tx=>{
     const {row,employee}=await renewalAccess(tx,req.user!,id);if(row.version!==input.version||row.status!=='returned')fail(409,'Refresh the returned request before resubmitting');if(employee.status!=='active')fail(409,'Employee is no longer active');
+    const evidence=await pinRenewalEvidence(tx,req.user!,employee.id,input.documentId,savedRenewalPolicy(row.policySnapshot));
     const [saved]=await tx.update(renewals).set({reference:input.reference,note:input.note,status:'submitted',submittedBy:req.user!.userId,reviewedBy:null,reviewedAt:null,reviewNote:null}).where(eq(renewals.id,id)).returning();
+    await saveRenewalEvidence(tx,req.user!,id,evidence);
     await recordHistory(tx,req.user!,saved,'resubmitted','Updated evidence submitted');return {id};
   }));
 }));
@@ -114,6 +155,9 @@ router.post('/renewals/:id/review',handle(async(req,res)=>{
     if(row.submittedBy===req.user!.userId||employee.userId===req.user!.userId)fail(403,'Another HR administrator must review this renewal');
     let newCredentialId:number|null=null;
     if(input.decision==='verify'){
+      const attached=await readRenewalEvidence(tx,id),policy=savedRenewalPolicy(row.policySnapshot);
+      const evidence=await pinRenewalEvidence(tx,req.user!,employee.id,attached?.id||null,policy,attached);
+      if(evidence&&(input.validFrom<evidence.issueDate||!input.validThrough||input.validThrough>evidence.expiryDate))fail(400,'Verified qualification dates must fit within the attached certificate document validity');
       const [old]=await tx.select().from(credentials).where(eq(credentials.id,row.previousCredentialId)).for('update');
       if(employee.status!=='active'||old.revokedAt||!old.validThrough)fail(409,'Original qualification or employment changed; return the request for correction');
       if(input.validFrom<=old.validFrom||(input.validThrough&&(input.validThrough<input.validFrom||input.validThrough<=old.validThrough)))fail(400,'Renewal must start after the previous start and extend its expiry');

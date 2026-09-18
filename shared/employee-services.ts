@@ -12,6 +12,7 @@ export const courseDefinition = z.object({
   durationMinutes: z.number().int().min(1).max(100000), capacity: z.number().int().min(1).max(100000).nullable(),
   passScore: z.number().int().min(0).max(100), requiresEvidence: z.boolean(), validMonths: z.number().int().min(1).max(120).nullable(),
   approverId: positiveId, status: z.enum(['draft', 'published', 'archived']),
+  delivery:z.enum(['record','internal']).default('record'),
 }).strict();
 export type CourseDefinition = z.infer<typeof courseDefinition>;
 export const learningOverride = courseDefinition.pick({passScore: true, requiresEvidence: true, validMonths: true}).extend({reason}).strict();

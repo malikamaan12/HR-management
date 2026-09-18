@@ -20,6 +20,14 @@ export const seriesInput = z.object({requestKey: z.string().uuid(), recurrence: 
 export const shiftChangeInput = z.object({version: z.number().int().positive(), reason: z.string().trim().min(5).max(500)}).strict();
 export const shiftRevisionInput = z.object({version: z.number().int().positive(), reason: z.string().trim().min(5).max(500), shift: shiftInput}).strict();
 export type Recurrence = z.infer<typeof recurrenceInput>;
+const seriesVersionSet=z.array(z.object({id:z.number().int().positive(),version:z.number().int().positive()}).strict()).min(1).max(60).refine(v=>new Set(v.map(r=>r.id)).size===v.length,'Each occurrence must be listed once');
+export const seriesChangeInput=z.object({version:z.number().int().positive(),fromDate:civilDate,expectedShifts:seriesVersionSet,reason:z.string().trim().min(5).max(500)}).strict();
+export const seriesRevisionInput=seriesChangeInput.extend({details:z.object({
+  role:z.string().trim().min(2).max(120),station:z.string().trim().max(120),headcount:z.number().int().min(1).max(500),breakMinutes:z.number().int().min(0).max(1439),qualificationIds,
+  startTime:clockTime,endTime:clockTime,endDayOffset:z.number().int().min(0).max(1),
+}).strict()}).strict();
+export type SeriesRevision=z.infer<typeof seriesRevisionInput>;
+export interface SeriesEditorView {id:number;version:number;timezone:string;fromDate:string;shifts:{id:number;version:number;role:string;station:string|null;headcount:number;breakMinutes:number;startAt:string;endAt:string;requiredQualifications:{id:number;name:string}[];activeCount:number}[];history:{version:number;reason:string;created_at:string;snapshot:{action:string;shiftIds:number[];replacementIds?:number[]}}[]}
 
 /** Expand each local day separately so weekly wall times survive clock changes. */
 export function expandRecurrence(input: Recurrence, timezone: string) {

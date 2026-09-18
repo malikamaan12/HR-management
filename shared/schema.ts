@@ -1,6 +1,6 @@
 import type {CalculationSnapshot,CalculationRules} from './calculation-rules';
 import { relations, sql } from "drizzle-orm";
-import { type AnyPgColumn, pgTable, uuid, text, serial, integer, boolean, timestamp, pgEnum, varchar, date, json, decimal, jsonb, check, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { type AnyPgColumn, pgTable, uuid, text, serial, integer, doublePrecision, boolean, timestamp, pgEnum, varchar, date, json, decimal, jsonb, check, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -128,6 +128,8 @@ export const workforceArrivalRules = pgTable('workforce_arrival_rules', {
   createdBy:integer('created_by').notNull().references(():AnyPgColumn=>users.id), createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
 });
 export const workforcePresence = pgTable('workforce_presence', {
+  locationIn:jsonb('location_in').$type<import('./attendance-location').LocationEvidence>(),locationOut:jsonb('location_out').$type<import('./attendance-location').LocationEvidence>(),
+  approvalStatus:text('approval_status').$type<'pending'|'approved'|'rejected'>().notNull().default('pending'),
   id:serial('id').primaryKey(), assignmentId:integer('assignment_id').notNull().unique().references(()=>workforceAssignments.id),
   employeeId:integer('employee_id').notNull().references(():AnyPgColumn=>employees.id), version:integer('version').notNull().default(1),
   arrivedAt:timestamp('arrived_at',{withTimezone:true}).notNull(), arrivedBy:integer('arrived_by').notNull().references(():AnyPgColumn=>users.id), departedAt:timestamp('departed_at',{withTimezone:true}),
@@ -567,6 +569,9 @@ export const clockMethodEnum = pgEnum('clock_method', ['qr_code', 'biometric', '
 
 // Attendance table
 export const attendance = pgTable("attendance", {
+  locationIn:jsonb('location_in').$type<import('./attendance-location').LocationEvidence>(),locationOut:jsonb('location_out').$type<import('./attendance-location').LocationEvidence>(),
+  approvalStatus:text('approval_status').$type<'not_required'|'pending'|'approved'|'rejected'>().notNull().default('not_required'),
+  supervisorUserId:integer('supervisor_user_id').references(()=>users.id),supervisorNote:text('supervisor_note'),supervisorReviewedAt:timestamp('supervisor_reviewed_at',{withTimezone:true}),
   version: integer("version").notNull().default(1),
   calculationSnapshot: jsonb("calculation_snapshot").$type<CalculationSnapshot>(),
   totalBreakMinutes: integer("total_break_minutes").notNull().default(0),
@@ -591,6 +596,18 @@ export const attendance = pgTable("attendance", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const attendanceGeofencePolicy=pgTable('attendance_geofence_policy',{
+ id:integer('id').primaryKey(),version:integer('version').notNull().default(1),config:jsonb('config').$type<import('./attendance-location').GeofencePolicy>().notNull(),
+ enforcedFrom:timestamp('enforced_from',{withTimezone:true}).notNull().defaultNow(),updatedBy:integer('updated_by').references(()=>users.id),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+});
+export const attendanceGeofenceLocations=pgTable('attendance_geofence_locations',{
+ id:serial('id').primaryKey(),version:integer('version').notNull().default(1),config:jsonb('config').$type<import('./attendance-location').GeofenceDefinition>().notNull(),
+ createdBy:integer('created_by').notNull().references(()=>users.id),updatedBy:integer('updated_by').notNull().references(()=>users.id),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+});
+export const attendanceGeofenceHistory=pgTable('attendance_geofence_history',{
+ id:serial('id').primaryKey(),kind:text('kind').notNull(),recordId:integer('record_id').notNull(),version:integer('version').notNull(),snapshot:jsonb('snapshot').notNull(),reason:text('reason').notNull(),actorId:integer('actor_id').notNull().references(()=>users.id),createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
+});
+
 // Append-only effective rules and accounting entries. Every workflow snapshots its inputs.
 export const hrRules=pgTable('hr_rules',{
  id:serial('id').primaryKey(),kind:text('kind').notNull(),name:text('name').notNull(),employeeId:integer('employee_id').references(()=>employees.id),
@@ -600,6 +617,7 @@ export const leaveLedger=pgTable('leave_ledger',{
  id:serial('id').primaryKey(),employeeId:integer('employee_id').notNull().references(()=>employees.id),leaveType:text('leave_type').notNull(),year:integer('year').notNull(),units:integer('units').notNull(),sourceKey:text('source_key').notNull().unique(),reason:text('reason').notNull(),actorId:integer('actor_id').references(()=>users.id),createdAt:timestamp('created_at',{withTimezone:true}).defaultNow().notNull(),
 });
 export const leaveSnapshots=pgTable('leave_snapshots',{
+ approvalChain:jsonb('approval_chain').$type<Array<number|null>>().default([]).notNull(),dayPortion:text('day_portion').default('full').notNull(),
  leaveId:integer('leave_id').primaryKey().references(()=>leaves.id),rules:jsonb('rules').notNull(),daysByYear:jsonb('days_by_year').$type<Record<string,number>>().notNull(),balanceRequired:boolean('balance_required').notNull(),approverId:integer('approver_id').references(()=>users.id),
 });
 export const attendanceCorrections=pgTable('attendance_corrections',{
@@ -614,7 +632,9 @@ export const leaves = pgTable("leaves", {
   leaveType: text("leave_type").notNull(), // annual, sick, emergency, etc.
   startDate: date("start_date").notNull(),
   endDate: date("end_date").notNull(),
-  totalDays: integer("total_days").notNull(),
+  totalDays: doublePrecision("total_days").notNull(),
+  reviewVersion: integer('review_version').default(1).notNull(),
+  approvalStage: integer('approval_stage').default(0).notNull(),
   reason: text("reason").notNull(),
   status: leaveStatusEnum("status").notNull().default("pending"),
   approvedBy: integer("approved_by").references(() => users.id),
@@ -1258,7 +1278,9 @@ export const insertDocumentSchema = createInsertSchema(documents).omit({
   updatedAt: true,
 });
 
-export const insertAttendanceSchema = createInsertSchema(attendance).omit({
+export const insertAttendanceSchema = createInsertSchema(attendance).extend({
+  approvalStatus:z.enum(['not_required','pending','approved','rejected']).optional(),
+}).omit({
   id: true,
   createdAt: true,
 });

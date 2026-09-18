@@ -9,6 +9,7 @@ import {documentPolicy,documentPolicySchema} from '../services/documentGovernanc
 import {isAdmin,requireAdmin,recordHandler as handle,recordHistory,qatarToday} from '../services/workflowRecords';
 import {WorkflowError} from '../services/workflowRecords';
 import {getCompanySettings} from '../services/settings';
+import {documentIsArchived} from '../services/retention';
 const router=Router();
 const read=(req:any)=>{if(!hasPermission(req.user.role,'compliance_documents','read'))throw new WorkflowError(403,'Document access required');};
 router.get('/review-policy',handle(async(req,res)=>{read(req);res.json({...await documentPolicy(db),canEdit:isAdmin(req)});}));
@@ -29,12 +30,12 @@ router.get('/review-policy/history',handle(async(req,res)=>{
 }));
 router.get('/register',handle(async(req,res)=>{
  read(req);
- const input=z.object({page:z.coerce.number().int().min(1).max(100000).default(1),q:z.string().trim().max(100).default(''),type:z.string().trim().max(100).default(''),status:z.enum(['all','valid','expired','expiring_soon']).default('all')}).strict().parse(req.query);
+ const input=z.object({page:z.coerce.number().int().min(1).max(100000).default(1),q:z.string().trim().max(100).default(''),type:z.string().trim().max(100).default(''),status:z.enum(['all','valid','expired','expiring_soon','archived']).default('all')}).strict().parse(req.query);
  const settings=await getCompanySettings(),today=qatarToday(),soon=new Date(Date.parse(today)+settings.documentExpiryDays*86400000).toISOString().slice(0,10);
- const state=sql<string>`CASE WHEN ${documents.expiryDate}<${today}::date THEN 'expired' WHEN ${documents.expiryDate}<=${soon}::date THEN 'expiring_soon' ELSE 'valid' END`;
+ const state=sql<string>`CASE WHEN ${documentIsArchived} THEN 'archived' WHEN ${documents.expiryDate}<${today}::date THEN 'expired' WHEN ${documents.expiryDate}<=${soon}::date THEN 'expiring_soon' ELSE 'valid' END`;
  const filters=and(employeeScope(req.user,'compliance_documents'),input.q?sql`strpos(lower(${employees.firstName}||' '||${employees.lastName}||' '||${documents.documentNumber}||' '||${documents.documentType}),lower(${input.q}))>0`:undefined,input.type?sql`lower(${documents.documentType})=lower(${input.type})`:undefined);
  const result=await db.transaction(async tx=>{
- const [counts]=await tx.select({all:sql<number>`count(*)::int`,valid:sql<number>`count(*) FILTER (WHERE ${state}='valid')::int`,expired:sql<number>`count(*) FILTER (WHERE ${state}='expired')::int`,expiring_soon:sql<number>`count(*) FILTER (WHERE ${state}='expiring_soon')::int`}).from(documents).innerJoin(employees,eq(documents.employeeId,employees.id)).where(filters);
+ const [counts]=await tx.select({all:sql<number>`count(*)::int`,valid:sql<number>`count(*) FILTER (WHERE ${state}='valid')::int`,expired:sql<number>`count(*) FILTER (WHERE ${state}='expired')::int`,expiring_soon:sql<number>`count(*) FILTER (WHERE ${state}='expiring_soon')::int`,archived:sql<number>`count(*) FILTER (WHERE ${state}='archived')::int`}).from(documents).innerJoin(employees,eq(documents.employeeId,employees.id)).where(filters);
  const rows=await tx.select({document:documents,status:state,employeeName:sql<string>`${employees.firstName}||' '||${employees.lastName}`}).from(documents).innerJoin(employees,eq(documents.employeeId,employees.id)).where(and(filters,input.status==='all'?undefined:sql`${state}=${input.status}`)).orderBy(asc(documents.expiryDate),asc(documents.id)).limit(25).offset((input.page-1)*25);
  return {counts,rows};
  },{isolationLevel:'repeatable read',accessMode:'read only'});

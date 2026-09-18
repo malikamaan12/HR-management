@@ -2,8 +2,9 @@ import {Router} from 'express';
 import {and,asc,eq,gt,inArray,isNull,lt,sql} from 'drizzle-orm';
 import {db} from '../db';
 import {authenticate} from '../middleware/auth';
-import {assignmentReviews as reviews,leaves,workforceAssignments as assignments,workforceShifts as shifts,workforceTeams as teams,workforceTimesheets as timesheets,employees} from '@shared/schema';
-import {positiveId} from '@shared/workforce';
+import {assignmentReviews as reviews,leaves,leaveSnapshots,workforceAssignments as assignments,workforceShifts as shifts,workforceTeams as teams,workforceTimesheets as timesheets,employees} from '@shared/schema';
+import {positiveId,localDate} from '@shared/workforce';
+import {halfDayWindow,leaveOverlaps} from '@shared/leave-workflow';
 import {teamAccess} from '../services/workforce';
 import {candidateQuery,candidateScope,reviewWindow,withinWindow,permissionScope,otherEmployee,hasReviewGrant,verifiedTime} from '../services/assignmentReviews';
 import {reviewHandle} from './assignmentReviews';
@@ -18,8 +19,10 @@ router.get('/',reviewHandle(async(req,res)=>{
     }).from(shifts).innerJoin(teams,eq(shifts.teamId,teams.id)).where(and(eq(teams.id,teamId),eq(shifts.status,'scheduled'),gt(shifts.endAt,now),lt(shifts.startAt,staffingThrough),permissionScope(req.user!))).as('coverage');
     const [staffingCounts]=await tx.select({shifts:sql<number>`count(*)::int`,required:sql<number>`coalesce(sum(${coverage.headcount}),0)::int`,accepted:sql<number>`coalesce(sum(${coverage.accepted}),0)::int`,unfilled:sql<number>`coalesce(sum(greatest(${coverage.headcount}-${coverage.accepted},0)),0)::int`,pendingOffers:sql<number>`coalesce(sum(${coverage.pending}),0)::int`}).from(coverage);
     const gaps=await tx.select({id:coverage.id,role:coverage.role,startAt:coverage.startAt,endAt:coverage.endAt,unfilled:sql<number>`greatest(${coverage.headcount}-${coverage.accepted},0)::int`}).from(coverage).where(sql`${coverage.headcount}>${coverage.accepted}`).orderBy(coverage.startAt,coverage.id).limit(10);
-    const today=new Date().toISOString().slice(0,10),throughDate=staffingThrough.toISOString().slice(0,10);
-    const absences=await tx.select({leaveId:leaves.id,employeeId:leaves.employeeId,employeeName:sql<string>`${employees.firstName} || ' ' || ${employees.lastName}`.as('employee_name'),leaveType:leaves.leaveType,startDate:leaves.startDate,endDate:leaves.endDate,shiftId:shifts.id,role:shifts.role,shiftStartAt:shifts.startAt,shiftEndAt:shifts.endAt}).from(leaves).innerJoin(employees,eq(leaves.employeeId,employees.id)).innerJoin(assignments,eq(assignments.employeeId,leaves.employeeId)).innerJoin(shifts,eq(assignments.shiftId,shifts.id)).innerJoin(teams,eq(shifts.teamId,teams.id)).where(and(eq(teams.id,teamId),eq(leaves.status,'approved'),eq(assignments.status,'accepted'),eq(shifts.status,'scheduled'),sql`${leaves.startDate} <= ${throughDate}`,sql`${leaves.endDate} >= ${today}`,gt(shifts.endAt,now),lt(shifts.startAt,staffingThrough),permissionScope(req.user!))).orderBy(asc(shifts.startAt),asc(leaves.id)).limit(50);
+    const today=localDate(now,team.timezone),throughDate=localDate(staffingThrough,team.timezone);
+    const absenceCandidates=await tx.select({leaveId:leaves.id,employeeId:leaves.employeeId,employeeName:sql<string>`${employees.firstName} || ' ' || ${employees.lastName}`.as('employee_name'),leaveType:leaves.leaveType,startDate:leaves.startDate,endDate:leaves.endDate,totalDays:leaves.totalDays,snapshot:leaveSnapshots,shiftId:shifts.id,role:shifts.role,shiftStartAt:shifts.startAt,shiftEndAt:shifts.endAt}).from(leaves).leftJoin(leaveSnapshots,eq(leaveSnapshots.leaveId,leaves.id)).innerJoin(employees,eq(leaves.employeeId,employees.id)).innerJoin(assignments,eq(assignments.employeeId,leaves.employeeId)).innerJoin(shifts,eq(assignments.shiftId,shifts.id)).innerJoin(teams,eq(shifts.teamId,teams.id)).where(and(eq(teams.id,teamId),eq(leaves.status,'approved'),eq(assignments.status,'accepted'),eq(shifts.status,'scheduled'),sql`${leaves.startDate} <= ${throughDate}`,sql`${leaves.endDate} >= ${today}`,sql`(${shifts.startAt} AT TIME ZONE ${team.timezone})::date <= ${leaves.endDate}`,sql`((${shifts.endAt}-interval '1 millisecond') AT TIME ZONE ${team.timezone})::date >= ${leaves.startDate}`,gt(shifts.endAt,now),lt(shifts.startAt,staffingThrough),permissionScope(req.user!))).orderBy(asc(shifts.startAt),asc(leaves.id));
+    const matchingAbsences=absenceCandidates.filter(row=>leaveOverlaps(row.snapshot,row.startDate,row.endDate,new Date(Math.max(+row.shiftStartAt,+now)),row.shiftEndAt,team.timezone));
+    const absences=matchingAbsences.slice(0,50).map(({snapshot,...row})=>{const window=halfDayWindow(snapshot);return {...row,totalDays:Number(row.totalDays),dayPortion:snapshot?.dayPortion||'full',absenceStartAt:window?.start||null,absenceEndAt:window?.end||null};});
     let time=null;
     if(await hasReviewGrant(req.user!,'review_time',teamId,tx)){
       const pendingCondition=and(eq(teams.id,teamId),withinWindow(range),eq(timesheets.status,'submitted'),otherEmployee(req.user!),permissionScope(req.user!,'review_time'));
@@ -41,7 +44,7 @@ router.get('/',reviewHandle(async(req,res)=>{
         .from(reviews).innerJoin(assignments,eq(reviews.assignmentId,assignments.id)).innerJoin(employees,eq(assignments.employeeId,employees.id)).innerJoin(shifts,eq(assignments.shiftId,shifts.id)).innerJoin(teams,eq(shifts.teamId,teams.id)).innerJoin(timesheets,eq(timesheets.assignmentId,assignments.id)).where(and(currentScope,included,eq(reviews.rubricVersion,1))).groupBy(month).orderBy(month);
       reviewSummary={missing:missing.count,...counts,missingItems,trend};
     }
-    return {team,...range,staffingThrough,staffing:{...staffingCounts,gaps,absences},time,reviews:reviewSummary};
+    return {team,...range,staffingThrough,staffing:{...staffingCounts,gaps,absences,absencesMore:matchingAbsences.length>50},time,reviews:reviewSummary};
   });res.json(result);
 }));
 export default router;

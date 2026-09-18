@@ -10,7 +10,7 @@ export const defaultArrivalRules:ArrivalRules={enabled:true,earlyMinutes:60,late
 export const arrivalRuleInput=z.object({employeeId:positiveId.nullable(),effectiveAt:instant.nullable(),rules:arrivalRules,reason:operationReason}).strict();
 export const incidentInput=z.object({requestKey:z.string().uuid(),occurredAt:instant,title:z.string().trim().min(5).max(160),details:z.string().trim().min(10).max(4000),severity:z.enum(['low','medium','high'])}).strict();
 export const incidentUpdate=z.object({version:positiveId,status:z.enum(['open','in_progress','resolved']),note:operationReason}).strict();
-export interface PresenceView {id:number;assignmentId:number;version:number;arrivedAt:string;departedAt:string|null;departureReason:string|null;reviewedAt:string|null;reviewNote:string|null;flags:string[]}
+export interface PresenceView {id:number;assignmentId:number;version:number;arrivedAt:string;departedAt:string|null;departureReason:string|null;reviewedAt:string|null;reviewNote:string|null;flags:string[];approvalStatus?:'pending'|'approved'|'rejected';locationIn?:import('./attendance-location').LocationEvidence|null;locationOut?:import('./attendance-location').LocationEvidence|null}
 export interface IncidentView {id:number;title:string;details:string;severity:string;occurredAt:string;createdAt:string;status:'open'|'in_progress'|'resolved';version:number;reporterName:string;ownerName:string|null;history:{id:number;status:string;note:string;actorName:string;createdAt:string}[]}
 export interface ShiftOperations {canManage:boolean;incidents:IncidentView[];presence:(PresenceView&{name:string;canReview:boolean})[]}
-export interface MyPresence {presence:PresenceView|null;rules:ArrivalRules;opensAt:string;closesAt:string}
+export interface MyPresence {presence:PresenceView|null;rules:ArrivalRules;opensAt:string;closesAt:string;locationRequired?:boolean}

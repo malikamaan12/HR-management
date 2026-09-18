@@ -9,6 +9,8 @@ export const rubricInput = z.array(z.object({ key: z.string().regex(/^[a-z0-9_]{
 export const cycleInput = z.object({ name: text.max(160), periodStart: day, periodEnd: day, dueDate: day, selfRequired: z.boolean(), rubric: rubricInput,
   ratingLabels: z.array(text.max(80)).length(5) }).strict().refine(v => v.periodEnd >= v.periodStart && v.dueDate >= v.periodEnd, 'Review deadline must follow the review period');
 export const participantInput = z.object({ employeeId: id, reviewerId: id, dueDate: day, selfRequired: z.boolean() }).strict();
+export const bulkParticipantInput = z.object({ version: id, participants: z.array(participantInput).min(1).max(200), duplicatePolicy: z.enum(['reject', 'skip']), reason: text.min(5).max(2000) }).strict();
+export const participationInput = z.object({ version: id, cycleVersion: id, action: z.enum(['withdraw', 'reinstate']), reason: text.min(5).max(2000), reviewerId: id.optional(), dueDate: day.optional() }).strict();
 export const scoresInput = z.array(z.object({ key: z.string(), score: z.number().int().min(1).max(5), comment: z.string().trim().max(2000) }).strict()).min(1).max(12);
 export const assessmentInput = z.object({ version: id, action: z.enum(['save_self','submit_self','save_manager','submit_manager','publish','return_manager','acknowledge','reassign']),
   scores: scoresInput.optional(), summary: z.string().trim().max(10000).optional(), reason: z.string().trim().max(3000).optional(), reviewerId: id.optional() }).strict();

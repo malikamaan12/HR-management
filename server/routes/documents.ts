@@ -10,6 +10,7 @@ import {users,type UserRole} from '@shared/schema';
 import governanceRouter from './documentGovernance';
 import {DocumentError,documentPolicy,needsDocumentApproval,documentReviewerScope,canAssignDocuments,eligibleDocumentReviewer,renewalHistory,reviewDueDate,documentExpiryStatus,type DocumentPolicy} from '../services/documentGovernance';
 import {qatarToday} from '../services/workflowRecords';
+import {isDocumentArchived} from '../services/retention';
 import { authenticate } from '../middleware/auth';
 import { employeeScope } from '../services/access';
 import { uploadDocument, deleteDocumentObject, documentDownloadUrl, StorageUnavailableError, validateDocumentFile } from '../services/r2';
@@ -68,6 +69,7 @@ router.post('/:id/replace',receiveDocument,async(req,res)=>{
     const result=await db.transaction(async tx=>{
       const [current]=await tx.select().from(documents).where(eq(documents.id,id)).for('update');
       if(!current)throw new DocumentError(404,'Document not found');
+      if(await isDocumentArchived(tx,id))throw new DocumentError(409,'Restore this archived document through Record retention before replacing it');
       if(needsDocumentApproval(await documentPolicy(tx,true),req.user!,current.documentType))throw new DocumentError(403,'Approval is required; submit a renewal request');
       const [employee]=await tx.select({id:employees.id}).from(employees).where(and(eq(employees.id,current.employeeId),employeeScope(req.user!,'compliance_documents','update')));
       if(!employee||employee.id!==allowed.employeeId)throw new DocumentError(404,'Document access changed');
@@ -126,6 +128,7 @@ router.post('/:id/renewal-requests',receiveDocument,async(req,res)=>{
     const result=await db.transaction(async tx=>{
       const [current]=await tx.select().from(documents).where(eq(documents.id,id)).for('update');
       if(!current)throw new DocumentError(404,'Document not found');
+      if(await isDocumentArchived(tx,id))throw new DocumentError(409,'Restore this archived document before requesting renewal');
       const reviewPolicy=await documentPolicy(tx,true);
       const [employee]=await tx.select({id:employees.id}).from(employees).where(and(eq(employees.id,current.employeeId),employeeScope(req.user!,'compliance_documents','update')));
       if(!employee||employee.id!==allowed.employeeId)throw new DocumentError(404,'Document access changed');
@@ -224,6 +227,7 @@ router.post('/renewal-requests/:requestId/decision',async(req,res)=>{
         if(!await eligibleDocumentReviewer(tx,req.user!.userId,current.employeeId,request.requestedBy))throw new DocumentError(403,'Reviewer no longer has access to this employee');
       }
       if(input.decision==='approved'){
+        if(await isDocumentArchived(tx,current.id))throw new DocumentError(409,'Restore this archived document before approving renewal');
         const [latest]=await tx.select({version:documentVersions.version}).from(documentVersions).where(eq(documentVersions.documentId,current.id)).orderBy(desc(documentVersions.version)).limit(1);
         if((latest?.version??0)!==request.expectedVersion)throw new DocumentError(409,'The document changed after submission; reject or withdraw this request and submit a fresh one');
         if(!latest)await tx.insert(documentVersions).values({documentId:current.id,version:1,snapshot:{...current,changeReason:'Legacy document preserved before replacement'},createdBy:req.user!.userId});
@@ -286,7 +290,8 @@ router.get('/:id',async(req,res)=>{
     if(!row)return res.status(404).json({message:'Document not found'});
     const [writable]=await db.select({id:employees.id}).from(employees).where(and(eq(employees.id,row.document.employeeId),employeeScope(req.user!,'compliance_documents','update')));
     const approvalRequired=needsDocumentApproval(await documentPolicy(db),req.user!,row.document.documentType);
-    return res.json({...row.document,status:documentExpiryStatus(row.document.expiryDate,(await getCompanySettings()).documentExpiryDays),currentVersion:row.currentVersion,canRequestRenewal:!!writable,approvalRequired,canReplace:!!writable&&!approvalRequired,employeeName:`${row.firstName} ${row.lastName}`});
+    const archived=await isDocumentArchived(db,id);
+    return res.json({...row.document,archived,status:documentExpiryStatus(row.document.expiryDate,(await getCompanySettings()).documentExpiryDays),currentVersion:row.currentVersion,canRequestRenewal:!!writable&&!archived,approvalRequired,canReplace:!!writable&&!approvalRequired&&!archived,employeeName:`${row.firstName} ${row.lastName}`});
   }catch{return res.status(400).json({message:'Invalid document request'});}
 });
 export default router;

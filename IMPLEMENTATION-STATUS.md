@@ -1,4 +1,8 @@
-# E3 HR module status — 16 September 2026
+# E3 HR module status — 19 September 2026
+
+The current local batch implements the remaining equipment, handbook, employment/service history, retention, helpdesk automation, recurring workforce/evidence, performance participant and advanced leave workflows, with configurable operational reminders. It now also includes the internal, company-branded induction academy: lesson authoring/player, server-graded quizzes, attempts and completion records, certificates, scoped reports and onboarding requirements, using the existing stack without paid services or added dependencies. The combined source batch also adds six editable safety courses, dynamic attendance geofences and supervisor approvals, plus complete onboarding salary/benefit packages. **TypeScript and client/server production builds passed; full functional tests, audits, migration execution and production deployment remain deferred.** See [the current source release record](docs/Safety-Attendance-Compensation-Release.md) for the requested combined GitHub push. See [the batch handoff](docs/MODULE-BATCH-IMPLEMENTATION.md) and [induction operating guide](docs/Internal-Induction-Guide.md) for the exact scope and separate validation phase. The release history below describes previously deployed behavior, not acceptance of this batch.
+
+## Previous deployment baseline
 
 The requested attendance/leave → payroll → recruitment/onboarding/offboarding implementation is complete for the core workflows described below. The combined release is deployed at [e3-hr.onrender.com](https://e3-hr.onrender.com), with the latest team tasks, reporting and reminders code in revision `f69d238`. Administrators manage changing company policies and employee-specific overrides in **HR Rules**; effective dates and saved snapshots preserve history.
 
@@ -22,7 +26,7 @@ The requested attendance/leave → payroll → recruitment/onboarding/offboardin
 
 See [the workflow and configuration guide](docs/Attendance-Payroll-Lifecycle-Guide.md) for operating instructions, calculation conventions and legacy-data reconciliation. See [the module checklist](docs/MODULE-COMPLETION-CHECKLIST.md) for the remaining backlog.
 
-## What remains
+## Earlier backlog, superseded by the 19 September batch handoff
 
 1. **Business setup:** configure actual company/employee rules and assign operational roles before entering employee records. Deployment and database migrations are complete. Migrations 0015–0024 are new in this combined release; deployed migrations 0000–0014 are preserved. No production demonstration records were added.
 2. **Workforce enhancements:** whole-series roster changes, external certificate validation/evidence uploads and device/offline attendance integrations. Weekly unavailability, date exceptions, qualification renewal due lists, configurable reminder windows and HR verification are now implemented alongside the earlier staffing workflows.

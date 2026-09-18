@@ -18,11 +18,13 @@ export function expandAvailability(pattern:AvailabilityPattern){
   if(!result.length)throw new Error('Choose at least one occurrence');
   return result;
 }
-export const renewalPolicy=z.object({reminderDays:z.number().int().min(0).max(365),timezone:siteInput.shape.timezone}).strict();
+export const renewalPolicy=z.object({reminderDays:z.number().int().min(0).max(365),timezone:siteInput.shape.timezone,
+  evidenceRequired:z.boolean().default(false),documentType:z.string().trim().max(100).default(''),
+}).strict();
 export type RenewalPolicy=z.infer<typeof renewalPolicy>;
-export const defaultRenewalPolicy:RenewalPolicy={reminderDays:30,timezone:'UTC'};
+export const defaultRenewalPolicy:RenewalPolicy={reminderDays:30,timezone:'UTC',evidenceRequired:false,documentType:''};
 export const renewalPolicyInput=z.object({qualificationId:positiveId,employeeId:positiveId.nullable(),effectiveAt:z.string().datetime({offset:true}).transform(v=>new Date(v)).nullable(),config:renewalPolicy,reason:z.string().trim().min(5).max(500)}).strict();
-export const renewalSubmission=z.object({reference:z.string().trim().min(5).max(500),note:z.string().trim().max(1000).default('')}).strict();
+export const renewalSubmission=z.object({reference:z.string().trim().min(5).max(500),note:z.string().trim().max(1000).default(''),documentId:positiveId.nullable().default(null)}).strict();
 export const renewalCreate=renewalSubmission.extend({requestKey:z.string().uuid()}).strict();
 export const renewalResubmit=renewalSubmission.extend({version:positiveId}).strict();
 export const renewalDecision=z.discriminatedUnion('decision',[
@@ -31,4 +33,4 @@ export const renewalDecision=z.discriminatedUnion('decision',[
 ]);
 export interface AvailabilitySeries {id:number;pattern:AvailabilityPattern;createdAt:string;stoppedAt:string|null;stopReason:string|null;futureCount:number}
 export interface RenewalDue {credentialId:number;employeeId:number;employeeName:string;qualificationId:number;qualificationName:string;validThrough:string;daysLeft:number;reminderDays:number;timezone:string;requestId:number|null;requestStatus:string|null;renewedFrom:string|null}
-export interface RenewalView {id:number;employeeId:number;employeeName:string;qualificationName:string;previousCredentialId:number;previousValidFrom:string;previousValidThrough:string|null;status:'submitted'|'returned'|'verified'|'cancelled';version:number;reference:string;note:string;reviewNote:string|null;newCredentialId:number|null;createdAt:string;canReview:boolean}
+export interface RenewalView {id:number;employeeId:number;employeeName:string;qualificationName:string;previousCredentialId:number;previousValidFrom:string;previousValidThrough:string|null;status:'submitted'|'returned'|'verified'|'cancelled';version:number;reference:string;note:string;reviewNote:string|null;newCredentialId:number|null;createdAt:string;canReview:boolean;documentEvidence?:{id:number;version:number;documentType:string;issueDate:string;expiryDate:string}|null}

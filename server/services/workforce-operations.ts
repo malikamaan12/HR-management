@@ -15,5 +15,5 @@ export async function assertNoRecordedArrival(tx:WorkforceTransaction,shiftId:nu
     .where(and(eq(assignments.shiftId,shiftId),assignmentId?eq(assignments.id,assignmentId):undefined)).limit(1);
   if(recorded)fail(409,'Arrival has been recorded. Preserve this assignment and use the operational log for follow-up.');
 }
-export const presenceFields={id:presence.id,assignmentId:presence.assignmentId,version:presence.version,arrivedAt:presence.arrivedAt,departedAt:presence.departedAt,
+export const presenceFields={id:presence.id,assignmentId:presence.assignmentId,version:presence.version,arrivedAt:presence.arrivedAt,departedAt:presence.departedAt,approvalStatus:presence.approvalStatus,locationIn:presence.locationIn,locationOut:presence.locationOut,
   departureReason:presence.departureReason,flags:presence.flags,reviewedAt:presence.reviewedAt,reviewNote:presence.reviewNote};

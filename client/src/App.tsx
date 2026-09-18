@@ -51,6 +51,11 @@ const Settings=lazy(()=>import('@/pages/Settings'));
 const Reports=lazy(()=>import('@/pages/Reports'));
 const Recruitment=lazy(()=>import('@/pages/Hiring'));
 const Onboarding=lazy(()=>import('@/pages/Lifecycle'));
+const Equipment=lazy(()=>import('@/pages/Equipment'));
+const Handbook=lazy(()=>import('@/pages/Handbook'));
+const Employment=lazy(()=>import('@/pages/Employment'));
+const Retention=lazy(()=>import('@/pages/Retention'));
+const ReminderRules=lazy(()=>import('@/pages/ReminderRules'));
 const Communications=lazy(()=>import('@/pages/Communications'));
 const Performance=lazy(()=>import('@/pages/Performance'));
 const UserManagement=lazy(()=>import('@/pages/UserManagement'));
@@ -124,6 +129,11 @@ function App() {
       case '/workforce': return 'Workforce';
       case '/recruitment': return 'Recruitment Management';
       case '/onboarding': return 'Onboarding and Offboarding';
+      case '/equipment': return 'Equipment and Returns';
+      case '/handbook': return 'Employee Handbook';
+      case '/employment': return 'Employment and Service History';
+      case '/retention': return 'Record Retention';
+      case '/reminder-rules': return 'Reminder Rules';
       case '/hr-rules': return 'HR Rules';
       case '/communications': return 'Communication Hub';
       case '/performance': return 'Performance Management';
@@ -183,6 +193,11 @@ function App() {
           <Route path="/helpdesk/:caseId" component={Helpdesk} />
           <Route path="/recruitment" component={Recruitment} />
           <Route path="/onboarding" component={Onboarding} />
+          <Route path="/equipment" component={Equipment} />
+          <Route path="/handbook" component={Handbook} />
+          <Route path="/employment" component={Employment} />
+          <Route path="/retention" component={Retention} />
+          <Route path="/reminder-rules" component={ReminderRules} />
           <Route path="/communications" component={Communications} />
           <Route path="/performance" component={Performance} />
           <Route path="/learning" component={Learning} />

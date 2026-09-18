@@ -7,6 +7,8 @@ import { validateAppConfiguration } from './config';
 import { createReadinessHandler } from './services/readiness';
 import { pool } from './db';
 import {runOperationalReminders} from './services/operational-reminders';
+import {runHelpdeskAutomation} from './services/helpdesk-automation';
+import {ensureInductionSafetyCourses} from './services/induction-course-library';
 validateAuthConfiguration();
 validateAppConfiguration();
 const app = express();
@@ -15,6 +17,7 @@ app.disable('x-powered-by');
 app.get('/healthz', (_req, res) => res.json({ status: 'ok' }));
 const readinessQuery = { text: 'SELECT 1 FROM users LIMIT 0', query_timeout: 2000 };
 app.get('/readyz', createReadinessHandler(() => pool.query(readinessQuery)));
+app.use('/api/learning/induction', express.json({limit:'2mb'}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
@@ -38,6 +41,7 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  await ensureInductionSafetyCourses();
   const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
@@ -66,7 +70,9 @@ app.use((req, res, next) => {
     host: "0.0.0.0",
   }, () => {
     log(`serving on port ${port}`);
-    setTimeout(() => void runOperationalReminders().catch(error => console.error('Operational reminders failed', error)), 30000).unref();
-    setInterval(() => void runOperationalReminders().catch(error => console.error('Operational reminders failed', error)), 6 * 60 * 60 * 1000).unref();
+    setTimeout(() => void runHelpdeskAutomation().catch(() => console.error('Helpdesk automation failed')), 30000).unref();
+    setInterval(() => void runHelpdeskAutomation().catch(() => console.error('Helpdesk automation failed')), 5 * 60 * 1000).unref();
+    setTimeout(() => void runOperationalReminders().catch(() => console.error('Operational reminders failed')), 30000).unref();
+    setInterval(() => void runOperationalReminders().catch(() => console.error('Operational reminders failed')), 15 * 60 * 1000).unref();
   });
 })();

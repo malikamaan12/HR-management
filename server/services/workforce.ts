@@ -1,10 +1,11 @@
 import {and, eq, gt, gte, inArray, isNull, lt, lte, ne, notInArray, sql} from 'drizzle-orm';
 import {db} from '../db';
-import {employees, leaves, shiftSchedules, eventStaffAssignments, workforceAssignments as assignments,
+import {employees, leaves, leaveSnapshots, shiftSchedules, eventStaffAssignments, workforceAssignments as assignments,
   workforceGrants as grants, workforceMembers as members, workforceShifts as shifts, workforceTeams as teams, workforceSites as sites, activityLogs, employeeSkills,
   workforceUnavailable as unavailable, workforceQualifications as qualifications, employeeQualifications as credentials} from '@shared/schema';
 import {localDate, workforceAdmin} from '@shared/workforce';
 import type {TokenPayload} from './auth';
+import {leaveOverlaps} from '@shared/leave-workflow';
 
 export type WorkforceTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export class WorkforceError extends Error {constructor(public status: number, message: string) {super(message);}}
@@ -38,11 +39,11 @@ export async function assertNoWorkforceConflict(tx:WorkforceTransaction, employe
       excludeId?ne(assignments.id,excludeId):undefined)).limit(1);
   if (conflict) fail(409,'Employee already has an accepted workforce shift at this time');
 }
-export async function assertLeaveCompatible(tx:WorkforceTransaction, employeeId:number, startDate:string, endDate:string) {
+export async function assertLeaveCompatible(tx:WorkforceTransaction, employeeId:number, startDate:string, endDate:string,snapshot?:any) {
   const rows = await tx.select({startAt:shifts.startAt,endAt:shifts.endAt,timezone:sites.timezone}).from(assignments)
     .innerJoin(shifts,eq(assignments.shiftId,shifts.id)).innerJoin(teams,eq(shifts.teamId,teams.id)).innerJoin(sites,eq(teams.siteId,sites.id))
     .where(and(eq(assignments.employeeId,employeeId),eq(assignments.status,'accepted')));
-  if (rows.some(s=>localDate(s.startAt,s.timezone)<=endDate && localDate(new Date(+s.endAt-1),s.timezone)>=startDate))
+  if (rows.some(s=>leaveOverlaps(snapshot,startDate,endDate,s.startAt,s.endAt,s.timezone)))
     fail(409,'Cancel the overlapping accepted workforce assignment before approving leave');
 }
 export async function eligible(tx:WorkforceTransaction, employeeId:number, shift:typeof shifts.$inferSelect, timezone:string, excludeId?:number, lock=true) {
@@ -59,9 +60,9 @@ export async function eligible(tx:WorkforceTransaction, employeeId:number, shift
   const verified=await tx.select().from(credentials).where(and(eq(credentials.employeeId,employeeId),isNull(credentials.revokedAt)));
   const missing=missingQualifications(shift,timezone,verified);
   if(missing.length) fail(409,'Required qualifications are missing or not valid for the full shift: '+missing.join(', '));
-  const [leave] = await tx.select({id:leaves.id}).from(leaves).where(and(eq(leaves.employeeId,employeeId),eq(leaves.status,'approved'),
-    lte(leaves.startDate,endDate),gte(leaves.endDate,startDate))).limit(1);
-  if (leave) fail(409,'Employee has approved leave during this shift');
+  const leaveRows = await tx.select({leave:leaves,snapshot:leaveSnapshots}).from(leaves).leftJoin(leaveSnapshots,eq(leaveSnapshots.leaveId,leaves.id)).where(and(eq(leaves.employeeId,employeeId),eq(leaves.status,'approved'),
+    lte(leaves.startDate,endDate),gte(leaves.endDate,startDate)));
+  if (leaveRows.some(({leave,snapshot})=>leaveOverlaps(snapshot,leave.startDate,leave.endDate,shift.startAt,shift.endAt,timezone))) fail(409,'Employee has approved leave during this shift');
   if (shift.requiredSkills?.length) {
     const skills = await tx.select({skillId: employeeSkills.skillId, certificationExpiry: employeeSkills.certificationExpiry})
       .from(employeeSkills).where(and(eq(employeeSkills.employeeId, employeeId), inArray(employeeSkills.skillId, shift.requiredSkills)));

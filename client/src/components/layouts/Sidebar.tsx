@@ -31,6 +31,7 @@ const navItems: NavItem[] = [
   { name: "Recruitment", icon: "fas fa-user-plus", href: "/recruitment", module: "recruitment_onboarding", requiredPermission: "read" },
   { name: "Onboarding / Offboarding", icon: "fas fa-clipboard-list", href: "/onboarding", module: "recruitment_onboarding", requiredPermission: "read" },
   { name: "HR Rules", icon: "fas fa-sliders-h", href: "/hr-rules", module: "system_configuration", requiredPermission: "admin" },
+  { name: "Reminder Rules", icon: "fas fa-bell", href: "/reminder-rules", module: "system_configuration", requiredPermission: "admin" },
   { name: "Payroll Management", icon: "fas fa-money-check-alt", href: "/payroll", module: "payroll_management", requiredPermission: "read" },
   { name: "Attendance Tracking", icon: "fas fa-calendar-check", href: "/attendance", module: "attendance_time_tracking", requiredPermission: "read" },
   { name: "Leave Management", icon: "fas fa-umbrella-beach", href: "/leave", module: "leave_absence_management", requiredPermission: "read" },
@@ -147,6 +148,8 @@ export default function Sidebar({ className }: SidebarProps) {
               <li><Link href="/timesheets" className={cn('sidebar-item flex items-center px-3 py-2 rounded-md hover:bg-primary/10',location.startsWith('/timesheets')&&'border-l-4 border-primary bg-primary/10 font-medium')}><i className="fas fa-clock w-6 text-primary"/><span className="ml-3">Timesheets</span></Link></li>
               <li><Link href="/helpdesk" className={cn('sidebar-item flex items-center px-3 py-2 rounded-md hover:bg-primary/10',location.startsWith('/helpdesk')&&'border-l-4 border-primary bg-primary/10 font-medium')}><i className="fas fa-life-ring w-6 text-primary"/><span className="ml-3">HR Helpdesk</span></Link></li>
               <li><Link href="/workforce" className={cn('sidebar-item flex items-center px-3 py-2 rounded-md hover:bg-primary/10',location==='/workforce'&&'border-l-4 border-primary bg-primary/10 font-medium')}><i className="fas fa-people-carry w-6 text-primary"/><span className="ml-3">Workforce</span></Link></li>
+              {[['/equipment','fa-laptop','Equipment & returns'],['/handbook','fa-book','Employee handbook'],['/employment','fa-briefcase','Employment history']].map(([href,icon,label])=><li key={href}><Link href={href} className={cn('sidebar-item flex items-center px-3 py-2 rounded-md hover:bg-primary/10',location===href&&'border-l-4 border-primary bg-primary/10 font-medium')}><i className={`fas ${icon} w-6 text-primary`}/><span className="ml-3">{label}</span></Link></li>)}
+              {user&&['admin','super_admin','hr_director','hr','hr_manager'].includes(user.role)&&<li><Link href="/retention" className={cn('sidebar-item flex items-center px-3 py-2 rounded-md hover:bg-primary/10',location==='/retention'&&'border-l-4 border-primary bg-primary/10 font-medium')}><i className="fas fa-archive w-6 text-primary"/><span className="ml-3">Record retention</span></Link></li>}
               {navItems.map((item, index) => {
                 const isActive = location === item.href;
                 

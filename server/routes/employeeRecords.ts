@@ -2,13 +2,14 @@ import { Router, type Response } from 'express';
 import { and, count, desc, eq, ilike, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db';
-import { employees, activityLogs, users, authSessions, employeeLifecycleEvents, insertEmployeeLifecycleEventSchema, type Employee } from '@shared/schema';
+import { employees, activityLogs, users, employeeLifecycleEvents, insertEmployeeLifecycleEventSchema, type Employee } from '@shared/schema';
 import { directoryFields, employeeWriteFields, checkEmploymentDates, type EmployeeRecord } from '@shared/employee-records';
 import { authenticate } from '../middleware/auth';
 import { employeeScope } from '../services/access';
 import type { TokenPayload } from '../services/auth';
 import { hasPermission } from '@shared/permissions';
 import { localDate } from '@shared/workforce';
+import {syncEmploymentService,endEmploymentAccess} from '../services/employment';
 
 const router = Router();
 router.use(authenticate);
@@ -30,6 +31,7 @@ function project(row: Employee, user: TokenPayload) {
   return { ...result, access: { canEdit: canWrite(user), personal, banking, documents: false, uploadDocuments: false, history: personal } } as EmployeeRecord;
 }
 class RecordError extends Error { constructor(public status: number, message: string) { super(message); } }
+const rejectEmployment=(status:number,message:string):never=>{throw new RecordError(status,message);};
 function fail(res: Response, error: unknown) {
   if (error instanceof RecordError) return res.status(error.status).json({ message: error.message });
   if (error instanceof z.ZodError) return res.status(400).json({ message: 'Check the employee fields: ' + error.issues.map(i => `${i.path.join('.') || 'request'}: ${i.message}`).join('; '), errors: error.flatten() });
@@ -149,12 +151,16 @@ router.post('/:id/lifecycle', async (req, res) => {
         metadata: input.metadata ?? null, createdBy: req.user!.userId }).returning();
       let updated = employee;
       if (input.eventType === 'termination') {
+        const {equipmentClearance}=await import('../services/equipment');
+        const clearance=await equipmentClearance(tx,id);
+        if(clearance.blocked)throw new RecordError(409,`Resolve ${clearance.openCount} open equipment issue(s) before terminating employment`);
+        const openChecklist=await tx.execute(sql`SELECT id FROM lifecycle_cases WHERE employee_id=${id} AND kind='offboarding' AND status='in_progress' LIMIT 1`);
+        if(openChecklist.rows.length)throw new RecordError(409,'Complete the open offboarding checklist to terminate this employee');
+        await syncEmploymentService(tx,req.user!,employee,'termination',input.effectiveDate,input.reason,{kind:'employee_lifecycle',lifecycleEventId:event.id},rejectEmployment);
+        await endEmploymentAccess(tx,employee,input.effectiveDate,rejectEmployment);
         [updated] = await tx.update(employees).set({ status: 'inactive', terminationDate: input.effectiveDate, updatedAt: new Date() }).where(eq(employees.id, id)).returning();
-        if (employee.userId) {
-          await tx.update(users).set({ isActive: false }).where(eq(users.id, employee.userId));
-          await tx.update(authSessions).set({ isActive: false, updatedAt: new Date() }).where(eq(authSessions.userId, employee.userId));
-        }
       } else if (input.eventType === 'reactivation') {
+        await syncEmploymentService(tx,req.user!,employee,'reactivation',input.effectiveDate,input.reason,{kind:'employee_lifecycle',lifecycleEventId:event.id},rejectEmployment);
         [updated] = await tx.update(employees).set({ status: 'active', terminationDate: null, updatedAt: new Date() }).where(eq(employees.id, id)).returning();
       } else {
         [updated] = await tx.update(employees).set({ updatedAt: new Date() }).where(eq(employees.id, id)).returning();
@@ -194,6 +200,7 @@ router.patch('/:id', async (req, res) => {
       const [current] = await tx.select().from(employees).where(and(eq(employees.id, id), employeeScope(req.user!, 'employee_database', 'update')));
       if (!current) throw new RecordError(404, 'Employee not found');
       if (current.recordVersion !== expectedVersion) throw new RecordError(409, 'This employee was changed by someone else. Close the form, reload the profile and apply your changes again.');
+      if(patch.status&&patch.status!==current.status&&(patch.status==='inactive'||current.status==='inactive'))throw new RecordError(409,'Use the employee lifecycle termination or reactivation workflow to change active employment');
       const dateError = checkEmploymentDates({ ...current, ...patch }); if (dateError) throw new RecordError(400, dateError);
       await validateManagers(tx, {
         reportingManagerId: patch.reportingManagerId !== current.reportingManagerId ? patch.reportingManagerId : undefined,

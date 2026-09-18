@@ -1,0 +1,19 @@
+CREATE TABLE hr_handbooks (id serial PRIMARY KEY, category text NOT NULL, active boolean NOT NULL DEFAULT true, version integer NOT NULL DEFAULT 1 CHECK(version>0), created_by integer NOT NULL REFERENCES users(id), created_at timestamptz NOT NULL DEFAULT now());
+--> statement-breakpoint
+CREATE TABLE hr_handbook_editions (id serial PRIMARY KEY, handbook_id integer NOT NULL REFERENCES hr_handbooks(id), edition_number integer NOT NULL CHECK(edition_number>0), version integer NOT NULL DEFAULT 1 CHECK(version>0), title text NOT NULL, summary text NOT NULL DEFAULT '', body text NOT NULL, body_hash text NOT NULL, effective_on date NOT NULL, status text NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','published')), created_by integer NOT NULL REFERENCES users(id), published_by integer REFERENCES users(id), published_at timestamptz, created_at timestamptz NOT NULL DEFAULT now(), UNIQUE(handbook_id,edition_number), CHECK((status='published')=(published_by IS NOT NULL AND published_at IS NOT NULL)));
+--> statement-breakpoint
+CREATE UNIQUE INDEX hr_handbook_one_draft ON hr_handbook_editions(handbook_id) WHERE status='draft';
+--> statement-breakpoint
+CREATE FUNCTION hr_handbook_immutable_publication() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF OLD.status='published' THEN RAISE EXCEPTION 'Published handbook editions are immutable; create a new edition'; END IF; RETURN NEW; END $$;
+--> statement-breakpoint
+CREATE TRIGGER hr_handbook_publication_guard BEFORE UPDATE OR DELETE ON hr_handbook_editions FOR EACH ROW EXECUTE FUNCTION hr_handbook_immutable_publication();
+--> statement-breakpoint
+CREATE TABLE hr_handbook_policies (id serial PRIMARY KEY, version integer NOT NULL UNIQUE CHECK(version>0), default_due_days integer NOT NULL CHECK(default_due_days BETWEEN 1 AND 365), required_by_default boolean NOT NULL, acknowledgement_text text NOT NULL, created_by integer NOT NULL REFERENCES users(id), reason text NOT NULL, created_at timestamptz NOT NULL DEFAULT now());
+--> statement-breakpoint
+CREATE TABLE hr_handbook_assignments (id serial PRIMARY KEY, handbook_id integer NOT NULL REFERENCES hr_handbooks(id), edition_id integer NOT NULL REFERENCES hr_handbook_editions(id), employee_id integer NOT NULL REFERENCES employees(id), body_hash text NOT NULL, policy_snapshot jsonb NOT NULL, due_date date NOT NULL, required boolean NOT NULL DEFAULT true, status text NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','acknowledged','superseded','withdrawn')), version integer NOT NULL DEFAULT 1 CHECK(version>0), assigned_by integer NOT NULL REFERENCES users(id), read_at timestamptz, read_by integer REFERENCES users(id), acknowledged_at timestamptz, acknowledged_by integer REFERENCES users(id), superseded_by integer REFERENCES hr_handbook_assignments(id), created_at timestamptz NOT NULL DEFAULT now(), UNIQUE(edition_id,employee_id), CHECK((status='acknowledged')=(acknowledged_at IS NOT NULL AND acknowledged_by IS NOT NULL)), CHECK(status<>'acknowledged' OR (read_at IS NOT NULL AND read_by=acknowledged_by)));
+--> statement-breakpoint
+CREATE INDEX hr_handbook_assignment_queue ON hr_handbook_assignments(employee_id,status,due_date);
+--> statement-breakpoint
+CREATE FUNCTION hr_handbook_assignment_pin() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF (NEW.handbook_id,NEW.edition_id,NEW.employee_id,NEW.body_hash,NEW.policy_snapshot) IS DISTINCT FROM (OLD.handbook_id,OLD.edition_id,OLD.employee_id,OLD.body_hash,OLD.policy_snapshot) THEN RAISE EXCEPTION 'Handbook assignment evidence is pinned'; END IF; IF OLD.status<>'pending' THEN RAISE EXCEPTION 'Closed handbook assignments are immutable'; END IF; RETURN NEW; END $$;
+--> statement-breakpoint
+CREATE TRIGGER hr_handbook_assignment_guard BEFORE UPDATE ON hr_handbook_assignments FOR EACH ROW EXECUTE FUNCTION hr_handbook_assignment_pin();

@@ -10,7 +10,10 @@ import { employeeScope } from '../services/access';
 import { attendanceDate, clockAttendance } from '../services/attendance';
 import {calculationSnapshot} from '../services/calculation-rules';
 import {calculateTime,managementLate} from '@shared/calculation-rules';
+import locationRoutes from './attendance-location';
+import {locationFix} from '@shared/attendance-location';
 const router=Router();router.use(authenticate);
+router.use('/location',locationRoutes);
 const date=z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value=>!isNaN(Date.parse(value)) && new Date(value).toISOString().slice(0,10)===value);
 router.get('/today',async(req,res)=>{
   try{const [employee]=await db.select().from(employees).where(eq(employees.userId,req.user!.userId));if(!employee)return res.json(null);
@@ -19,8 +22,8 @@ router.get('/today',async(req,res)=>{
   }catch{return res.status(500).json({message:'Unable to load attendance'});}
 });
 for(const action of ['in','out','break_start','break_end'] as const)router.post('/clock-'+action,async(req,res)=>{
-  try{const input=z.object({location:z.string().max(300).optional(),notes:z.string().max(2000).optional()}).parse(req.body);
-    return res.json(await clockAttendance(req.user!.userId,action,input.location,input.notes));
+  try{const input=z.object({location:z.string().max(300).optional(),notes:z.string().max(2000).optional(),position:locationFix.optional()}).strict().parse(req.body);
+    return res.json(await clockAttendance(req.user!.userId,action,input.location,input.notes,new Date(),input.position));
   }catch(error){return res.status(400).json({message:error instanceof Error?error.message:'Clock action failed'});}
 });
 router.get('/date/:date',async(req,res)=>{

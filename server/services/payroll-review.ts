@@ -8,6 +8,7 @@ import { employeeScope } from './access';
 import type { TokenPayload } from './auth';
 import { calculationSnapshot } from './calculation-rules';
 import { calculatePolicyPayroll, defaultCalculationRules, type CalculationRules } from '@shared/calculation-rules';
+import {requireApprovedPresence} from './attendance-location';
 export async function payrollRecord(tx: WorkforceTransaction, user: TokenPayload, id: number, permission: 'read' | 'update' | 'approve' = 'read') {
     // Employee first, then payroll and time records, matching timesheet writes.
     const [initial] = await tx.select({ employeeId: payroll.employeeId }).from(payroll).innerJoin(employees, eq(payroll.employeeId, employees.id)).where(and(eq(payroll.id, id), employeeScope(user, 'payroll_management', permission)));
@@ -88,6 +89,7 @@ export async function generatePayroll(tx: WorkforceTransaction, user: TokenPaylo
     const used = new Map<string, number>();
     let timeCents = 0;
     for (const { sheet, timezone } of selected) {
+        await requireApprovedPresence(tx,sheet.assignmentId,sheet.actualEndAt);
         const [reserved] = await tx.select({ id: payrollTimeLines.payrollId }).from(payrollTimeLines).where(eq(payrollTimeLines.timesheetId, sheet.id));
         if (reserved)
             fail(409, 'Approved time is already included in another pay run');

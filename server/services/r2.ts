@@ -69,3 +69,33 @@ export async function uploadServiceFile(kind:'learning'|'benefit'|'expense',id:n
 }
 export async function deleteServiceFile(key:string){if(!serviceKey.test(key))throw new Error('Invalid service file');const {client,bucket}=configuration();try{await client.send(new DeleteObjectCommand({Bucket:bucket,Key:key}));}finally{client.destroy();}}
 export async function serviceFileUrl(key:string){if(!serviceKey.test(key))throw new Error('Invalid service file');const {client,bucket}=configuration();try{return await getSignedUrl(client,new GetObjectCommand({Bucket:bucket,Key:key,ResponseContentDisposition:'attachment',ResponseContentType:'application/octet-stream'}),{expiresIn:60});}finally{client.destroy();}}
+
+// Internal training media shares the configured private storage, with its own
+// namespace. No public bucket, external video host or transcoding service.
+const inductionKey=/^induction\/(course-\d+|branding)\/[a-f0-9-]+\.(pdf|png|jpg|mp4|webm)$/;
+export function validateInductionFile(file:Pick<Express.Multer.File,'buffer'|'size'>,logo=false){
+ const data=file.buffer;
+ if(file.size<1||file.size>(logo?2:40)*1024*1024)throw new Error(logo?'Choose a logo up to 2 MB':'Choose a training asset up to 40 MB');
+ if(data.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])))return {extension:'png',mime:'image/png'};
+ if(data[0]===255&&data[1]===216&&data[2]===255)return {extension:'jpg',mime:'image/jpeg'};
+ if(!logo){
+  if(data.subarray(0,5).toString()==='%PDF-')return {extension:'pdf',mime:'application/pdf'};
+  if(data.length>=12&&data.subarray(4,8).toString()==='ftyp')return {extension:'mp4',mime:'video/mp4'};
+  if(data.subarray(0,4).equals(Buffer.from([0x1a,0x45,0xdf,0xa3]))&&data.subarray(0,4096).includes(Buffer.from('webm')))return {extension:'webm',mime:'video/webm'};
+ }
+ throw new Error(logo?'Use a PNG or JPEG logo':'Use a PDF, PNG, JPEG, MP4 or WebM file');
+}
+export async function uploadInductionAsset(courseId:number|null,file:Express.Multer.File){
+ const type=validateInductionFile(file,courseId===null),{client,bucket}=configuration();
+ const key=`induction/${courseId===null?'branding':'course-'+courseId}/${randomUUID()}.${type.extension}`;
+ try{
+  await client.send(new PutObjectCommand({Bucket:bucket,Key:key,Body:file.buffer,ContentType:type.mime,ContentDisposition:'inline'}),{abortSignal:AbortSignal.timeout(45000)});
+  return {key,mime:type.mime};
+ }catch(error){try{await client.send(new DeleteObjectCommand({Bucket:bucket,Key:key}),{abortSignal:AbortSignal.timeout(10000)});}catch{console.error('Training asset upload cleanup pending');}throw error;}
+ finally{client.destroy();}
+}
+export async function deleteInductionAsset(key:string){if(!inductionKey.test(key))throw new Error('Invalid training asset');const {client,bucket}=configuration();try{await client.send(new DeleteObjectCommand({Bucket:bucket,Key:key}),{abortSignal:AbortSignal.timeout(10000)});}finally{client.destroy();}}
+export async function inductionAssetUrl(key:string,mime:string){
+ if(!inductionKey.test(key)||!['application/pdf','image/png','image/jpeg','video/mp4','video/webm'].includes(mime))throw new Error('Invalid training asset');
+ const {client,bucket}=configuration();try{return await getSignedUrl(client,new GetObjectCommand({Bucket:bucket,Key:key,ResponseContentType:mime,ResponseContentDisposition:'inline'}),{expiresIn:900});}finally{client.destroy();}
+}

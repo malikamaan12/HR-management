@@ -109,6 +109,7 @@ export function DocumentDetails({ documentId, isOpen, onClose }: DocumentDetails
           </div>
         ) : document ? (
           <div>
+            {document.archived&&<p className="mb-4 rounded border p-3 text-sm">Archived under the retention workflow. Existing access is preserved. HR must restore the record before replacement or use as checklist evidence.</p>}
             <div className="flex justify-between items-start mb-4">
               <div>
                 <h3 className="text-lg font-semibold">{document.documentType}</h3>

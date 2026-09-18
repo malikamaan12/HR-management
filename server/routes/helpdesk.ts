@@ -1,4 +1,6 @@
 import operationsRouter from './helpdesk-operations';
+import automationRouter from './helpdesk-automation';
+import { helpdeskAutomationPolicy, pinCaseAutomation, caseAutomationSnapshot, helpdeskDeadline, restartCaseAutomation } from '../services/helpdesk-automation';
 import { casePolicy } from '../services/helpdesk-operations';
 import { helpdeskPolicyAdmin } from '@shared/helpdesk-operations';
 import {Router,type Request,type Response,type NextFunction} from 'express';
@@ -15,6 +17,7 @@ import {privateStorageConfigured,StorageUnavailableError,validateDocumentFile,up
 
 const router=Router();router.use(authenticate);router.use((_req,res,next)=>{res.set('Cache-Control','no-store');next();});
 router.use(operationsRouter);
+router.use('/automation',automationRouter);
 const requesters=alias(users,'case_requester'),assignees=alias(users,'case_assignee');
 const fields={id:cases.id,title:cases.title,category:cases.category,confidential:cases.confidential,status:cases.status,requesterId:cases.requesterId,assigneeId:cases.assigneeId,version:cases.version,
   createdAt:cases.createdAt,updatedAt:cases.updatedAt,firstResponseDueAt:cases.firstResponseDueAt,resolutionDueAt:cases.resolutionDueAt,firstRespondedAt:cases.firstRespondedAt,resolvedAt:cases.resolvedAt,escalatedAt:cases.escalatedAt,requesterName:sql<string>`${requesters.firstName} || ' ' || ${requesters.lastName}`,assigneeName:sql<string|null>`${assignees.firstName} || ' ' || ${assignees.lastName}`};
@@ -61,8 +64,10 @@ router.post('/cases',upload,handle(async(req,res)=>{
   const input=newCaseInput.parse(req.body);
   const result=await withUploads(uploaded=>db.transaction(async tx=>{
     const confidential=input.confidential||input.category==='employee_relations';
-    const policy=await casePolicy(tx,req.user!.userId,input.category,confidential,new Date());
+    const automation=await helpdeskAutomationPolicy(tx);
+    const policy=await casePolicy(tx,req.user!.userId,input.category,confidential,new Date(),automation);
     const [row]=await tx.insert(cases).values({title:input.title,category:input.category,confidential,requesterId:req.user!.userId,...policy}).returning();
+    await pinCaseAutomation(tx,row.id,automation);
     const [message]=await tx.insert(messages).values({caseId:row.id,authorId:req.user!.userId,body:input.body}).returning();
     await saveAttachment(tx,req,row.id,message.id,uploaded);await caseEvent(tx,req.user!,row.id,policy.policySnapshot?'Case opened with configured routing and response targets':'Case opened');return {id:row.id};
   }));res.status(201).json(result);
@@ -123,7 +128,7 @@ router.post('/cases/:id/actions',handle(async(req,res)=>{
       if(!access.statuses.includes(input.status))reject(409,'This status change is not available to you');
       updates.status=input.status;
       if(input.status==='resolved')updates.resolvedAt=new Date();
-      if(['resolved','closed'].includes(row.status)&&!['resolved','closed'].includes(input.status)){updates.resolvedAt=null;updates.escalatedAt=null;if(row.policySnapshot)updates.resolutionDueAt=new Date(Date.now()+row.policySnapshot.resolutionHours*3600000);}
+      if(['resolved','closed'].includes(row.status)&&!['resolved','closed'].includes(input.status)){updates.resolvedAt=null;updates.escalatedAt=null;if(row.policySnapshot){const reopenedAt=new Date(),snapshot=await caseAutomationSnapshot(tx,id);updates.resolutionDueAt=helpdeskDeadline(reopenedAt,row.policySnapshot.resolutionHours,snapshot);if(!row.firstRespondedAt)updates.firstResponseDueAt=helpdeskDeadline(reopenedAt,row.policySnapshot.firstResponseHours,snapshot);}await restartCaseAutomation(tx,id);}
       await caseEvent(tx,req.user!,id,`Status changed to ${statusLabels[input.status]}: ${input.reason}`);
     }else{
       if(!access.restrict)reject(403,'This case cannot be restricted by you');

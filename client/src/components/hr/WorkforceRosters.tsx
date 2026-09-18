@@ -1,12 +1,12 @@
 import {useState, type FormEvent} from 'react';
-import {useMutation, useQueryClient} from '@tanstack/react-query';
+import {useMutation, useQueryClient, useQuery} from '@tanstack/react-query';
 import {Button} from '@/components/ui/button';
 import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle} from '@/components/ui/dialog';
 import {apiJson} from '@/lib/queryClient';
 import {useToast} from '@/hooks/use-toast';
 import {Field, fieldClass, QueryError} from './Operations';
 import {siteTimeToIso, type ShiftView} from '@shared/workforce';
-import {siteWallTime, type Recurrence} from '@shared/workforce-rosters';
+import {siteWallTime, type Recurrence, type SeriesEditorView} from '@shared/workforce-rosters';
 
 import {QualificationPicker} from './WorkforceStaffing';
 
@@ -64,11 +64,27 @@ export function ShiftActions({shift,zone}:{shift:ShiftView;zone:string}) {
   }catch(e){setError(e);}}
   if(!shift.canSchedule||shift.status!=='scheduled'||new Date(shift.startAt)<=new Date())return null;
   const active=shift.assignments.filter(a=>['offered','accepted'].includes(a.status)).length;
-  return <><div className="mt-3 flex flex-wrap gap-2"><Button variant="outline" size="sm" onClick={()=>begin('revise')}>Revise shift</Button><Button variant="outline" size="sm" onClick={()=>begin('cancel')}>Cancel shift</Button></div>
+  return <><div className="mt-3 flex flex-wrap gap-2"><Button variant="outline" size="sm" onClick={()=>begin('revise')}>Revise shift</Button><Button variant="outline" size="sm" onClick={()=>begin('cancel')}>Cancel shift</Button>{shift.seriesId&&<SeriesActions shift={shift} zone={zone}/>}</div>
     <Dialog open={!!mode} onOpenChange={v=>{if(!v&&!save.isPending)setMode(null);}}><DialogContent className="max-h-[90vh] overflow-auto"><DialogHeader><DialogTitle>{mode==='revise'?'Revise shift':'Cancel shift'}</DialogTitle><DialogDescription>{mode==='revise'?`This changes one occurrence. ${active} current assignments will be cancelled and reoffered for fresh acceptance. All dates use ${zone}.`:`This cancels one occurrence and its ${active} current assignments. The reason will be visible to employees.`}</DialogDescription></DialogHeader>
       <form onSubmit={submit} className="space-y-4"><fieldset disabled={save.isPending} className="space-y-4">
         {mode==='revise'&&<><ShiftDetails value={form} onChange={v=>setForm({...form,...v})}/><Field label="Revised start"><input className={fieldClass} type="datetime-local" value={form.startAt} required onChange={e=>setForm({...form,startAt:e.target.value})}/></Field><Field label="Revised end"><input className={fieldClass} type="datetime-local" value={form.endAt} required onChange={e=>setForm({...form,endAt:e.target.value})}/></Field></>}
         <Field label="Reason for change"><textarea className={fieldClass} value={reason} minLength={5} maxLength={500} required onChange={e=>setReason(e.target.value)}/></Field>
       </fieldset><QueryError error={error}/><div className="flex justify-end gap-2"><Button type="button" variant="outline" disabled={save.isPending} onClick={()=>setMode(null)}>Close</Button><Button type="submit" variant={mode==='cancel'?'destructive':'default'} disabled={save.isPending}>{save.isPending?'Saving…':mode==='revise'?'Save revision & reoffer':'Confirm cancellation'}</Button></div></form>
     </DialogContent></Dialog></>;
+}
+
+function SeriesActions({shift,zone}:{shift:ShiftView;zone:string}){
+  const [open,setOpen]=useState(false),[mode,setMode]=useState('revise'),[fromDate,setFromDate]=useState(''),[reason,setReason]=useState('');
+  const initial=()=>{const start=siteWallTime(shift.startAt,zone),end=siteWallTime(shift.endAt,zone);return {role:shift.role,station:shift.station||'',headcount:shift.headcount,breakMinutes:shift.breakMinutes,qualificationIds:shift.requiredQualifications.map(q=>q.id),startTime:start.slice(11),endTime:end.slice(11),endDayOffset:start.slice(0,10)===end.slice(0,10)?0:1};};
+  const [form,setForm]=useState(initial),save=useRosterSave(()=>setOpen(false));
+  const query=useQuery<SeriesEditorView>({queryKey:[`/api/workforce/series/${shift.seriesId}`,{fromDate}],enabled:open&&!!fromDate});
+  function begin(){setFromDate(siteWallTime(new Date().toISOString(),zone).slice(0,10));setReason('');setMode('revise');setForm(initial());save.reset();setOpen(true);}
+  return <><Button variant="outline" size="sm" onClick={begin}>Manage recurring series</Button><Dialog open={open} onOpenChange={value=>{if(!save.isPending)setOpen(value);}}><DialogContent className="max-h-[90vh] max-w-2xl overflow-auto"><DialogHeader><DialogTitle>Manage future recurring shifts</DialogTitle><DialogDescription>Revise or cancel future scheduled occurrences together. Dates stay on their existing days in {zone}. Revised offers require fresh employee acceptance.</DialogDescription></DialogHeader>
+    <form className="space-y-4" onSubmit={e=>{e.preventDefault();if(!query.data?.shifts.length)return;save.mutate({url:`/api/workforce/series/${shift.seriesId}/${mode}`,body:{version:query.data.version,fromDate,expectedShifts:query.data.shifts.map(s=>({id:s.id,version:s.version})),reason,...(mode==='revise'?{details:form}:{})}});}}><fieldset disabled={save.isPending} className="space-y-4"><div className="grid gap-3 sm:grid-cols-2"><Field label="Change occurrences from"><input className={fieldClass} type="date" required value={fromDate} onChange={e=>{setFromDate(e.target.value);save.reset();}}/></Field><Field label="Series action"><select className={fieldClass} value={mode} onChange={e=>{setMode(e.target.value);save.reset();}}><option value="revise">Revise hours / staffing details</option><option value="cancel">Cancel future occurrences</option></select></Field></div>
+      {mode==='revise'&&<><ShiftDetails value={form} onChange={v=>setForm({...form,...v})}/><div className="grid gap-3 sm:grid-cols-2"><Field label="Revised start time"><input className={fieldClass} type="time" required value={form.startTime} onChange={e=>setForm({...form,startTime:e.target.value})}/></Field><Field label="Revised end time"><input className={fieldClass} type="time" required value={form.endTime} onChange={e=>setForm({...form,endTime:e.target.value})}/></Field></div><Field label="End day"><select className={fieldClass} value={form.endDayOffset} onChange={e=>setForm({...form,endDayOffset:Number(e.target.value)})}><option value={0}>Same day</option><option value={1}>Following day</option></select></Field></>}
+      <QueryError error={query.error}/>{query.isFetching&&<p className="text-sm">Loading current occurrences…</p>}{query.data&&<div className="rounded border p-3 text-sm"><p className="font-semibold">{query.data.shifts.length} future occurrences · {query.data.shifts.reduce((n,s)=>n+s.activeCount,0)} current offers / assignments</p><ol className="max-h-48 overflow-auto list-inside list-decimal mt-2">{query.data.shifts.map(s=><li key={s.id} className="py-1">#{s.id}: {siteWallTime(s.startAt,zone).replace('T',' ')} → {siteWallTime(s.endAt,zone).replace('T',' ')} · {s.activeCount} assigned</li>)}</ol></div>}
+      <p className="text-sm text-muted-foreground">Past and already cancelled occurrences stay unchanged. Recorded arrival, timesheets, payroll-linked time, eligibility conflicts, or an outdated occurrence prevent the entire change.</p><Field label="Reason for recurring roster change"><textarea className={fieldClass} required minLength={5} maxLength={500} value={reason} onChange={e=>setReason(e.target.value)}/></Field><label className="flex gap-2 text-sm"><input type="checkbox" required/>I reviewed the future occurrences and want to apply this action to all of them.</label>
+      <QueryError error={save.error}/><Button type="submit" variant={mode==='cancel'?'destructive':'default'} disabled={!query.data?.shifts.length||query.isFetching||!!query.error}>{mode==='revise'?'Revise series & reoffer':'Cancel future series occurrences'}</Button>
+    </fieldset></form>{!!query.data?.history.length&&<details className="border-t pt-3 text-sm"><summary className="cursor-pointer font-medium">Recent series changes</summary>{query.data.history.map(h=><div className="mt-3" key={h.version}><strong>Version {h.version} · {h.snapshot.action} · {h.snapshot.shiftIds.length} occurrences</strong><p>{h.reason}</p><p className="text-muted-foreground">{new Date(h.created_at).toLocaleString()}</p></div>)}</details>}
+  </DialogContent></Dialog></>;
 }

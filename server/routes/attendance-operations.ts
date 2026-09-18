@@ -5,7 +5,8 @@ import { calculateTime, managementLate, type CalculationSnapshot } from '@shared
 import { z } from 'zod';
 import { and, eq, gte, lte, sql, desc } from 'drizzle-orm';
 import { db } from '../db';
-import { attendance, attendanceCorrections, employees, leaves, workforceAssignments, workforceShifts, workforceTeams, workforceSites } from '@shared/schema';
+import { attendance, attendanceCorrections, employees, leaves,leaveSnapshots, workforceAssignments, workforceShifts, workforceTeams, workforceSites } from '@shared/schema';
+import {halfDayWindow,leaveOverlaps} from '@shared/leave-workflow';
 import { authenticate } from '../middleware/auth';
 import { handle } from './hr-rules';
 import { civilDate, positiveId, reason, dayAt } from '@shared/hr-rules';
@@ -14,6 +15,8 @@ import { scopedEmployee, attendancePolicy, audit } from '../services/hr-rules';
 import { fail } from '../services/workforce';
 import { siteTimeToIso } from '@shared/workforce';
 import { hasPermission } from '@shared/permissions';
+import {locationPolicy,needsAttendanceApproval} from '../services/attendance-location';
+import type {LocationEvidence} from '@shared/attendance-location';
 const router = Router();
 router.use(authenticate);
 const proposalSchema = z.object({ employeeId: positiveId, date: civilDate, expectedVersion: z.number().int().min(0), checkIn: z.string().datetime(), checkOut: z.string().datetime(), breakMinutes: z.number().int().min(0).max(1439), reason }).strict();
@@ -58,9 +61,7 @@ router.post('/corrections/:id/review', handle(async (req, res) => {
             const [record] = await tx.select().from(attendance).where(and(eq(attendance.employeeId, e.id), eq(attendance.date, row.date)));
             if ((record?.version || 0) !== row.expectedVersion)
                 fail(409, 'Attendance changed; reject this correction and request a fresh one');
-            const [leave] = await tx.select({ id: leaves.id }).from(leaves).where(and(eq(leaves.employeeId, e.id), eq(leaves.status, 'approved'), lte(leaves.startDate, row.date), gte(leaves.endDate, row.date)));
-            if (leave)
-                fail(409, 'Resolve approved leave before recording worked time');
+            const leaveRows = await tx.select({leave:leaves,snapshot:leaveSnapshots}).from(leaves).leftJoin(leaveSnapshots,eq(leaveSnapshots.leaveId,leaves.id)).where(and(eq(leaves.employeeId, e.id), eq(leaves.status, 'approved'), lte(leaves.startDate, row.date), gte(leaves.endDate, row.date)));
             const p = row.proposal as {
                 checkIn: string;
                 checkOut: string;
@@ -68,11 +69,16 @@ router.post('/corrections/:id/review', handle(async (req, res) => {
             };
             const calculation = (row.proposal as { calculationSnapshot?: CalculationSnapshot }).calculationSnapshot || record?.calculationSnapshot || await calculationSnapshot(e, row.date, tx, !!record?.checkIn);
             const policy = (row.proposal as any).policy || await attendancePolicy(tx, e, row.date);
+            if(leaveRows.some(r=>leaveOverlaps(r.snapshot,r.leave.startDate,r.leave.endDate,new Date(p.checkIn),new Date(p.checkOut),policy.timezone)))fail(409,'Worked time overlaps approved leave; reconcile the leave before approving this correction');
             const value = { calculationSnapshot: calculation, checkIn: new Date(p.checkIn), checkOut: new Date(p.checkOut), totalBreakMinutes: p.breakMinutes, totalWorkHours: calculateTime((Date.parse(p.checkOut) - Date.parse(p.checkIn)) / 60000, p.breakMinutes, calculation.rules.attendance).calculatedMinutes, breakStartTime: null, breakEndTime: null, checkInMethod: 'manual' as const, checkOutMethod: 'manual' as const, status: policy.id !== null || e.workSchedule === 'shift_based' ? await clockStatus(tx, e, row.date, new Date(p.checkIn), policy) : managementLate(new Date(p.checkIn), calculation) ? 'late' as const : 'present' as const, notes: row.reason, updatedAt: new Date() };
+            const partial=leaveRows.find(r=>r.snapshot?.dayPortion==='first_half'),window=halfDayWindow(partial?.snapshot);
+            if(window)value.status=Date.parse(p.checkIn)>+window.end+policy.graceMinutes*60000?'late':'present';
+            const locationRule=await locationPolicy(tx),exception:LocationEvidence={status:'exception',recordedAt:new Date().toISOString(),policyVersion:locationRule.version,reason:`Correction #${row.id}: ${row.reason}; independently approved: ${input.reason}`};
+            const approval=await needsAttendanceApproval(tx,e,new Date(p.checkIn))?{approvalStatus:'approved' as const,supervisorUserId:req.user!.userId,supervisorReviewedAt:new Date(),supervisorNote:input.reason}:{};
             if (record)
-                await tx.update(attendance).set(value).where(eq(attendance.id, record.id));
+                await tx.update(attendance).set({...value,...approval,locationIn:exception,locationOut:exception}).where(eq(attendance.id, record.id));
             else
-                await tx.insert(attendance).values({ ...value, employeeId: e.id, date: row.date });
+                await tx.insert(attendance).values({ ...value,...approval,locationIn:exception,locationOut:exception, employeeId: e.id, date: row.date });
         }
         const [saved] = await tx.update(attendanceCorrections).set({ status: input.decision, reviewedBy: req.user!.userId, reviewNote: input.reason, reviewedAt: new Date() }).where(eq(attendanceCorrections.id, id)).returning();
         await audit(tx, req.user!, 'attendance_correction', id, `${input.decision}: ${input.reason}`);

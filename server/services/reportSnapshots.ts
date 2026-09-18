@@ -47,10 +47,10 @@ export async function buildReport(tx:any,input:ReportInput):Promise<ReportSnapsh
   const settings=await tx.execute(sql`SELECT value FROM app_settings WHERE key='company'`);
   const policy=settings.rows[0]?companySettingsSchema.parse(settings.rows[0].value):defaultCompanySettings;
   result.policy={documentExpiryDays:policy.documentExpiryDays};
-  const r=await tx.execute(sql`SELECT e.department,d.document_type::text AS document_type,CASE WHEN d.expiry_date IS NULL THEN 'no_expiry' WHEN d.expiry_date<${asOf}::date THEN 'expired' WHEN d.issue_date>${asOf}::date THEN 'not_yet_valid' WHEN d.expiry_date<=${asOf}::date+${policy.documentExpiryDays}::int THEN 'expiring_soon' ELSE 'valid' END AS status,count(*)::int AS documents FROM documents d JOIN employees e ON e.id=d.employee_id WHERE ${department} GROUP BY e.department,d.document_type,3 ORDER BY e.department,d.document_type,status LIMIT 5001`);
+  const r=await tx.execute(sql`SELECT e.department,d.document_type::text AS document_type,CASE WHEN d.expiry_date IS NULL THEN 'no_expiry' WHEN d.expiry_date<${asOf}::date THEN 'expired' WHEN d.issue_date>${asOf}::date THEN 'not_yet_valid' WHEN d.expiry_date<=${asOf}::date+${policy.documentExpiryDays}::int THEN 'expiring_soon' ELSE 'valid' END AS status,count(*)::int AS documents FROM documents d JOIN employees e ON e.id=d.employee_id WHERE ${department} AND NOT EXISTS(SELECT 1 FROM hr_document_archives a WHERE a.document_id=d.id AND a.archived) GROUP BY e.department,d.document_type,3 ORDER BY e.department,d.document_type,status LIMIT 5001`);
   result.rows=r.rows;result.columns=columns('department','document_type','status','documents');result.summary={documents:sum(r.rows,'documents')};
   result.definition='Current registered documents classified from issue and expiry dates as of the Qatar calendar date. The company expiry warning window is pinned to this run.';
-  result.notes=['Includes documents belonging to inactive employees. Counts documents, not employees; missing required documents are not inferred.'];
+  result.notes=['Includes documents belonging to inactive employees, excluding archived documents. Counts documents, not employees; missing required documents are not inferred.'];
  }else{
   // Aggregate assignments per shift before summing capacity to avoid multiplying
   // headcount by the number of people assigned to the same shift.

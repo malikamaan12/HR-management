@@ -36,8 +36,8 @@ export async function saveRule(user: TokenPayload, body: unknown) {
     return db.transaction(async (tx) => {
         if (input.employeeId)
             await scopedEmployee(tx, user, input.employeeId, 'employee_database', 'read', true);
-        const approverId = 'approverId' in input.config ? input.config.approverId : null;
-        if (approverId) {
+        const approverIds = input.kind==='leave'?[input.config.approverId,...input.config.additionalApproverIds]:input.kind==='payroll'?[input.config.approverId]:[];
+        for (const approverId of approverIds.filter((id):id is number=>!!id)) {
             const [approver] = await tx.select().from(users).where(eq(users.id, approverId));
             const module = input.kind === 'payroll' ? 'payroll_management' : 'leave_absence_management';
             if (!approver || !approver.isActive || approver.approvalStatus !== 'approved' || !hasPermission(approver.role, module, 'approve'))

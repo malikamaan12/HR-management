@@ -10,6 +10,7 @@ import {positiveId,workforceAdmin} from '@shared/workforce';
 import {actualFields,reviewInput,versionInput,payrollTimeAccess,timesheetStatuses} from '@shared/timesheets';
 import {WorkforceError,currentGrants,fail,type WorkforceTransaction} from '../services/workforce';
 import {assignmentFields,sheetQuery,ownScope,reviewScope,paidStatuses,readSheet,checkVersion,validateActuals,assertTimeOverlap,requireReviewer,recordRevision,changeSheet} from '../services/timesheets';
+import {requireApprovedPresence} from '../services/attendance-location';
 const router=Router();router.use(authenticate);router.use((_req,res,next)=>{res.set('Cache-Control','no-store');next();});
 const handle=(fn:(req:Request,res:Response)=>Promise<unknown>)=>async(req:Request,res:Response)=>{try{await fn(req,res);}catch(error){
   if(error instanceof WorkforceError)return res.status(error.status).json({message:error.message});
@@ -83,7 +84,7 @@ router.post('/:id/review',handle(async(req,res)=>{
     const snapshot=row.calculationSnapshot||await calculationSnapshot({},ruleDate(row.startAt,row.timezone),tx,true);
     const calculated=snapshot.rules.timesheets.payableMethod==='calculated';
     const payable=input.decision==='approved'?(calculated?calculateTime(row.workedMinutes+row.breakMinutes,row.breakMinutes,snapshot.rules.timesheets).calculatedMinutes:input.payableMinutes):null;
-    if(input.decision==='approved'){if(!calculated&&input.payableMinutes>row.workedMinutes+row.breakMinutes)fail(400,'Payable time cannot exceed the reported duration');await assertTimeOverlap(tx,row);}
+    if(input.decision==='approved'){await requireApprovedPresence(tx,row.assignmentId,row.actualEndAt);if(!calculated&&input.payableMinutes>row.workedMinutes+row.breakMinutes)fail(400,'Payable time cannot exceed the reported duration');await assertTimeOverlap(tx,row);}
     return changeSheet(tx,req.user!,row,{status:input.decision,calculationSnapshot:snapshot,reviewerId:req.user!.userId,reviewedAt:new Date(),reviewNote:input.reason,payableMinutes:payable,policyReference:input.decision==='approved'?(calculated?`Calculation rules v${snapshot.version}`:input.policyReference):null},input.decision==='approved'?'Approved':'Returned',input.reason);
   }));
 }));
@@ -107,6 +108,7 @@ router.post('/:id/payroll-lock',handle(async(req,res)=>{
     if(row.ownerUserId===req.user!.userId)fail(403,'Another payroll approver must link your time');if(row.status!=='approved')fail(409,'Only approved, unlocked timesheets can be linked');
     const [paid]=await tx.select().from(payroll).where(and(eq(payroll.id,input.payrollId),eq(payroll.employeeId,row.employeeId),eq(payroll.status,'processed'))).for('share');
     if(!paid)fail(400,'Select a processed payroll record for this employee');
+    await requireApprovedPresence(tx,row.assignmentId,row.actualEndAt);
     return changeSheet(tx,req.user!,row,{status:'payroll_locked',payrollId:paid.id,lockedBy:req.user!.userId,lockedAt:new Date()},'Payroll linked',`Payroll approver confirmed inclusion in payroll #${paid.id} (${paid.month}/${paid.year})`);
   }));
 }));

@@ -74,7 +74,7 @@ export async function getPredictiveTurnover(department?: string) {
         leaveType: leaves.leaveType,
         startDate: leaves.startDate,
         endDate: leaves.endDate,
-        duration: sql`EXTRACT(DAY FROM ${leaves.endDate}::timestamp - ${leaves.startDate}::timestamp) + 1`,
+        duration: sql<number>`${leaves.totalDays}::float8`,
         department: employees.department
       })
       .from(leaves)
@@ -1020,6 +1020,7 @@ function buildLeavesQuery(filters: any, groupBy: string[] = [], aggregations: an
       leaveType: leaves.leaveType,
       startDate: leaves.startDate,
       endDate: leaves.endDate,
+      totalDays: sql<number>`${leaves.totalDays}::float8`,
       status: leaves.status,
       department: employees.department
     })

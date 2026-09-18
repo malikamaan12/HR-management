@@ -204,6 +204,97 @@
       "when": 1789750800000,
       "tag": "0028_lifecycle_review_templates",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1789754400000,
+      "tag": "0029_equipment_register",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1789754400001,
+      "tag": "0030_handbook_acknowledgements",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1789754400002,
+      "tag": "0031_employment_changes",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1789754400003,
+      "tag": "0032_record_retention",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1789754400004,
+      "tag": "0033_helpdesk_automation",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1789754400005,
+      "tag": "0034_workforce_series_evidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1789754400006,
+      "tag": "0035_performance_participants",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1789754400007,
+      "tag": "0036_leave_stages",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1789754400008,
+      "tag": "0037_operational_reminder_rules",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1789760000000,
+      "tag": "0038_internal_induction",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1789760000001,
+      "tag": "0039_attendance_geofencing",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1789760000002,
+      "tag": "0040_employee_compensation",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1789760000003,
+      "tag": "0041_safety_course_library",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,6 @@
 import { and, eq, isNull, isNotNull, desc, lte, gte } from 'drizzle-orm';
-import { attendance, employees, leaves,workforceAssignments,workforceShifts,workforceTeams,workforceSites } from '@shared/schema';
+import { attendance, employees, leaves,leaveSnapshots,workforceAssignments,workforceShifts,workforceTeams,workforceSites } from '@shared/schema';
+import {halfDayWindow,leaveOverlaps} from '@shared/leave-workflow';
 import {attendancePolicy} from './hr-rules';
 import {dayAt} from '@shared/hr-rules';
 import {siteTimeToIso} from '@shared/workforce';
@@ -7,11 +8,13 @@ import type {WorkforceTransaction} from './workforce';
 import { db } from '../db';
 import {calculationSnapshot} from './calculation-rules';
 import {calculateTime,managementLate} from '@shared/calculation-rules';
+import {verifyAttendanceLocation,needsAttendanceApproval} from './attendance-location';
+import type {LocationFix} from '@shared/attendance-location';
 
 export function attendanceDate(now=new Date()):string {
   return new Intl.DateTimeFormat('en-CA',{timeZone:process.env.APP_TIMEZONE || 'UTC',year:'numeric',month:'2-digit',day:'2-digit'}).format(now);
 }
-export async function clockAttendance(userId:number,action:'in'|'out'|'break_start'|'break_end',location?:string,notes?:string,now=new Date()){
+export async function clockAttendance(userId:number,action:'in'|'out'|'break_start'|'break_end',location?:string,notes?:string,now=new Date(),position?:LocationFix){
   return db.transaction(async tx=>{
     // Lock the employee so simultaneous clock-ins cannot create duplicate daily records.
     const [employee]=await tx.select().from(employees).where(eq(employees.userId,userId)).for('update');
@@ -24,11 +27,13 @@ export async function clockAttendance(userId:number,action:'in'|'out'|'break_sta
     const snapshot=record?.calculationSnapshot||await calculationSnapshot(employee,record?.date||date,tx,!!record?.checkIn);
     if(action==='in'){
       if(employee.status!=='active'||date<employee.joiningDate||(employee.contractEndDate&&date>employee.contractEndDate)||(employee.terminationDate&&date>employee.terminationDate))throw new Error('Attendance must fall within active employment');
-      const [leave]=await tx.select({id:leaves.id}).from(leaves).where(and(eq(leaves.employeeId,employee.id),eq(leaves.status,'approved'),lte(leaves.startDate,date),gte(leaves.endDate,date)));
-      if(leave)throw new Error('Approved leave covers today; contact HR to resolve it');
+      const leaveRows=await tx.select({leave:leaves,snapshot:leaveSnapshots}).from(leaves).leftJoin(leaveSnapshots,eq(leaveSnapshots.leaveId,leaves.id)).where(and(eq(leaves.employeeId,employee.id),eq(leaves.status,'approved'),lte(leaves.startDate,date),gte(leaves.endDate,date)));
+      if(leaveRows.some(({leave,snapshot})=>leaveOverlaps(snapshot,leave.startDate,leave.endDate,now,new Date(+now+1),policy.timezone)))throw new Error('Approved leave covers this time; contact HR to resolve it');
       if(record?.checkIn)throw new Error('Already clocked in today');
-      const status=policy.id!==null||employee.workSchedule==='shift_based'?await clockStatus(tx,employee,date,now,policy):managementLate(now,snapshot)?'late' as const:'present' as const;
-      const value={checkIn:now,status,calculationSnapshot:snapshot,checkInMethod:'mobile_app' as const,location:location || null,notes:notes || null};
+      const partial=leaveRows.map(r=>({window:halfDayWindow(r.snapshot),portion:r.snapshot?.dayPortion})).find(r=>r.portion==='first_half'&&r.window);
+      const status=partial?.window?(+now>+partial.window.end+policy.graceMinutes*60000?'late' as const:'present' as const):policy.id!==null||employee.workSchedule==='shift_based'?await clockStatus(tx,employee,date,now,policy):managementLate(now,snapshot)?'late' as const:'present' as const;
+      const evidence=await verifyAttendanceLocation(tx,employee.id,position,undefined,now),approvalRequired=await needsAttendanceApproval(tx,employee,now);
+      const value={checkIn:now,status,calculationSnapshot:snapshot,checkInMethod:'mobile_app' as const,location:evidence.fence?.name||location || null,locationIn:evidence,approvalStatus:approvalRequired?'pending' as const:'not_required' as const,notes:notes || null};
       const [saved]=record ? await tx.update(attendance).set(value).where(eq(attendance.id,record.id)).returning():await tx.insert(attendance).values({...value,date,employeeId:employee.id}).returning();return saved;
     }
     if(!record?.checkIn)throw new Error('Clock in first');
@@ -44,9 +49,12 @@ export async function clockAttendance(userId:number,action:'in'|'out'|'break_sta
       const [saved]=await tx.update(attendance).set({breakEndTime:now,totalBreakMinutes:record.totalBreakMinutes+activeMinutes,updatedAt:now}).where(eq(attendance.id,record.id)).returning();return saved;
     }
     const breaks=record.totalBreakMinutes+activeMinutes;
+    const covering=await tx.select({leave:leaves,snapshot:leaveSnapshots}).from(leaves).leftJoin(leaveSnapshots,eq(leaveSnapshots.leaveId,leaves.id)).where(and(eq(leaves.employeeId,employee.id),eq(leaves.status,'approved'),lte(leaves.startDate,date),gte(leaves.endDate,record.date)));
+    if(covering.some(r=>leaveOverlaps(r.snapshot,r.leave.startDate,r.leave.endDate,record.checkIn!,now,policy.timezone)))throw new Error('Worked time overlaps approved leave; submit a correction or ask HR to reconcile the leave');
     const elapsed=Math.max(breaks,Math.round((now.getTime()-record.checkIn.getTime())/60000));
     const worked=calculateTime(elapsed,breaks,snapshot.rules.attendance).calculatedMinutes;
-    const [saved]=await tx.update(attendance).set({checkOut:now,checkOutMethod:'mobile_app',totalWorkHours:worked,totalBreakMinutes:breaks,calculationSnapshot:snapshot,
+    const evidence=await verifyAttendanceLocation(tx,employee.id,position,undefined,now);
+    const [saved]=await tx.update(attendance).set({checkOut:now,checkOutMethod:'mobile_app',locationOut:evidence,totalWorkHours:worked,totalBreakMinutes:breaks,calculationSnapshot:snapshot,
       breakEndTime:activeBreak?now:record.breakEndTime,location:location || record.location,notes:notes || record.notes,updatedAt:now}).where(eq(attendance.id,record.id)).returning();return saved;
   });
 }
