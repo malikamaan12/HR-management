@@ -1,5 +1,7 @@
 # E3 HR free deployment
 
+18 September 2026 release candidate: reporting snapshots, candidate corrections and shared event/FEC navigation have been reconciled onto the existing live baseline. See [REPORTING-CORRECTIONS-RELEASE.md](REPORTING-CORRECTIONS-RELEASE.md) for validation and branch compatibility limits. Deployment is pending verification.
+
 Updated 16 September 2026. The existing Free service is live at [e3-hr.onrender.com](https://e3-hr.onrender.com), sourced from `malikamaan12/HR-management` on `main`. The latest combined module release (revision `f69d238`) is deployed successfully. Production has no operational employee records yet. The existing administrator and private storage remain configured; Resend sender setup remains pending. Automatic deployments remain off.
 
 ## Budget and services

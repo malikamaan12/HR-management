@@ -183,6 +183,13 @@
       "when": 1789527601000,
       "tag": "0025_team_tasks",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1789732800000,
+      "tag": "0026_report_snapshots_candidate_corrections",
+      "breakpoints": true
     }
   ]
 }

@@ -1020,6 +1020,7 @@ export const jobPostings = pgTable("job_postings", {
 
 // Candidates
 export const candidates = pgTable("candidates", {
+  recordVersion: integer("record_version").notNull().default(1),
   id: serial("id").primaryKey(),
   fullNameEn: text("full_name_en").notNull(),
   fullNameAr: text("full_name_ar"),
@@ -1397,6 +1398,7 @@ export const insertJobPostingSchema = createInsertSchema(jobPostings).omit({
 });
 
 export const insertCandidateSchema = createInsertSchema(candidates).omit({
+  recordVersion: true,
   id: true,
   createdAt: true,
   updatedAt: true,

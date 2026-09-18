@@ -1,8 +1,10 @@
+import snapshotRouter from './reportSnapshots';
 import { Router, Request, Response } from 'express';
 import * as reportingService from '../services/reporting';
 import { authenticate, authorize } from '../middleware/auth';
 
 const router = Router();
+router.use('/snapshots',snapshotRouter);
 
 // Get dashboard stats
 router.get('/dashboard/stats', async (req: Request, res: Response) => {

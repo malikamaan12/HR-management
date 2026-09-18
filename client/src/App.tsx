@@ -1,37 +1,64 @@
-import Learning from '@/pages/Learning';
-import {Benefits, Expenses} from '@/pages/EmployeeServices';
+
+
 import { Switch, Route, useLocation, Redirect } from "wouter";
 import MainLayout from "@/components/layouts/MainLayout";
 import NotFound from "@/pages/not-found";
-import Dashboard from "@/pages/Dashboard";
-import EmployeeDatabase from "@/pages/EmployeeDatabase";
-import Payroll from "@/pages/PayrollOperations";
-import Attendance from "@/pages/AttendanceOperations";
-import Leave from "@/pages/Leave";
-import HrRules from '@/pages/HrRules';
-import Documents from "@/pages/Documents";
-import EventStaff from "@/pages/EventStaff";
-import Workforce from "@/pages/Workforce";
-import Helpdesk from "@/pages/Helpdesk";
-import Timesheets from "@/pages/Timesheets";
-import AssignmentReviews from "@/pages/AssignmentReviews";
-import TeamOverview from "@/pages/TeamOverview";
-import Settings from "@/pages/Settings";
-import Reports from "@/pages/Reports";
-import Recruitment from "@/pages/Hiring";
-import Onboarding from "@/pages/Lifecycle";
-import Communications from "@/pages/Communications";
-import Performance from "@/pages/Performance";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import PasswordRecovery from "@/pages/PasswordRecovery";
 import Login from "@/pages/Login";
 import Signup from "@/pages/Signup";
-import UserManagement from "@/pages/UserManagement";
-import UserAccount from "@/pages/UserAccount";
-import BulkImport from "@/pages/BulkImport";
+
+
+
 import { Loader2 } from "lucide-react";
-import { useState, useEffect, ReactNode } from "react";
+import { useState, useEffect, ReactNode, lazy, Suspense } from "react";
+import {PageBoundary} from "@/components/layouts/PageBoundary";
 import { useAuth } from "@/contexts/AuthContext";
 
+const Learning=lazy(()=>import('@/pages/Learning'));
+const Dashboard=lazy(()=>import('@/pages/Dashboard'));
+const EmployeeDatabase=lazy(()=>import('@/pages/EmployeeDatabase'));
+const Payroll=lazy(()=>import('@/pages/PayrollOperations'));
+const Attendance=lazy(()=>import('@/pages/AttendanceOperations'));
+const Leave=lazy(()=>import('@/pages/Leave'));
+const HrRules=lazy(()=>import('@/pages/HrRules'));
+const Documents=lazy(()=>import('@/pages/Documents'));
+const EventStaff=lazy(()=>import('@/pages/EventStaff'));
+const Workforce=lazy(()=>import('@/pages/Workforce'));
+const Helpdesk=lazy(()=>import('@/pages/Helpdesk'));
+const Timesheets=lazy(()=>import('@/pages/Timesheets'));
+const AssignmentReviews=lazy(()=>import('@/pages/AssignmentReviews'));
+const TeamOverview=lazy(()=>import('@/pages/TeamOverview'));
+const Settings=lazy(()=>import('@/pages/Settings'));
+const Reports=lazy(()=>import('@/pages/Reports'));
+const Recruitment=lazy(()=>import('@/pages/Hiring'));
+const Onboarding=lazy(()=>import('@/pages/Lifecycle'));
+const Communications=lazy(()=>import('@/pages/Communications'));
+const Performance=lazy(()=>import('@/pages/Performance'));
+const UserManagement=lazy(()=>import('@/pages/UserManagement'));
+const UserAccount=lazy(()=>import('@/pages/UserAccount'));
+const BulkImport=lazy(()=>import('@/pages/BulkImport'));
+const Benefits=lazy(()=>import('@/pages/EmployeeServices').then(m=>({default:m.Benefits})));
+const Expenses=lazy(()=>import('@/pages/EmployeeServices').then(m=>({default:m.Expenses})));
+const EventArchive=lazy(()=>import('@/pages/EventArchive'));
 // Protected route wrapper
 interface ProtectedRouteProps {
   children: ReactNode;
@@ -136,7 +163,7 @@ function App() {
   return (
     <ProtectedRoute>
       <MainLayout pageTitle={getPageTitle()}>
-        <Switch>
+        <PageBoundary key={location}><Suspense fallback={<p role="status" className="p-6">Loading page…</p>}><Switch>
           <Route path="/" component={Dashboard} />
           <Route path="/employees" component={EmployeeDatabase} />
           <Route path="/payroll" component={Payroll} />
@@ -144,6 +171,7 @@ function App() {
           <Route path="/leave" component={Leave} />
           <Route path="/hr-rules" component={HrRules} />
           <Route path="/documents" component={Documents} />
+          <Route path="/event-staff/archive" component={EventArchive} />
           <Route path="/event-staff" component={EventStaff} />
           <Route path="/workforce" component={Workforce} />
           <Route path="/assignment-reviews" component={AssignmentReviews} />
@@ -166,7 +194,7 @@ function App() {
           <Route path="/account" component={UserAccount} />
           <Route path="/bulk-import" component={BulkImport} />
           <Route component={NotFound} />
-        </Switch>
+        </Switch></Suspense></PageBoundary>
       </MainLayout>
     </ProtectedRoute>
   );

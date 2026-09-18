@@ -1,3 +1,4 @@
+import candidateCorrections from './candidateCorrections';
 import { Router } from 'express';
 import interviewRouter from './hiring-interviews';
 import { randomUUID } from 'node:crypto';
@@ -17,6 +18,7 @@ import { getAccessScope, hasPermission, type Permission } from '@shared/permissi
 import type { TokenPayload } from '../services/auth';
 const router = Router();
 router.use(authenticate);
+router.use(candidateCorrections);
 router.use('/interviews', interviewRouter);
 router.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
 const scope = (u: TokenPayload, p: Permission = 'read') => !hasPermission(u.role, 'recruitment_onboarding', p) ? sql `false` : getAccessScope(u.role, 'recruitment_onboarding') === 'all' ? sql `true` : getAccessScope(u.role, 'recruitment_onboarding') === 'department' && u.department ? eq(jobs.department, u.department) : sql `false`;

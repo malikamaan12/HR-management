@@ -1,3 +1,4 @@
+import ReportSnapshots from './ReportSnapshots';
 import {format} from 'date-fns';
 import {useState} from 'react';
 import {useMutation,useQuery} from '@tanstack/react-query';
@@ -22,7 +23,7 @@ function ReportValue({value}:{value:unknown}){
  if(value!==null&&typeof value==='object')return <dl className="space-y-3">{Object.entries(value).map(([key,item])=><div key={key}><dt className="font-medium">{label(key)}</dt><dd><ReportValue value={item}/></dd></div>)}</dl>;
  return <span>{value==null?'—':typeof value==='boolean'?value?'Yes':'No':String(value)}</span>;
 }
-export default function Reports(){
+function ExistingReports(){
  const [report,setReport]=useState<keyof typeof reports>('employee-headcount'),[department,setDepartment]=useState(''),[site,setSite]=useState(''),[teamId,setTeamId]=useState(''),[start,setStart]=useState(`${new Date().getFullYear()}-01-01`),[end,setEnd]=useState(format(new Date(),'yyyy-MM-dd')), [viewName,setViewName]=useState('');
  const views=useQuery<any[]>({queryKey:['/api/reporting/saved-views']});
  const generate=useMutation({mutationFn:()=>{const params=new URLSearchParams({startDate:start,endDate:end,year:start.slice(0,4)});if(department.trim())params.set('department',department.trim());if(site.trim())params.set('site',site.trim());if(teamId.trim())params.set('teamId',teamId.trim());return apiJson<unknown>(`/api/reporting/${report}?${params}`);}});
@@ -38,3 +39,5 @@ export default function Reports(){
  {generate.data!==undefined&&<><div className="flex gap-3"><Button variant="outline" onClick={download}>Download CSV</Button><Button variant="outline" onClick={()=>window.print()}>Print / save PDF</Button></div><ReportValue value={generate.data}/></>}
  </CardContent></Card>;
 }
+
+export default function Reports(){return <div className="space-y-6"><ReportSnapshots/><details className="border rounded p-4"><summary>Existing attendance reports and saved views</summary><p className="py-2 text-sm">These existing views use their original report definitions. Use Saved HR reports above for versioned snapshots and the new calculation definitions.</p><ExistingReports/></details></div>;}

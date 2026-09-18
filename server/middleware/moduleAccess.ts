@@ -7,7 +7,7 @@ import { eq,and } from 'drizzle-orm';
 
 export async function moduleAccess(req:Request,res:Response,next:NextFunction){
   if(!req.user)return res.status(401).json({message:'Authentication required'});
-  const path=req.path,read=req.method==='GET'||req.method==='HEAD';
+  const path=req.path.toLowerCase(),read=req.method==='GET'||req.method==='HEAD';
   if(!read&&/^\/(job-|candidates|interviews|onboarding-|employee-onboarding|checklist-tasks|leave-balances|leave-approvals|leave-supporting-documents)/.test(path))return res.status(409).json({message:'Use the reviewed recruitment, employee lifecycle or leave workflow for changes'});
   // These legacy management endpoints return organization-wide records.
   let module:HRModule|undefined;
@@ -20,7 +20,7 @@ export async function moduleAccess(req:Request,res:Response,next:NextFunction){
   else if(/^\/(role-management|activity-logs)/.test(path))module='system_configuration';
   else if(/^\/(leave-types|leave-balances|leave-approvals|leave-supporting-documents)/.test(path) && !read)module='leave_absence_management';
   if(module){
-    const permission=read?'read':req.method==='DELETE'?'delete':req.method==='POST'?'create':'update';
+    const permission=(read||(req.method==='POST'&&/^\/reporting\/snapshots\/(runs|policy)\/?$/.test(path)))?'read':req.method==='DELETE'?'delete':req.method==='POST'?'create':'update';
     const scope=getAccessScope(req.user.role,module);
     // Performance and training handlers apply the employee row scope
     // themselves, so self/team/department users may reach them. Legacy

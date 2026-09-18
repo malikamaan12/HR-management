@@ -1,5 +1,7 @@
 # HR module completion plan
 
+18 September 2026 release candidate: reporting snapshots, candidate corrections and shared event/FEC navigation have been reconciled onto the existing live baseline. See [REPORTING-CORRECTIONS-RELEASE.md](REPORTING-CORRECTIONS-RELEASE.md) for validation and branch compatibility limits. Deployment is pending verification.
+
 Updated 16 September 2026. Attendance/leave, payroll and recruitment/onboarding/offboarding core workflows are deployed, and Learning, Benefits, Expenses, team task ownership, advanced reporting, operational reminders and absence coverage are live in release `f69d238`. The application is live at https://e3-hr.onrender.com on Render Free and Supabase Free. This checklist separates the current foundation from workflows that still need implementation and acceptance. It does not certify every module as finished.
 
 ## Release standard
