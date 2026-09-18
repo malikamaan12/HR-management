@@ -5,6 +5,8 @@ import employeeServiceRoutes from './routes/employee-services';
 import performanceCycleRoutes from './routes/performance-cycles';
 import employeeRecordsRouter from './routes/employeeRecords';
 import hrRuleRoutes from './routes/hr-rules';
+import operationsSetupRoutes from './routes/operations-setup';
+import operationsTrainingRoutes from './routes/operations-training';
 import lifecycleRoutes from './routes/lifecycle';
 import equipmentRoutes from './routes/equipment';
 import handbookRoutes from './routes/handbook';
@@ -107,6 +109,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/admin/users',userRoutes);
   app.use('/api/settings',settingsRoutes);
   app.use('/api/hr-rules',hrRuleRoutes);
+  app.use('/api/operations-setup',operationsSetupRoutes);
+  app.use('/api/operations-training',operationsTrainingRoutes);
   app.use('/api/learning',learningRoutes);
   app.use('/api/benefits',employeeServiceRoutes('benefit'));
   app.use('/api/expenses',employeeServiceRoutes('expense'));

@@ -40,6 +40,7 @@ const Payroll=lazy(()=>import('@/pages/PayrollOperations'));
 const Attendance=lazy(()=>import('@/pages/AttendanceOperations'));
 const Leave=lazy(()=>import('@/pages/Leave'));
 const HrRules=lazy(()=>import('@/pages/HrRules'));
+const OperationsSetup=lazy(()=>import('@/pages/OperationsSetup'));
 const Documents=lazy(()=>import('@/pages/Documents'));
 const EventStaff=lazy(()=>import('@/pages/EventStaff'));
 const Workforce=lazy(()=>import('@/pages/Workforce'));
@@ -135,6 +136,7 @@ function App() {
       case '/retention': return 'Record Retention';
       case '/reminder-rules': return 'Reminder Rules';
       case '/hr-rules': return 'HR Rules';
+      case '/operations-setup': return 'Operational setup';
       case '/communications': return 'Communication Hub';
       case '/performance': return 'Performance Management';
       case '/learning': return 'Learning & Training';
@@ -179,7 +181,8 @@ function App() {
           <Route path="/payroll" component={Payroll} />
           <Route path="/attendance" component={Attendance} />
           <Route path="/leave" component={Leave} />
-          <Route path="/hr-rules" component={HrRules} />
+          <Route path="/hr-rules"><HrRules /></Route>
+          <Route path="/operations-setup" component={OperationsSetup} />
           <Route path="/documents" component={Documents} />
           <Route path="/event-staff/archive" component={EventArchive} />
           <Route path="/event-staff" component={EventStaff} />

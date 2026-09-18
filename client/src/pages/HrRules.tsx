@@ -16,9 +16,9 @@ type Rule = {
 const blank = { timezone: 'Asia/Qatar', workingDays: [0, 1, 2, 3, 4], startTime: '09:00', endTime: '17:00', breakMinutes: 0, graceMinutes: 0, holidays: [] };
 const leave = { paid: true, balanceRequired: true, accrualMode: 'none', annualDays: 0, monthlyDays: 0, carryoverLimit: 0, minServiceDays: 0, maxConsecutiveDays: 30, approverId: null,allowHalfDays:false,additionalApproverIds:[] as number[] };
 const pay = { currency: 'QAR', cycleStartDay: 1, payDay: 1, basis: 'salary', basicSalary: '0.00', hourlyRate: '0.00', dailyRate: '0.00', eventRate: '0.00', dailyPayMethod: 'full_day', eventPayUnit: 'assignment', overtimeEnabled: true, unpaidLeave: { enabled: false, deductionBase: 'basic', divisor: 'calendar_days', fixedDays: 30 }, regularMinutesPerDay: 480, overtimeMultiplier: 1, allowances: {}, deductions: {}, approverId: null };
-export default function HrRules() {
+export default function HrRules({ initialKind = 'attendance' }: { initialKind?: 'attendance' | 'leave' | 'payroll' } = {}) {
     const { user } = useAuth(), allowed = ['admin', 'super_admin'].includes(user?.role || '');
-    const [kind, setKind] = useState('attendance'), [name, setName] = useState('Work calendar'), [employeeId, setEmployee] = useState(''), [q, setQ] = useState(''), [effectiveFrom, setDate] = useState(new Date().toISOString().slice(0, 10)), [why, setWhy] = useState(''), [config, setConfig] = useState<any>(blank), [error, setError] = useState('');
+    const [kind, setKind] = useState<string>(initialKind), [name, setName] = useState(initialKind === 'leave' ? '' : initialKind === 'payroll' ? 'Pay policy' : 'Work calendar'), [employeeId, setEmployee] = useState(''), [q, setQ] = useState(''), [effectiveFrom, setDate] = useState(new Date().toISOString().slice(0, 10)), [why, setWhy] = useState(''), [config, setConfig] = useState<any>(initialKind === 'leave' ? leave : initialKind === 'payroll' ? pay : blank), [error, setError] = useState('');
     const rules = useQuery<{
         rule: Rule;
         employeeName: string | null;

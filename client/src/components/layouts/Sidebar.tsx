@@ -31,6 +31,7 @@ const navItems: NavItem[] = [
   { name: "Recruitment", icon: "fas fa-user-plus", href: "/recruitment", module: "recruitment_onboarding", requiredPermission: "read" },
   { name: "Onboarding / Offboarding", icon: "fas fa-clipboard-list", href: "/onboarding", module: "recruitment_onboarding", requiredPermission: "read" },
   { name: "HR Rules", icon: "fas fa-sliders-h", href: "/hr-rules", module: "system_configuration", requiredPermission: "admin" },
+  { name: "Operational setup", icon: "fas fa-list-check", href: "/operations-setup", module: "system_configuration", requiredPermission: "admin" },
   { name: "Reminder Rules", icon: "fas fa-bell", href: "/reminder-rules", module: "system_configuration", requiredPermission: "admin" },
   { name: "Payroll Management", icon: "fas fa-money-check-alt", href: "/payroll", module: "payroll_management", requiredPermission: "read" },
   { name: "Attendance Tracking", icon: "fas fa-calendar-check", href: "/attendance", module: "attendance_time_tracking", requiredPermission: "read" },
