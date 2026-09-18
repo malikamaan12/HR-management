@@ -1,12 +1,12 @@
 # E3 HR free deployment
 
-18 September 2026 lifecycle release candidate: versioned checklist templates, administrator review rules and independent task approvals are ready for the existing service. See [LIFECYCLE-REVIEW-RELEASE.md](LIFECYCLE-REVIEW-RELEASE.md).
+18 September 2026: versioned checklist templates, administrator review rules and independent task approvals are live in application commit `659b5c99d76002c489dd46eff81d3bf7f137f1fe`, Render deployment `dep-dampgmgu01pc73emvt8g`. Migration and public readiness passed; authenticated screen verification awaits the owner's sign-in. See [LIFECYCLE-REVIEW-RELEASE.md](LIFECYCLE-REVIEW-RELEASE.md).
 
 18 September 2026: reviewed CSV imports, employee correction requests and administrator document review rules are live in commit `1d0013344a636aecc31ce32b640b79d4399405aa`. Render deployment `dep-dammk3ou01pc73ardpp0` succeeded, startup migrations completed, and public health/readiness plus authenticated workflow screens passed verification. See [EMPLOYEE-DOCUMENT-REVIEW-RELEASE.md](EMPLOYEE-DOCUMENT-REVIEW-RELEASE.md).
 
 18 September 2026: reporting snapshots, candidate corrections and shared event/FEC navigation are live in commit `d64f3c21fef5c2bd838b7a9f31b6911f8597b4e8`. Render deployment `dep-damm7usri2ms73drt3ig` succeeded, startup migrations completed, and `/healthz` plus `/readyz` returned HTTP 200. See [REPORTING-CORRECTIONS-RELEASE.md](REPORTING-CORRECTIONS-RELEASE.md) for validation and branch compatibility limits.
 
-Updated 18 September 2026. The existing Free service is live at [e3-hr.onrender.com](https://e3-hr.onrender.com), sourced from `malikamaan12/HR-management` on `main`. The employee/document review release extends reporting and candidate corrections in `d64f3c2`. Production had no employee records at this release's read-only check; no demonstration employees were added. The existing administrator and private storage remain configured; Resend sender setup remains pending. Automatic deployments remain off.
+Updated 18 September 2026. The existing Free service is live at [e3-hr.onrender.com](https://e3-hr.onrender.com), sourced from `malikamaan12/HR-management` on `main`. The lifecycle review release extends employee/document review in `1d00133`. Production had no employee records at the earlier employee/document release's read-only check; no demonstration employees were added by either release. The existing administrator and private storage remain configured; Resend sender setup remains pending. Automatic deployments remain off.
 
 ## Budget and services
 

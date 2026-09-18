@@ -27,7 +27,12 @@ An isolated browser preview with synthetic employees verified administrator rule
 
 ## Deployment
 
-Ready for the existing Render Free service `srv-dajuem0jo6nc73fb36r0` and Supabase Free. No paid resources, dependency or environment changes. Deployment verification is pending.
+Live on the existing Render Free service `srv-dajuem0jo6nc73fb36r0` and Supabase Free. No paid resources, dependency or environment changes.
+
+- Application commit: `659b5c99d76002c489dd46eff81d3bf7f137f1fe`, published to `malikamaan12/HR-management` main.
+- Render deployment [dep-dampgmgu01pc73emvt8g](https://dashboard.render.com/web/srv-dajuem0jo6nc73fb36r0/deploys/dep-dampgmgu01pc73emvt8g) succeeded on 18 September 2026 at 23:02 Qatar time. Startup confirmed `Database migrations completed` before the service became live.
+- `/healthz`, `/readyz` and `/` returned HTTP 200 with the expected client entry `/assets/index-zEfJJFkk.js`. Unauthenticated `/api/lifecycle` and `/api/lifecycle/tasks/queue` returned HTTP 401.
+- The existing live browser session is signed out. Authenticated production screen verification is pending the owner's sign-in; the full synthetic preview flow passed as described above. No production employee records, checklists or rules were created or changed during acceptance.
 
 ## Remaining flow
 
