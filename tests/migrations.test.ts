@@ -23,7 +23,7 @@ test('the complete deployment migration journal applies to an empty database and
 });
 
 
-test.each([25,26])('upgrades live journal through migration %i without changing existing records',async(cutoff)=>{
+test.each([25,26,27])('upgrades live journal through migration %i without changing existing records',async(cutoff)=>{
  const {mkdtempSync,copyFileSync,writeFileSync,rmSync}=await import('node:fs');const {tmpdir}=await import('node:os');const path=await import('node:path');const root=mkdtempSync(path.join(tmpdir(),'hr-upgrade-'));const pg=new PGlite();
  try{
   const current=fileURLToPath(new URL('../migrations',import.meta.url)),journal=JSON.parse(readFileSync(path.join(current,'meta/_journal.json'),'utf8'));
@@ -31,7 +31,11 @@ test.each([25,26])('upgrades live journal through migration %i without changing 
   (await import('node:fs')).mkdirSync(path.join(root,'meta'));writeFileSync(path.join(root,'meta/_journal.json'),JSON.stringify(prior));const db=drizzle(pg);await migrate(db,{migrationsFolder:root});
   await pg.exec("INSERT INTO users(username,email,password,first_name,last_name,role) VALUES ('migration-test','migration@example.test','not-a-real-credential','Migration','Test','super_admin'); INSERT INTO candidates(full_name_en,email,phone,source) VALUES ('Existing Candidate','existing@example.test','Synthetic','other'); INSERT INTO app_settings(key,value) VALUES ('retained-test-policy','{\"configured\":true}'::jsonb)");
   await pg.exec("INSERT INTO employees(employee_id,first_name,last_name,gender,date_of_birth,nationality,qid_number,primary_mobile,residential_address,emergency_contact_name,emergency_contact_number,type,department,position,location,joining_date) VALUES ('UPGRADE-1','Existing','Worker','female','1990-01-01','Test','UPGRADE-QID','Test','Test','Test','Test','temporary','Operations','Host','Mall','2020-01-01'); INSERT INTO documents(employee_id,document_type,document_number,issue_date,expiry_date,status,document_file) VALUES (1,'Passport','RETAINED-NUMBER','2020-01-01','2030-01-01','valid','private/retained.pdf'); INSERT INTO document_renewal_requests(document_id,requested_by,expected_version,proposal) VALUES (1,1,0,'{}'::jsonb); INSERT INTO bulk_import_jobs(file_name,file_url,uploaded_by,status,total_rows,successful_rows,failed_rows) VALUES ('retained.csv','inline-upload',1,'completed',2,2,0)");
+  await pg.exec("INSERT INTO lifecycle_templates(name,kind,tasks,created_by) VALUES ('Existing orientation','onboarding','[{\"title\":\"Orientation\",\"kind\":\"general\",\"required\":true,\"offsetDays\":0}]'::jsonb,1); INSERT INTO lifecycle_cases(employee_id,kind,template_id,template_snapshot,start_date,created_by,reason) VALUES (1,'onboarding',1,'{\"name\":\"Existing orientation\"}'::jsonb,'2020-01-01',1,'Preserve existing workflow'); INSERT INTO lifecycle_tasks(case_id,title,kind,required,owner_id,due_date,status,evidence,completed_by) VALUES (1,'Orientation','general',true,1,'2020-01-01','completed','Existing evidence',1)");
   await migrate(db,{migrationsFolder:current});
+  expect((await pg.query('SELECT version,active FROM lifecycle_templates')).rows[0]).toEqual({version:1,active:true});
+  expect((await pg.query('SELECT status,review_required,review_state,evidence FROM lifecycle_tasks')).rows[0]).toEqual({status:'completed',review_required:false,review_state:'not_required',evidence:'Existing evidence'});
+  expect((await pg.query('SELECT review_policy_snapshot FROM lifecycle_cases')).rows[0].review_policy_snapshot).toBe(null);
   expect((await pg.query('SELECT document_number,document_file FROM documents')).rows[0]).toEqual({document_number:'RETAINED-NUMBER',document_file:'private/retained.pdf'});
   expect((await pg.query('SELECT status,version,assigned_reviewer_id,policy_snapshot FROM document_renewal_requests')).rows[0]).toEqual({status:'pending',version:1,assigned_reviewer_id:null,policy_snapshot:null});
   expect((await pg.query('SELECT status,successful_rows,submission_key FROM bulk_import_jobs')).rows[0]).toEqual({status:'completed',successful_rows:2,submission_key:null});

@@ -197,6 +197,13 @@
       "when": 1789748726896,
       "tag": "0027_employee_document_review",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1789750800000,
+      "tag": "0028_lifecycle_review_templates",
+      "breakpoints": true
     }
   ]
 }
