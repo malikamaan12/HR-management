@@ -1,3 +1,4 @@
+import {CorrectionInbox} from '@/components/employee/Corrections';
 import type { ApiEmployeeDirectory } from '@/lib/api-types';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -28,7 +29,7 @@ export default function EmployeeDatabase() {
       <div><CardTitle>Employee Database</CardTitle><p className="mt-2 text-sm text-muted-foreground">Permanent, temporary and contract staff across your organization.</p></div>
       {data?.canCreate && <Button onClick={() => setShowAdd(true)}>Add Employee</Button>}
     </CardHeader>
-    <CardContent>
+    <CardContent>{data?.canCreate&&<CorrectionInbox select={setSelected}/>}
       <div className="grid gap-3 md:grid-cols-[1fr_180px_180px] mb-5">
         <Input aria-label="Search employees" placeholder="Search name, ID, department, role or location" value={search} onChange={e => setSearch(e.target.value)} />
         <select aria-label="Employee type" className="h-10 rounded-md border bg-background px-3" value={type} onChange={e => { setType(e.target.value); setPage(1); }}>

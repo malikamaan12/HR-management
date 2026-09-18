@@ -19,7 +19,7 @@ export function ReplaceDocument({document,onDone,onCancel,requestApproval=false}
     body.append('document',file);
     return apiJson(`/api/documents/${initial.id}/${requestApproval?'renewal-requests':'replace'}`,{method:'POST',body});
   },onSuccess:async()=>{
-    await cache.invalidateQueries({predicate:q=>String(q.queryKey[0]).startsWith('/api/documents')||String(q.queryKey[0]).startsWith('/api/dashboard')});
+    await cache.invalidateQueries({predicate:q=>String(q.queryKey[0]).startsWith('/api/documents')||String(q.queryKey[0]).startsWith('/api/dashboard')||(/^\/api\/employees\/\d+\/documents$/.test(String(q.queryKey[0])))});
     toast({title:requestApproval?'Renewal submitted for review':'Document renewed or replaced',description:requestApproval?'The current document remains unchanged until approval.':'The earlier file remains in version history.'});onDone();
   },onError:error=>toast({title:'Unable to replace document',description:error.message,variant:'destructive'})});
   return <form className="space-y-4" onSubmit={e=>{e.preventDefault();save.mutate();}}>

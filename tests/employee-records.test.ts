@@ -1,3 +1,4 @@
+import correctionsRouter from '../server/routes/employeeCorrections';
 import { readFileSync, readdirSync } from 'node:fs';
 import { beforeAll, beforeEach, afterAll, expect, test, vi } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
@@ -47,7 +48,7 @@ beforeAll(async () => {
   pg = new PGlite();
   for (const file of readdirSync(new URL('../migrations', import.meta.url)).filter(n => n.endsWith('.sql')).sort()) await pg.exec(readFileSync(new URL('../migrations/' + file, import.meta.url), 'utf8'));
   context.db = drizzle(pg);
-  const app = express(); app.use(express.json()); app.use('/employees', router); app.use('/settings',settingsRouter); app.use('/leaves',leaveRouter); app.use('/documents',documentRouter);
+  const app = express(); app.use(express.json()); app.use('/employees', correctionsRouter); app.use('/employees', router); app.use('/settings',settingsRouter); app.use('/leaves',leaveRouter); app.use('/documents',documentRouter);
   server = app.listen(0, '127.0.0.1'); await new Promise<void>(resolve => server.once('listening', resolve));
   base = 'http://127.0.0.1:' + (server.address() as { port: number }).port;
 });
@@ -391,4 +392,35 @@ test('office settings persist, require admin and survive a legacy settings updat
   expect((await request(admin.token,'/settings/company','PUT',legacy)).body.managementOfficeSchedule.startTime).toBe('09:30');
   expect((await request(employee.token,'/settings/company')).body.managementOfficeSchedule.workingDays).toEqual([0,1,2,3,4]);
   expect((await request(admin.token,'/settings/company','PUT',{...value,managementOfficeSchedule:{...value.managementOfficeSchedule,endTime:'08:00'}})).status).toBe(400);
+});
+
+test('employees request private contact corrections; only independent HR can apply them',async()=>{
+ const staff=await account('employee'),hr=await account('super_admin'),other=await account('employee','other'),finance=await account('finance');const person=await create(1,{userId:staff.id});
+ const path=`/employees/${person.id}/corrections`,data={expectedVersion:person.recordVersion,patch:{primaryMobile:'new-phone'},reason:'Updated contact number'};
+ expect((await request(other.token,path,'POST',data)).status).toBe(404);
+ expect((await request(staff.token,path,'POST',{...data,patch:{status:'inactive'}})).status).toBe(400);
+ const made=await request(staff.token,path,'POST',data);expect(made.status).toBe(201);
+ expect((await request(finance.token,path)).status).toBe(404);
+ expect((await request(staff.token,path,'POST',data)).status).toBe(409);
+ const decision=`${path}/${made.body.id}/decision`;
+ expect((await request(staff.token,decision,'POST',{action:'approve',reason:'My own approval'})).status).toBe(403);
+ expect((await request(hr.token,decision,'POST',{action:'approve',reason:'Verified with employee'})).status).toBe(200);
+ const updated=await request(staff.token,`/employees/${person.id}`);expect(updated.body.primaryMobile).toBe('new-phone');expect(updated.body.recordVersion).toBeGreaterThan(person.recordVersion);
+ expect((await request(hr.token,decision,'POST',{action:'approve',reason:'Duplicate approval'})).status).toBe(409);
+ expect((await request(staff.token,path)).body.items[0]).toMatchObject({status:'approved',previous_values:{primaryMobile:'private-phone'},patch:{primaryMobile:'new-phone'}});
+});
+test('stale correction cannot overwrite a newer record and can be withdrawn',async()=>{
+ const staff=await account('employee'),hr=await account();const person=await create(1,{userId:staff.id});const path=`/employees/${person.id}/corrections`;
+ const made=await request(staff.token,path,'POST',{expectedVersion:person.recordVersion,patch:{primaryMobile:'requested-phone'},reason:'Changed phone number'});
+ await context.db.update(employees).set({primaryMobile:'verified-newer-phone'}).where(eq(employees.id,person.id));
+ const decision=`${path}/${made.body.id}/decision`;
+ expect((await request(hr.token,decision,'POST',{action:'approve',reason:'Attempt older approval'})).status).toBe(409);
+ expect((await request(staff.token,`/employees/${person.id}`)).body.primaryMobile).toBe('verified-newer-phone');
+ expect((await request(staff.token,decision,'POST',{action:'withdraw',reason:'Newer record is correct'})).status).toBe(200);
+});
+test('correction approval and employee change roll back when auditing fails',async()=>{
+ const staff=await account('employee'),hr=await account();const person=await create(1,{userId:staff.id});const path=`/employees/${person.id}/corrections`;
+ const made=await request(staff.token,path,'POST',{expectedVersion:person.recordVersion,patch:{primaryMobile:'requested-phone'},reason:'Changed phone number'});
+ await pg.exec("CREATE FUNCTION fail_correction_audit() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'test'; END; $$ LANGUAGE plpgsql; CREATE TRIGGER fail_correction_audit BEFORE INSERT ON activity_logs FOR EACH ROW EXECUTE FUNCTION fail_correction_audit();");
+ try{expect((await request(hr.token,`${path}/${made.body.id}/decision`,'POST',{action:'approve',reason:'Verified request'})).status).toBe(500);expect((await request(staff.token,`/employees/${person.id}`)).body.primaryMobile).toBe('private-phone');expect((await request(staff.token,path)).body.items[0].status).toBe('pending');}finally{await pg.exec('DROP TRIGGER fail_correction_audit ON activity_logs; DROP FUNCTION fail_correction_audit();');}
 });

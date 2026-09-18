@@ -212,7 +212,8 @@ export function DocumentDetails({ documentId, isOpen, onClose }: DocumentDetails
         )}
         
         <DialogFooter>
-          {document?.canReplace&&!replacing&&<Button variant="outline" onClick={()=>{setRequestApproval(true);setReplacing(true);}}>Request renewal approval</Button>}
+          {document?.approvalRequired&&!replacing&&<p className="text-sm text-muted-foreground">Approval is required before replacing this document.</p>}
+          {document?.canRequestRenewal&&!replacing&&<Button variant="outline" onClick={()=>{setRequestApproval(true);setReplacing(true);}}>Request renewal approval</Button>}
           {document?.canReplace&&!replacing&&<Button onClick={()=>{setRequestApproval(false);setReplacing(true);}}>Renew or replace</Button>}
           {document && document.documentFile && (
             <Button 

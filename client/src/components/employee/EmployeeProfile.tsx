@@ -1,3 +1,5 @@
+import {useAuth} from '@/contexts/AuthContext';
+import {Corrections} from './Corrections';
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ApiEmployeeRecord, ApiEmployeeHistory, ApiDocument } from '@/lib/api-types';
@@ -22,6 +24,7 @@ function Info({ title, fields }: { title: string; fields: [string, unknown][] })
   </dl></CardContent></Card>;
 }
 export default function EmployeeProfile({ employeeId, onClose }: { employeeId: number; onClose: () => void }) {
+  const {user}=useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [edit, setEdit] = useState(false);
@@ -71,6 +74,7 @@ export default function EmployeeProfile({ employeeId, onClose }: { employeeId: n
         <p className="text-sm text-muted-foreground">FEC, mall activation and event team assignments are managed in Workforce Operations.</p>
       </TabsContent>
       {e.access.personal && <TabsContent value="personal" className="space-y-4">
+        {(e.access.canEdit||e.userId===user?.userId)&&<Corrections employeeId={e.id} version={e.recordVersion!}/>}
         <Info title="Personal details" fields={[
           ['Arabic name', e.fullNameArabic], ['Date of birth', e.dateOfBirth ? formatDate(e.dateOfBirth) : null], ['Gender', e.gender], ['Nationality', e.nationality],
           ['QID / identification', e.qidNumber], ['Marital status', e.maritalStatus], ['Religion', e.religion], ['Blood group', e.bloodGroup],

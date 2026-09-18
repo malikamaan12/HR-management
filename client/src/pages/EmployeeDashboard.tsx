@@ -14,5 +14,6 @@ export default function EmployeeDashboard(){
   <Card><CardHeader><CardTitle>Documents</CardTitle></CardHeader><CardContent><p>{data.documents.total} documents · {data.documents.expired} expired · {data.documents.expiring} expiring soon</p><Link href="/documents" className="text-primary">Review documents →</Link></CardContent></Card>
   <Card><CardHeader><CardTitle>Latest recorded payment</CardTitle></CardHeader><CardContent>{data.payroll?<p>{data.payroll.month}/{data.payroll.year} · {data.payroll.currency||'Currency not recorded'} {Number(data.payroll.netSalary).toFixed(2)}</p>:<p>No payment recorded.</p>}<Link href="/payroll" className="text-primary">View payroll →</Link></CardContent></Card>
   <Card><CardHeader><CardTitle>Performance</CardTitle></CardHeader><CardContent><p>Last completed review: {data.performance.rating?.replaceAll('_',' ')||'No completed review'}</p><p>{data.performance.goals} active goals</p></CardContent></Card>
+  <Card><CardHeader><CardTitle>My employee record</CardTitle></CardHeader><CardContent><p>Review your profile and request corrections to your contact, address or emergency details.</p><Link href="/employees" className="text-primary">Open my record →</Link></CardContent></Card>
  </div></div>;
 }

@@ -1,3 +1,5 @@
+import {documentExpiryStatus} from './services/documentGovernance';
+import {getCompanySettings} from './services/settings';
 import learningRoutes from './routes/learning';
 import employeeServiceRoutes from './routes/employee-services';
 import performanceCycleRoutes from './routes/performance-cycles';
@@ -7,7 +9,6 @@ import lifecycleRoutes from './routes/lifecycle';
 import hiringRoutes from './routes/hiring';
 import attendanceOperations from './routes/attendance-operations';
 import { moduleAccess } from './middleware/moduleAccess';
-import multer from 'multer';
 import payrollRoutes from './routes/payroll';
 import userRoutes from './routes/users';
 import settingsRoutes from './routes/settings';
@@ -26,9 +27,10 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 
-import { BulkImportService } from "./services/bulkImport";
+import bulkImportRouter from "./routes/bulkImport";
+import employeeCorrectionsRouter from "./routes/employeeCorrections";
 import { db } from "./db";
-import { bulkImportJobs, leaves, employees, attendance, leaveTypes } from "@shared/schema";
+import { leaves, employees, attendance, leaveTypes } from "@shared/schema";
 import { eq, and, gte, lte, isNotNull, desc, sql } from 'drizzle-orm';
 import notificationsRoutes from "./routes/notifications";
 import announcementsRoutes from "./routes/announcements";
@@ -131,6 +133,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.use('/api/users', userRoutes);
 
+  app.use('/api/employees', employeeCorrectionsRouter);
   app.use('/api/employees', employeeRecordsRouter);
 
   app.use('/api/documents',documentRoutes);
@@ -138,7 +141,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try{const id=z.coerce.number().int().positive().parse(req.params.id);
       const [employee]=await db.select({id:employees.id}).from(employees).where(and(eq(employees.id,id),employeeScope(req.user!,'compliance_documents')));
       if(!employee)return res.status(404).json({message:'Employee not found'});
-      return res.json(await storage.getDocuments(id));
+      const policy=await getCompanySettings();
+      res.set('Cache-Control','no-store');
+      return res.json((await storage.getDocuments(id)).map(document=>({...document,status:documentExpiryStatus(document.expiryDate,policy.documentExpiryDays)})));
     }catch{return res.status(400).json({message:'Unable to load employee documents'});}
   });
 
@@ -1087,65 +1092,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Training & Skills Routes
   app.use('/api/training', trainingRoutes);
 
-  // Initialize services
+  // Reviewed imports preserve historical jobs and never execute the old inline import.
 
-  const bulkImportService = new BulkImportService();
-
-  // Bulk Import API endpoints
-  
-  app.use('/api/bulk-import',authorize(['admin','super_admin']));
-  app.post('/api/bulk-import/upload',multer({storage:multer.memoryStorage(),limits:{fileSize:2*1024*1024,files:1,fields:0}}).single('file'),async(req,res)=>{
-    try{if(!req.file || !req.file.originalname.toLowerCase().endsWith('.csv'))return res.status(400).json({message:'Choose a CSV file up to 2 MB'});
-      const [job]=await db.insert(bulkImportJobs).values({fileName:req.file.originalname,fileUrl:'inline-upload',uploadedBy:req.user!.userId,status:'processing'}).returning();
-      const result=await bulkImportService.processBulkImport(job.id,req.file.buffer.toString('utf8'),req.user!.userId);
-      return res.json({jobId:job.id,...result});
-    }catch(error){return res.status(400).json({message:error instanceof Error?error.message:'Import failed'});}
-  });
-
-  // Get bulk import job status
-  app.get("/api/bulk-import/job/:jobId", async (req, res) => {
-    try {
-      const jobId = parseInt(req.params.jobId);
-      const job = await bulkImportService.getImportJob(jobId);
-
-      if (!job || job.uploadedBy !== req.user!.userId) {
-        return res.status(404).json({ error: "Job not found" });
-      }
-
-      res.json(job);
-    } catch (error: any) {
-      console.error("Error getting bulk import job:", error);
-      res.status(500).json({ error: "Failed to get job status" });
-    }
-  });
-
-  // Get all bulk import jobs for user
-  app.get("/api/bulk-import/jobs", async (req, res) => {
-    try {
-      const userId = req.user?.userId;
-
-      if (!userId) {
-        return res.status(401).json({ error: "User not authenticated" });
-      }
-
-      const jobs = await bulkImportService.getImportJobs(userId);
-      res.json(jobs);
-    } catch (error: any) {
-      console.error("Error getting bulk import jobs:", error);
-      res.status(500).json({ error: "Failed to get jobs" });
-    }
-  });
-
-  // Download sample CSV template
-  app.get("/api/bulk-import/template", (req, res) => {
-    const csvTemplate = `firstName,lastName,email,gender,dateOfBirth,nationality,qidNumber,primaryMobile,residentialAddress,emergencyContactName,emergencyContactNumber,department,position,location,joiningDate,type
-John,Smith,john.smith@company.com,male,1990-05-15,American,12345678901,+97412345678,"123 Main St, Doha",Jane Smith,+97412345679,IT,Software Developer,Doha Office,2024-01-15,permanent
-Sarah,Johnson,sarah.johnson@company.com,female,1988-03-20,British,12345678902,+97412345680,"456 Oak Ave, Doha",Mark Johnson,+97412345681,HR,HR Manager,Doha Office,2024-02-01,permanent`;
-
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', 'attachment; filename="employee_import_template.csv"');
-    res.send(csvTemplate);
-  });
+  app.use('/api/bulk-import',bulkImportRouter);
 
   // Activity Log Routes
   app.get('/api/activity-logs/recent', async (req: Request, res: Response) => {
