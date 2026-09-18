@@ -32,12 +32,16 @@ export async function lockEmployee(tx:WorkforceTransaction, employeeId:number) {
   return employee;
 }
 export async function assertNoWorkforceConflict(tx:WorkforceTransaction, employeeId:number, startAt:Date, endAt:Date, excludeId?:number) {
+  const interview=await tx.execute(sql`SELECT id FROM interviews WHERE interviewer_id=${employeeId} AND status='scheduled' AND interview_date<${endAt.toISOString()}::timestamptz AT TIME ZONE 'UTC' AND interview_date+duration_minutes*interval '1 minute'>${startAt.toISOString()}::timestamptz AT TIME ZONE 'UTC' LIMIT 1`);
+  if(interview.rows.length)fail(409,'Employee has a scheduled interview during this time');
   const [conflict] = await tx.select({id:assignments.id}).from(assignments).innerJoin(shifts,eq(assignments.shiftId,shifts.id))
     .where(and(eq(assignments.employeeId,employeeId),eq(assignments.status,'accepted'),lt(shifts.startAt,endAt),gt(shifts.endAt,startAt),
       excludeId?ne(assignments.id,excludeId):undefined)).limit(1);
   if (conflict) fail(409,'Employee already has an accepted workforce shift at this time');
 }
 export async function assertLeaveCompatible(tx:WorkforceTransaction, employeeId:number, startDate:string, endDate:string) {
+  const interview=await tx.execute(sql`SELECT id FROM interviews WHERE interviewer_id=${employeeId} AND status='scheduled' AND (interview_date AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Qatar')::date<=${endDate}::date AND ((interview_date+(duration_minutes*interval '1 minute')-interval '1 millisecond') AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Qatar')::date>=${startDate}::date LIMIT 1`);
+  if(interview.rows.length)fail(409,'Reschedule or cancel the interview before approving overlapping leave');
   const rows = await tx.select({startAt:shifts.startAt,endAt:shifts.endAt,timezone:sites.timezone}).from(assignments)
     .innerJoin(shifts,eq(assignments.shiftId,shifts.id)).innerJoin(teams,eq(shifts.teamId,teams.id)).innerJoin(sites,eq(teams.siteId,sites.id))
     .where(and(eq(assignments.employeeId,employeeId),eq(assignments.status,'accepted')));

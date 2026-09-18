@@ -1,0 +1,34 @@
+import {Router} from 'express';
+import {z} from 'zod';
+import {and,eq,sql} from 'drizzle-orm';
+import {db} from '../db';
+import {employees,helpdeskCases as cases,activityLogs} from '@shared/schema';
+import {authenticate} from '../middleware/auth';
+import {hasPermission,getAccessScope} from '@shared/permissions';
+import {employeeScope} from '../services/access';
+import {caseScope} from '../services/helpdesk';
+import {sweepHelpdeskReminders} from '../services/helpdeskReminders';
+import {OnboardingError} from '../services/onboarding-workflow';
+import {civilDate} from '@shared/calculation-rules';
+const router=Router();router.use(authenticate);router.use((_req,res,next)=>{res.set('Cache-Control','no-store');next();});
+const admin=(req:any)=>['admin','super_admin'].includes(req.user.role);
+function handler(fn:(req:any,res:any)=>Promise<any>){return async(req:any,res:any)=>{try{await fn(req,res);}catch(e){res.status(e instanceof OnboardingError?e.status:e instanceof z.ZodError?400:500).json({message:e instanceof OnboardingError?e.message:e instanceof z.ZodError?'Check the report or policy fields':'Unable to complete operation'});}};}
+router.get('/reminder-policy',handler(async(req,res)=>{if(!admin(req))throw new OnboardingError(403,'Administrator access required');const r=await db.execute(sql`SELECT version,enabled,escalate FROM helpdesk_reminder_policy WHERE id=1`);res.json(r.rows[0]||{version:0,enabled:false,escalate:false});}));
+router.post('/reminder-policy',handler(async(req,res)=>{if(!admin(req))throw new OnboardingError(403,'Administrator access required');const input=z.object({version:z.number().int().min(0),enabled:z.boolean(),escalate:z.boolean(),reason:z.string().trim().min(5).max(1000)}).strict().parse(req.body);
+ const saved=await db.transaction(async tx=>{await tx.execute(sql`SELECT pg_advisory_xact_lock(293002)`);const old=await tx.execute(sql`SELECT version FROM helpdesk_reminder_policy WHERE id=1`);if(Number(old.rows[0]?.version||0)!==input.version)throw new OnboardingError(409,'Policy changed; reload');const r=await tx.execute(sql`INSERT INTO helpdesk_reminder_policy(id,version,enabled,escalate,actor_id) VALUES (1,${input.version+1},${input.enabled},${input.escalate},${req.user.userId}) ON CONFLICT(id) DO UPDATE SET version=excluded.version,enabled=excluded.enabled,escalate=excluded.escalate,actor_id=excluded.actor_id,updated_at=now() RETURNING version,enabled,escalate`);await tx.execute(sql`INSERT INTO lifecycle_history(kind,record_id,version,snapshot,actor_id,reason) VALUES ('reminder_policy',1,${input.version+1},${JSON.stringify(r.rows[0])}::jsonb,${req.user.userId},${input.reason})`);return r.rows[0];});res.json(saved);
+}));
+router.post('/reminders/run',handler(async(req,res)=>{if(!admin(req))throw new OnboardingError(403,'Administrator access required');res.json(await sweepHelpdeskReminders());}));
+router.get('/reminders',handler(async(req,res)=>{const rows=await db.select({id:sql<number>`r.id`,caseId:cases.id,kind:sql<string>`r.kind`,deadline:sql<string>`r.deadline`,readAt:sql<string|null>`r.read_at`,caseStatus:cases.status}).from(cases).innerJoin(sql`helpdesk_reminders r`,sql`r.case_id=${cases.id}`).where(and(caseScope(req.user),sql`r.user_id=${req.user.userId}`)).orderBy(sql`r.id DESC`).limit(100);res.json(rows);}));
+router.post('/reminders/:id/read',handler(async(req,res)=>{const id=z.coerce.number().int().positive().parse(req.params.id);await db.execute(sql`UPDATE helpdesk_reminders SET read_at=coalesce(read_at,now()) WHERE id=${id} AND user_id=${req.user.userId}`);res.json({ok:true});}));
+router.get('/report',handler(async(req,res)=>{
+ if(!hasPermission(req.user.role,'reports_analytics','read'))throw new OnboardingError(403,'Reports permission required');
+ const input=z.object({kind:z.enum(['headcount','expenses','benefits','learning']),from:civilDate,to:civilDate,format:z.enum(['json','csv']).default('json')}).parse(req.query);if(input.to<input.from||Date.parse(input.to)-Date.parse(input.from)>366*86400000)throw new OnboardingError(400,'Choose an ordered date range up to 366 days');
+ let rows:any[]=[];let definition='';
+ if(input.kind==='headcount'){rows=(await db.execute(sql`SELECT employees.employee_id AS employee,employees.first_name || ' ' || employees.last_name AS name,employees.department,employees.type,employees.status,employees.joining_date FROM employees WHERE ${employeeScope(req.user,'employee_database')} AND employees.joining_date BETWEEN ${input.from} AND ${input.to} ORDER BY employees.id LIMIT 10001`)).rows;definition='Employees whose joining date falls in this range, with their current status. This is a joiner report, not historical headcount or turnover.';}
+ else if(input.kind==='learning'){rows=(await db.execute(sql`SELECT employees.employee_id AS employee,l.course_title,l.due_date,l.status,l.completion_date,l.expiry_date FROM learning_records l JOIN employees ON employees.id=l.employee_id WHERE ${employeeScope(req.user,'training_development')} AND l.due_date BETWEEN ${input.from} AND ${input.to} ORDER BY l.id LIMIT 10001`)).rows;definition='Training assignments due in the selected range; status is current. Certificate expiry does not imply workforce qualification.';}
+ else{const k=input.kind==='expenses'?'expense':'benefit',module=k==='expense'?'payroll_management':'benefits_perks';if(!hasPermission(req.user.role,module,'read')||!['all','department','self'].includes(getAccessScope(req.user.role,module)))throw new OnboardingError(403,'Detailed financial report access required');rows=(await db.execute(sql`SELECT r.id,employees.employee_id AS employee,p.name AS policy,r.service_date,r.end_date,r.status,r.amount_cents FROM employee_service_requests r JOIN employees ON employees.id=r.employee_id JOIN employee_service_policies p ON p.id=r.policy_id WHERE r.kind=${k} AND ${employeeScope(req.user,module)} AND r.service_date BETWEEN ${input.from} AND ${input.to} ORDER BY r.id LIMIT 10001`)).rows;definition='QAR values are integer cents, grouped by current status and service start date. Benefits are approved entitlement values, not payroll deductions or paid claims.';}
+ if(rows.length>10000)throw new OnboardingError(400,'Narrow the report range to at most 10,000 rows');
+ if(input.format==='csv'){const columns=rows.length?Object.keys(rows[0]):['no_records'];const cell=(v:any)=>'"'+String(v??'').replace(/^[=+@\-\t\r]/,"'$&").replace(/"/g,'""')+'"';res.setHeader('Content-Type','text/csv; charset=utf-8');res.setHeader('Content-Disposition',`attachment; filename="${input.kind}-${input.from}-${input.to}.csv"`);return res.send([columns.map(cell).join(','),...rows.map(r=>columns.map(c=>cell(r[c])).join(','))].join('\r\n'));}
+ const totals:Record<string,number>={};for(const row of rows)if(row.amount_cents!==undefined)totals[row.status]=(totals[row.status]||0)+Number(row.amount_cents);res.json({definition,count:rows.length,totalsCents:totals,rows});
+}));
+export default router;

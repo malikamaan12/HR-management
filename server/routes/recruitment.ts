@@ -1,3 +1,5 @@
+import candidateCorrections from './candidateCorrections';
+import {OnboardingError} from '../services/onboarding-workflow';
 import handoffRouter from './recruitmentHandoff';
 import { randomUUID } from 'node:crypto';
 import { Router } from "express";
@@ -12,6 +14,7 @@ import {
   candidateExperience,
   candidateEducation,
   employees,
+  activityLogs,
   insertJobRequisitionSchema,
   insertCandidateSchema,
   insertJobApplicationSchema,
@@ -25,6 +28,7 @@ import { eq, desc, count, sql, and, or, like } from "drizzle-orm";
 import { z } from "zod";
 
 const router = Router();
+router.use(candidateCorrections);
 router.use(handoffRouter);
 
 // Job Requisitions Routes
@@ -107,33 +111,7 @@ router.post('/job-requisitions', async (req, res) => {
   }
 });
 
-router.put('/job-requisitions/:id', async (req, res) => {
-  try {
-    const id = parseInt(req.params.id);
-    const validatedData = insertJobRequisitionSchema.partial().parse(req.body);
-    
-    const result = await db
-      .update(jobRequisitions)
-      .set({
-        ...validatedData,
-        updatedAt: new Date()
-      })
-      .where(eq(jobRequisitions.id, id))
-      .returning();
-    
-    if (result.length === 0) {
-      return res.status(404).json({ error: 'Job requisition not found' });
-    }
-    
-    res.json(result[0]);
-  } catch (error) {
-    console.error('Error updating job requisition:', error);
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Validation error', details: error.errors });
-    }
-    res.status(500).json({ error: 'Failed to update job requisition' });
-  }
-});
+router.put('/job-requisitions/:id',(_req,res)=>res.status(409).json({message:'Use Recruitment controls to edit draft details with the current version and a reason'}));
 
 // Candidates Routes
 router.get('/candidates', async (req, res) => {
@@ -252,6 +230,9 @@ router.post('/candidates', async (req, res) => {
   }
 });
 
+router.put('/candidates/:id',(_req,res)=>res.status(409).json({message:'Unversioned candidate edits are unavailable; existing applications and hiring identity must be preserved'}));
+router.put('/job-applications/:id',(_req,res)=>res.status(409).json({message:'Use Hiring stages with the current version and a reason'}));
+
 // Job Applications Routes
 router.get('/job-applications', async (req, res) => {
   try {
@@ -280,6 +261,7 @@ router.get('/job-applications', async (req, res) => {
 router.post('/job-applications', async (req, res) => {
   try {
     const validatedData = insertJobApplicationSchema.parse(req.body);
+    if(validatedData.status && validatedData.status!=='new')return res.status(400).json({message:'Applications must start at New; use Hiring stages to advance them'});
     
     const result = await db
       .insert(jobApplications)
@@ -296,31 +278,7 @@ router.post('/job-applications', async (req, res) => {
   }
 });
 
-router.put('/job-applications/:id/status', async (req, res) => {
-  try {
-    const id = parseInt(req.params.id);
-    const { status, rejectionReason } = req.body;
-    
-    const result = await db
-      .update(jobApplications)
-      .set({
-        status,
-        rejectionReason: rejectionReason || null,
-        updatedAt: new Date()
-      })
-      .where(eq(jobApplications.id, id))
-      .returning();
-    
-    if (result.length === 0) {
-      return res.status(404).json({ error: 'Job application not found' });
-    }
-    
-    res.json(result[0]);
-  } catch (error) {
-    console.error('Error updating job application status:', error);
-    res.status(500).json({ error: 'Failed to update job application status' });
-  }
-});
+router.put('/job-applications/:id/status', (_req,res) => res.status(409).json({message:'Use the Hiring stages panel to update an application with its current version and a reason'}));
 
 // Interviews Routes
 router.get('/interviews', async (req, res) => {
@@ -351,53 +309,10 @@ router.get('/interviews', async (req, res) => {
   }
 });
 
-router.post('/interviews', async (req, res) => {
-  try {
-    const validatedData = insertInterviewSchema.parse(req.body);
-    
-    const result = await db
-      .insert(interviews)
-      .values(validatedData)
-      .returning();
-    
-    res.status(201).json(result[0]);
-  } catch (error) {
-    console.error('Error creating interview:', error);
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Validation error', details: error.errors });
-    }
-    res.status(500).json({ error: 'Failed to create interview' });
-  }
-});
+router.post('/interviews',(_req,res)=>res.status(409).json({message:'Use Interview scheduling for conflict-checked bookings'}));
+router.put('/interviews/:id',(_req,res)=>res.status(409).json({message:'Use Interview scheduling for versioned decisions'}));
 
-router.put('/interviews/:id', async (req, res) => {
-  try {
-    const id = parseInt(req.params.id);
-    const validatedData = insertInterviewSchema.partial().parse(req.body);
-    
-    const result = await db
-      .update(interviews)
-      .set({
-        ...validatedData,
-        updatedAt: new Date()
-      })
-      .where(eq(interviews.id, id))
-      .returning();
-    
-    if (result.length === 0) {
-      return res.status(404).json({ error: 'Interview not found' });
-    }
-    
-    res.json(result[0]);
-  } catch (error) {
-    console.error('Error updating interview:', error);
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Validation error', details: error.errors });
-    }
-    res.status(500).json({ error: 'Failed to update interview' });
-  }
-});
-
+router.put('/job-offers/:id',(_req,res)=>res.status(409).json({message:'Use Offer controls for versioned draft editing and independent approval'}));
 // Job Offers Routes
 router.get('/job-offers', async (req, res) => {
   try {
@@ -424,51 +339,19 @@ router.get('/job-offers', async (req, res) => {
   }
 });
 
-router.post('/job-offers', async (req, res) => {
-  try {
-    const validatedData = insertJobOfferSchema.parse(req.body);
-    
-    const result = await db
-      .insert(jobOffers)
-      .values(validatedData)
-      .returning();
-    
-    res.status(201).json(result[0]);
-  } catch (error) {
-    console.error('Error creating job offer:', error);
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Validation error', details: error.errors });
-    }
-    res.status(500).json({ error: 'Failed to create job offer' });
-  }
-});
-
-router.put('/job-offers/:id/status', async (req, res) => {
-  try {
-    const id = parseInt(req.params.id);
-    const { status, acceptanceDate, declineReason } = req.body;
-    
-    const result = await db
-      .update(jobOffers)
-      .set({
-        status,
-        acceptanceDate: acceptanceDate || null,
-        declineReason: declineReason || null,
-        updatedAt: new Date()
-      })
-      .where(eq(jobOffers.id, id))
-      .returning();
-    
-    if (result.length === 0) {
-      return res.status(404).json({ error: 'Job offer not found' });
-    }
-    
-    res.json(result[0]);
-  } catch (error) {
-    console.error('Error updating job offer status:', error);
-    res.status(500).json({ error: 'Failed to update job offer status' });
-  }
-});
+router.post('/job-offers',async(req,res)=>{try{
+ const data=insertJobOfferSchema.omit({createdBy:true,status:true,acceptanceDate:true,declineReason:true}).parse(req.body);
+ if(data.expiryDate<data.offerDate||(data.startDate&&data.startDate<data.offerDate)||data.salary<=0)return res.status(400).json({message:'Check offer dates and positive salary'});
+ const result=await db.transaction(async tx=>{
+ const [creator]=await tx.select().from(employees).where(eq(employees.userId,req.user!.userId));if(!creator||creator.status!=='active')throw new OnboardingError(409,'Active employee link required');
+ const [app]=await tx.select().from(jobApplications).where(eq(jobApplications.id,data.applicationId));if(!app||app.status!=='offer')throw new OnboardingError(409,'Application must be at the offer stage');
+ const [job]=await tx.select().from(jobRequisitions).where(eq(jobRequisitions.id,app.requisitionId)).for('update');if(!job||job.status!=='open')throw new OnboardingError(409,'Requisition must be open');
+ const [currentApp]=await tx.select().from(jobApplications).where(eq(jobApplications.id,app.id)).for('update');if(currentApp.status!=='offer')throw new OnboardingError(409,'Application must be at the offer stage');
+ const prior=await tx.select().from(jobOffers).where(and(eq(jobOffers.applicationId,app.id),sql`status IN ('draft','pending_approval','pending','accepted')`));if(prior.length)throw new OnboardingError(409,'Resolve the existing offer first');
+ const [offer]=await tx.insert(jobOffers).values({...data,createdBy:creator.id,status:'draft',acceptanceDate:null,declineReason:null}).returning();
+ await tx.insert(activityLogs).values({userId:req.user!.userId,action:'create',entityType:'offer',entityId:offer.id,details:'Offer draft created for independent approval'});return offer;});res.status(201).json(result);
+ }catch(e){res.status(e instanceof OnboardingError?e.status:e instanceof z.ZodError?400:500).json({message:e instanceof z.ZodError?'Check offer fields':e instanceof OnboardingError?e.message:'Unable to create offer'});}});
+router.put('/job-offers/:id/status',(_req,res)=>res.status(409).json({message:'Use Offer controls for versioned approval and acceptance decisions'}));
 
 // Dashboard Stats
 router.get('/dashboard-stats', async (req, res) => {

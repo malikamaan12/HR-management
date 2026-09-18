@@ -1,5 +1,15 @@
+import employmentContinuityRouter from './routes/employmentContinuity';
+import peopleOperationsRouter from './routes/peopleOperations';
+import equipmentRouter from './routes/equipment';
+import handbookRouter from './routes/handbook';
+import workflowControls from './routes/workflowControls';
+import employeeServicesRouter from './routes/employeeServices';
+import operationsCenterRouter from './routes/operationsCenter';
+import {eosAdmin,eosApi} from './routes/eos';
+import {sweepHelpdeskReminders} from './services/helpdeskReminders';
 import settlementRouter from './routes/settlements';
 import offboardingRouter from './routes/offboarding';
+import lifecycleRouter from './routes/lifecycle';
 import employeeRecordsRouter from './routes/employeeRecords';
 import { moduleAccess } from './middleware/moduleAccess';
 import multer from 'multer';
@@ -20,9 +30,9 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 
-import { BulkImportService } from "./services/bulkImport";
+import bulkImportRouter from "./routes/bulkImport";
 import { db } from "./db";
-import { bulkImportJobs, leaves, employees, attendance, leaveTypes } from "@shared/schema";
+import { leaves, employees, attendance, leaveTypes, eventStaffAssignments } from "@shared/schema";
 import { eq, and, gte, lte, isNotNull, desc, sql } from 'drizzle-orm';
 import notificationsRoutes from "./routes/notifications";
 import announcementsRoutes from "./routes/announcements";
@@ -41,7 +51,7 @@ import onboardingRoutes from "./routes/onboarding";
 import employeeRoutes from "./routes/employee";
 import cookieParser from "cookie-parser";
 import { authenticate, authorize, logApiAccess } from "./middleware/auth";
-import { addDataFiltering } from "./middleware/dataFilter";
+
 import { 
   insertUserSchema, 
   insertEmployeeSchema, 
@@ -69,6 +79,8 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // HR responses, including denied requests and authentication, must not be cached.
+  app.use('/api', (_req,res,next)=>{res.set('Cache-Control','no-store');next();});
   // Add cookie parser middleware
   app.use(cookieParser());
   
@@ -79,6 +91,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Register dashboard routes
   app.use('/api/dashboard', dashboardRoutes);
   
+  app.use('/api/eos/v1',eosApi);
   app.use('/api',authenticate,moduleAccess);
 
   // Register recruitment routes
@@ -118,6 +131,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.use('/api/employees', employeeRecordsRouter);
   app.use('/api/offboarding',offboardingRouter);
+  app.use('/api/lifecycle',lifecycleRouter);
+  app.use('/api/workflow-controls',workflowControls);
+  app.use('/api/employment-continuity',employmentContinuityRouter);
+  app.use('/api/people-operations',peopleOperationsRouter);
+  app.use('/api/equipment',equipmentRouter);
+  app.use('/api/handbook',handbookRouter);
+  app.use('/api/employee-services',employeeServicesRouter);
+  app.use('/api/operations-center',operationsCenterRouter);
+  app.use('/api/eos-keys',eosAdmin);
+  const reminderTimer=setInterval(()=>{void sweepHelpdeskReminders().catch(()=>console.error('Helpdesk reminder sweep failed'));},5*60*1000);
+  reminderTimer.unref();
   app.use('/api/settlements',settlementRouter);
 
   app.use('/api/documents',documentRoutes);
@@ -399,32 +423,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  app.post('/api/leave-approvals', async (req: Request, res: Response) => {
-    try {
-      const approvalData = insertLeaveApprovalSchema.parse(req.body);
-      const [visible] = await db.select({ id: leaves.id }).from(leaves).innerJoin(employees, eq(leaves.employeeId, employees.id))
-        .where(and(eq(leaves.id, approvalData.leaveId), employeeScope(req.user!, 'leave_absence_management', 'approve')));
-      if (!visible) return res.status(403).json({ message: 'You cannot create this leave approval' });
-      const newApproval = await storage.createLeaveApproval(approvalData);
-      
-      // Log activity
-      await storage.createActivityLog({
-        userId: req.user!.userId,
-        action: 'create',
-        details: `Added approval for leave request #${newApproval.leaveId} by approver #${newApproval.approverId}`,
-        entityType: 'leave_approval',
-        entityId: newApproval.id
-      });
-      
-      res.status(201).json(newApproval);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: 'Invalid approval data', error: error.errors });
-      }
-      res.status(500).json({ message: 'Server error creating leave approval', error: error instanceof Error ? error.message : 'Unknown error' });
-    }
-  });
-
+  app.post('/api/leave-approvals',(_req,res)=>res.status(409).json({message:'Use the leave request decision action so authorization, balance and approval evidence are updated together'}));
   app.use('/api/payroll',payrollRoutes);
 
   // Event Routes
@@ -465,6 +464,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/event-staff-assignments', async (req: Request, res: Response) => {
     try {
       const assignmentData = insertEventStaffAssignmentSchema.parse(req.body);
+      const [target]=await db.select({id:employees.id}).from(employees).where(and(eq(employees.id,assignmentData.employeeId),employeeScope(req.user!,'event_staff_management','create')));
+      if(!target)return res.status(404).json({message:'Employee not found'});
       const newAssignment = await storage.createEventStaffAssignment(assignmentData);
       
       // Log activity
@@ -489,7 +490,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/events/:id/staff', async (req: Request, res: Response) => {
     try {
       const eventId = parseInt(req.params.id);
-      const assignments = await storage.getEventStaffAssignments(eventId);
+      const assignments = await storage.getEventStaffAssignments(eventId,employeeScope(req.user!,'event_staff_management'));
       res.status(200).json(assignments);
     } catch (error) {
       res.status(500).json({ message: 'Server error getting event staff assignments', error: error instanceof Error ? error.message : 'Unknown error' });
@@ -498,8 +499,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.get('/api/event-staff-assignments', async (req: Request, res: Response) => {
     try {
-      // Get all assignments - we'll filter on the client side if needed
-      const assignments = await storage.getEventStaffAssignments(0);
+      // Apply employee visibility in SQL before returning assignments.
+      const assignments = await storage.getEventStaffAssignments(0,employeeScope(req.user!,'event_staff_management'));
       res.status(200).json(assignments);
     } catch (error) {
       res.status(500).json({ message: 'Server error getting staff assignments', error: error instanceof Error ? error.message : 'Unknown error' });
@@ -524,7 +525,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch('/api/events/:id', async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);
-      const updateSchema = insertEventSchema.partial();
+      const updateSchema = insertEventSchema.omit({createdBy:true}).partial().strict();
       const eventData = updateSchema.parse(req.body);
       const updatedEvent = await storage.updateEvent(id, eventData);
       
@@ -602,7 +603,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Event Staff Profiles Routes
   app.get('/api/event-staff-profiles', async (req: Request, res: Response) => {
     try {
-      const profiles = await storage.getEventStaffProfiles();
+      const profiles = await storage.getEventStaffProfiles(employeeScope(req.user!,'event_staff_management'));
       res.status(200).json(profiles);
     } catch (error) {
       res.status(500).json({ message: 'Server error getting event staff profiles', error: error instanceof Error ? error.message : 'Unknown error' });
@@ -627,6 +628,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/event-staff-profiles', async (req: Request, res: Response) => {
     try {
       const profileData = insertEventStaffProfileSchema.parse(req.body);
+      const [target]=await db.select({id:employees.id}).from(employees).where(and(eq(employees.id,profileData.employeeId),employeeScope(req.user!,'event_staff_management','create')));
+      if(!target)return res.status(404).json({message:'Employee not found'});
       const newProfile = await storage.createEventStaffProfile(profileData);
       
       // Log activity
@@ -701,7 +704,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const rosterId = parseInt(req.params.rosterId);
       const roster = await storage.getEventRoster(rosterId);
       if(!roster)return res.status(404).json({message:'Roster not found'});
-      const assignments = await storage.getEventRosterAssignments(roster.eventId);
+      const assignments = await storage.getEventRosterAssignments(roster.eventId,undefined,employeeScope(req.user!,'event_staff_management'));
       res.status(200).json(assignments);
     } catch (error) {
       res.status(500).json({ message: 'Server error getting roster assignments', error: error instanceof Error ? error.message : 'Unknown error' });
@@ -714,7 +717,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const eventId = req.query.eventId ? parseInt(req.query.eventId as string) : undefined;
       const employeeId = req.query.employeeId ? parseInt(req.query.employeeId as string) : undefined;
       
-      const performances = await storage.getEventStaffPerformances(eventId, employeeId);
+      const performances = await storage.getEventStaffPerformances(eventId, employeeId,employeeScope(req.user!,'event_staff_management'));
       res.status(200).json(performances);
     } catch (error) {
       res.status(500).json({ message: 'Server error getting performance records', error: error instanceof Error ? error.message : 'Unknown error' });
@@ -723,7 +726,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.post('/api/event-staff-performance', async (req: Request, res: Response) => {
     try {
-      const performanceData = insertEventStaffPerformanceSchema.parse(req.body);
+      const [reviewer]=await db.select({id:employees.id}).from(employees).where(and(eq(employees.userId,req.user!.userId),eq(employees.status,'active')));
+      if(!reviewer)return res.status(403).json({message:'An active linked employee is required to rate staff'});
+      const score=z.number().int().min(1).max(5);
+      const performanceData = insertEventStaffPerformanceSchema.extend({punctualityRating:score,attitudeRating:score,skillRating:score}).parse({...req.body,ratedBy:reviewer.id});
+      const [target]=await db.select({employeeId:employees.id}).from(eventStaffAssignments).innerJoin(employees,eq(eventStaffAssignments.employeeId,employees.id))
+        .where(and(eq(eventStaffAssignments.id,performanceData.assignmentId),employeeScope(req.user!,'event_staff_management','create')));
+      if(!target)return res.status(404).json({message:'Assignment not found'});
+      if(target.employeeId===reviewer.id)return res.status(403).json({message:'Another reviewer must rate your assignment'});
       const newPerformance = await storage.createEventStaffPerformance(performanceData);
       
       // Log activity
@@ -757,7 +767,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.post('/api/event-communications', async (req: Request, res: Response) => {
     try {
-      const communicationData = insertEventCommunicationSchema.parse(req.body);
+      const communicationData = insertEventCommunicationSchema.parse({...req.body,senderId:req.user!.userId});
       const newCommunication = await storage.createEventCommunication(communicationData);
       
       // Log activity
@@ -781,7 +791,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/event-communications/:communicationId/recipients', async (req: Request, res: Response) => {
     try {
       const communicationId = parseInt(req.params.communicationId);
-      const recipients = await storage.getEventCommunicationRecipients(communicationId);
+      const recipients = await storage.getEventCommunicationRecipients(communicationId,employeeScope(req.user!,'event_staff_management'));
       res.status(200).json(recipients);
     } catch (error) {
       res.status(500).json({ message: 'Server error getting communication recipients', error: error instanceof Error ? error.message : 'Unknown error' });
@@ -790,7 +800,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.post('/api/event-communication-recipients', async (req: Request, res: Response) => {
     try {
-      const recipientData = insertEventCommunicationRecipientSchema.parse(req.body);
+      const recipientData = insertEventCommunicationRecipientSchema.parse({...req.body,isRead:false,readAt:null});
+      const [target]=await db.select({id:employees.id}).from(employees).where(and(eq(employees.id,recipientData.recipientId),employeeScope(req.user!,'event_staff_management','create')));
+      if(!target)return res.status(404).json({message:'Employee not found'});
       const newRecipient = await storage.createEventCommunicationRecipient(recipientData);
       res.status(201).json(newRecipient);
     } catch (error) {
@@ -1077,63 +1089,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Initialize services
 
-  const bulkImportService = new BulkImportService();
-
-  // Bulk Import API endpoints
-  
-  app.use('/api/bulk-import',authorize(['admin','super_admin']));
-  app.post('/api/bulk-import/upload',multer({storage:multer.memoryStorage(),limits:{fileSize:2*1024*1024,files:1,fields:0}}).single('file'),async(req,res)=>{
-    try{if(!req.file || !req.file.originalname.toLowerCase().endsWith('.csv'))return res.status(400).json({message:'Choose a CSV file up to 2 MB'});
-      const [job]=await db.insert(bulkImportJobs).values({fileName:req.file.originalname,fileUrl:'inline-upload',uploadedBy:req.user!.userId,status:'processing'}).returning();
-      const result=await bulkImportService.processBulkImport(job.id,req.file.buffer.toString('utf8'),req.user!.userId);
-      return res.json({jobId:job.id,...result});
-    }catch(error){return res.status(400).json({message:error instanceof Error?error.message:'Import failed'});}
-  });
-
-  // Get bulk import job status
-  app.get("/api/bulk-import/job/:jobId", async (req, res) => {
-    try {
-      const jobId = parseInt(req.params.jobId);
-      const job = await bulkImportService.getImportJob(jobId);
-
-      if (!job || job.uploadedBy !== req.user!.userId) {
-        return res.status(404).json({ error: "Job not found" });
-      }
-
-      res.json(job);
-    } catch (error: any) {
-      console.error("Error getting bulk import job:", error);
-      res.status(500).json({ error: "Failed to get job status" });
-    }
-  });
-
-  // Get all bulk import jobs for user
-  app.get("/api/bulk-import/jobs", async (req, res) => {
-    try {
-      const userId = req.user?.userId;
-
-      if (!userId) {
-        return res.status(401).json({ error: "User not authenticated" });
-      }
-
-      const jobs = await bulkImportService.getImportJobs(userId);
-      res.json(jobs);
-    } catch (error: any) {
-      console.error("Error getting bulk import jobs:", error);
-      res.status(500).json({ error: "Failed to get jobs" });
-    }
-  });
-
-  // Download sample CSV template
-  app.get("/api/bulk-import/template", (req, res) => {
-    const csvTemplate = `firstName,lastName,email,gender,dateOfBirth,nationality,qidNumber,primaryMobile,residentialAddress,emergencyContactName,emergencyContactNumber,department,position,location,joiningDate,type
-John,Smith,john.smith@company.com,male,1990-05-15,American,12345678901,+97412345678,"123 Main St, Doha",Jane Smith,+97412345679,IT,Software Developer,Doha Office,2024-01-15,permanent
-Sarah,Johnson,sarah.johnson@company.com,female,1988-03-20,British,12345678902,+97412345680,"456 Oak Ave, Doha",Mark Johnson,+97412345681,HR,HR Manager,Doha Office,2024-02-01,permanent`;
-
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', 'attachment; filename="employee_import_template.csv"');
-    res.send(csvTemplate);
-  });
+  app.use('/api/bulk-import',bulkImportRouter);
 
   // Activity Log Routes
   app.get('/api/activity-logs/recent', async (req: Request, res: Response) => {
@@ -1147,108 +1103,7 @@ Sarah,Johnson,sarah.johnson@company.com,female,1988-03-20,British,12345678902,+9
   });
 
   // Recruitment APIs
-  app.get('/api/job-requisitions', async (req: Request, res: Response) => {
-    try {
-      const status = req.query.status as string | undefined;
-      const requisitions = await storage.getJobRequisitions(status);
-      res.status(200).json(requisitions);
-    } catch (error) {
-      res.status(500).json({ message: 'Server error getting job requisitions', error: error instanceof Error ? error.message : 'Unknown error' });
-    }
-  });
-
-  app.get('/api/job-requisitions/:id', async (req: Request, res: Response) => {
-    try {
-      const id = parseInt(req.params.id);
-      const requisition = await storage.getJobRequisition(id);
-      if (!requisition) {
-        return res.status(404).json({ message: 'Job requisition not found' });
-      }
-      res.status(200).json(requisition);
-    } catch (error) {
-      res.status(500).json({ message: 'Server error getting job requisition', error: error instanceof Error ? error.message : 'Unknown error' });
-    }
-  });
-
-  app.post('/api/job-requisitions', async (req: Request, res: Response) => {
-    try {
-      const requisition = await storage.createJobRequisition(req.body);
-      res.status(201).json(requisition);
-    } catch (error) {
-      res.status(500).json({ message: 'Server error creating job requisition', error: error instanceof Error ? error.message : 'Unknown error' });
-    }
-  });
-
-  app.put('/api/job-requisitions/:id', async (req: Request, res: Response) => {
-    try {
-      const id = parseInt(req.params.id);
-      const updatedRequisition = await storage.updateJobRequisition(id, req.body);
-      if (!updatedRequisition) {
-        return res.status(404).json({ message: 'Job requisition not found' });
-      }
-      res.status(200).json(updatedRequisition);
-    } catch (error) {
-      res.status(500).json({ message: 'Server error updating job requisition', error: error instanceof Error ? error.message : 'Unknown error' });
-    }
-  });
-
-  app.get('/api/candidates', async (req: Request, res: Response) => {
-    try {
-      const search = req.query.search as string | undefined;
-      const candidates = await storage.getCandidates(search);
-      res.status(200).json(candidates);
-    } catch (error) {
-      res.status(500).json({ message: 'Server error getting candidates', error: error instanceof Error ? error.message : 'Unknown error' });
-    }
-  });
-
-  app.get('/api/candidates/:id', async (req: Request, res: Response) => {
-    try {
-      const id = parseInt(req.params.id);
-      const candidate = await storage.getCandidate(id);
-      if (!candidate) {
-        return res.status(404).json({ message: 'Candidate not found' });
-      }
-      res.status(200).json(candidate);
-    } catch (error) {
-      res.status(500).json({ message: 'Server error getting candidate', error: error instanceof Error ? error.message : 'Unknown error' });
-    }
-  });
-
-  app.post('/api/candidates', async (req: Request, res: Response) => {
-    try {
-      const candidate = await storage.createCandidate(req.body);
-      res.status(201).json(candidate);
-    } catch (error) {
-      res.status(500).json({ message: 'Server error creating candidate', error: error instanceof Error ? error.message : 'Unknown error' });
-    }
-  });
-
-  app.put('/api/candidates/:id', async (req: Request, res: Response) => {
-    try {
-      const id = parseInt(req.params.id);
-      const updatedCandidate = await storage.updateCandidate(id, req.body);
-      if (!updatedCandidate) {
-        return res.status(404).json({ message: 'Candidate not found' });
-      }
-      res.status(200).json(updatedCandidate);
-    } catch (error) {
-      res.status(500).json({ message: 'Server error updating candidate', error: error instanceof Error ? error.message : 'Unknown error' });
-    }
-  });
-
-  app.get('/api/job-applications', async (req: Request, res: Response) => {
-    try {
-      const requisitionId = req.query.requisitionId ? parseInt(req.query.requisitionId as string) : undefined;
-      const candidateId = req.query.candidateId ? parseInt(req.query.candidateId as string) : undefined;
-      const status = req.query.status as string | undefined;
-      const applications = await storage.getJobApplications(requisitionId, candidateId, status);
-      res.status(200).json(applications);
-    } catch (error) {
-      res.status(500).json({ message: 'Server error getting job applications', error: error instanceof Error ? error.message : 'Unknown error' });
-    }
-  });
-
+  // Read compatibility aliases only. Mutations belong to the controlled routers.
   app.get('/api/job-applications/:id', async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);
@@ -1262,38 +1117,6 @@ Sarah,Johnson,sarah.johnson@company.com,female,1988-03-20,British,12345678902,+9
     }
   });
 
-  app.post('/api/job-applications', async (req: Request, res: Response) => {
-    try {
-      const application = await storage.createJobApplication(req.body);
-      res.status(201).json(application);
-    } catch (error) {
-      res.status(500).json({ message: 'Server error creating job application', error: error instanceof Error ? error.message : 'Unknown error' });
-    }
-  });
-
-  app.put('/api/job-applications/:id', async (req: Request, res: Response) => {
-    try {
-      const id = parseInt(req.params.id);
-      const updatedApplication = await storage.updateJobApplication(id, req.body);
-      if (!updatedApplication) {
-        return res.status(404).json({ message: 'Job application not found' });
-      }
-      res.status(200).json(updatedApplication);
-    } catch (error) {
-      res.status(500).json({ message: 'Server error updating job application', error: error instanceof Error ? error.message : 'Unknown error' });
-    }
-  });
-
-  app.get('/api/interviews', async (req: Request, res: Response) => {
-    try {
-      const applicationId = req.query.applicationId ? parseInt(req.query.applicationId as string) : undefined;
-      const status = req.query.status as string | undefined;
-      const interviews = await storage.getInterviews(applicationId, status);
-      res.status(200).json(interviews);
-    } catch (error) {
-      res.status(500).json({ message: 'Server error getting interviews', error: error instanceof Error ? error.message : 'Unknown error' });
-    }
-  });
 
   app.get('/api/interviews/:id', async (req: Request, res: Response) => {
     try {
@@ -1308,38 +1131,6 @@ Sarah,Johnson,sarah.johnson@company.com,female,1988-03-20,British,12345678902,+9
     }
   });
 
-  app.post('/api/interviews', async (req: Request, res: Response) => {
-    try {
-      const interview = await storage.createInterview(req.body);
-      res.status(201).json(interview);
-    } catch (error) {
-      res.status(500).json({ message: 'Server error creating interview', error: error instanceof Error ? error.message : 'Unknown error' });
-    }
-  });
-
-  app.put('/api/interviews/:id', async (req: Request, res: Response) => {
-    try {
-      const id = parseInt(req.params.id);
-      const updatedInterview = await storage.updateInterview(id, req.body);
-      if (!updatedInterview) {
-        return res.status(404).json({ message: 'Interview not found' });
-      }
-      res.status(200).json(updatedInterview);
-    } catch (error) {
-      res.status(500).json({ message: 'Server error updating interview', error: error instanceof Error ? error.message : 'Unknown error' });
-    }
-  });
-
-  app.get('/api/job-offers', async (req: Request, res: Response) => {
-    try {
-      const applicationId = req.query.applicationId ? parseInt(req.query.applicationId as string) : undefined;
-      const status = req.query.status as string | undefined;
-      const offers = await storage.getJobOffers(applicationId, status);
-      res.status(200).json(offers);
-    } catch (error) {
-      res.status(500).json({ message: 'Server error getting job offers', error: error instanceof Error ? error.message : 'Unknown error' });
-    }
-  });
 
   app.get('/api/job-offers/:id', async (req: Request, res: Response) => {
     try {
@@ -1354,74 +1145,6 @@ Sarah,Johnson,sarah.johnson@company.com,female,1988-03-20,British,12345678902,+9
     }
   });
 
-  app.post('/api/job-offers', async (req: Request, res: Response) => {
-    try {
-      const offer = await storage.createJobOffer(req.body);
-      res.status(201).json(offer);
-    } catch (error) {
-      res.status(500).json({ message: 'Server error creating job offer', error: error instanceof Error ? error.message : 'Unknown error' });
-    }
-  });
-
-  app.put('/api/job-offers/:id', async (req: Request, res: Response) => {
-    try {
-      const id = parseInt(req.params.id);
-      const updatedOffer = await storage.updateJobOffer(id, req.body);
-      if (!updatedOffer) {
-        return res.status(404).json({ message: 'Job offer not found' });
-      }
-      res.status(200).json(updatedOffer);
-    } catch (error) {
-      res.status(500).json({ message: 'Server error updating job offer', error: error instanceof Error ? error.message : 'Unknown error' });
-    }
-  });
-
-  // Onboarding APIs
-  app.get('/api/onboarding-checklists', async (req: Request, res: Response) => {
-    try {
-      const department = req.query.department as string | undefined;
-      const employeeType = req.query.employeeType as string | undefined;
-      const checklists = await storage.getOnboardingChecklists(department, employeeType);
-      res.status(200).json(checklists);
-    } catch (error) {
-      res.status(500).json({ message: 'Server error getting onboarding checklists', error: error instanceof Error ? error.message : 'Unknown error' });
-    }
-  });
-
-  app.get('/api/onboarding-checklists/:id', async (req: Request, res: Response) => {
-    try {
-      const id = parseInt(req.params.id);
-      const checklist = await storage.getOnboardingChecklist(id);
-      if (!checklist) {
-        return res.status(404).json({ message: 'Onboarding checklist not found' });
-      }
-      res.status(200).json(checklist);
-    } catch (error) {
-      res.status(500).json({ message: 'Server error getting onboarding checklist', error: error instanceof Error ? error.message : 'Unknown error' });
-    }
-  });
-
-  app.post('/api/onboarding-checklists', async (req: Request, res: Response) => {
-    try {
-      const checklist = await storage.createOnboardingChecklist(req.body);
-      res.status(201).json(checklist);
-    } catch (error) {
-      res.status(500).json({ message: 'Server error creating onboarding checklist', error: error instanceof Error ? error.message : 'Unknown error' });
-    }
-  });
-
-  app.put('/api/onboarding-checklists/:id', async (req: Request, res: Response) => {
-    try {
-      const id = parseInt(req.params.id);
-      const updatedChecklist = await storage.updateOnboardingChecklist(id, req.body);
-      if (!updatedChecklist) {
-        return res.status(404).json({ message: 'Onboarding checklist not found' });
-      }
-      res.status(200).json(updatedChecklist);
-    } catch (error) {
-      res.status(500).json({ message: 'Server error updating onboarding checklist', error: error instanceof Error ? error.message : 'Unknown error' });
-    }
-  });
 
   app.get('/api/checklist-tasks/:checklistId', async (req: Request, res: Response) => {
     try {
@@ -1433,84 +1156,6 @@ Sarah,Johnson,sarah.johnson@company.com,female,1988-03-20,British,12345678902,+9
     }
   });
 
-  app.post('/api/checklist-tasks', async (req: Request, res: Response) => {
-    try {
-      const task = await storage.createChecklistTask(req.body);
-      res.status(201).json(task);
-    } catch (error) {
-      res.status(500).json({ message: 'Server error creating checklist task', error: error instanceof Error ? error.message : 'Unknown error' });
-    }
-  });
-
-  app.put('/api/checklist-tasks/:id', async (req: Request, res: Response) => {
-    try {
-      const id = parseInt(req.params.id);
-      const updatedTask = await storage.updateChecklistTask(id, req.body);
-      if (!updatedTask) {
-        return res.status(404).json({ message: 'Checklist task not found' });
-      }
-      res.status(200).json(updatedTask);
-    } catch (error) {
-      res.status(500).json({ message: 'Server error updating checklist task', error: error instanceof Error ? error.message : 'Unknown error' });
-    }
-  });
-
-  app.get('/api/employee-onboarding', async (req: Request, res: Response) => {
-    try {
-      const employeeId = req.query.employeeId ? parseInt(req.query.employeeId as string) : undefined;
-      const status = req.query.status as string | undefined;
-      const onboardings = await storage.getEmployeeOnboardings(employeeId, status);
-      res.status(200).json(onboardings);
-    } catch (error) {
-      res.status(500).json({ message: 'Server error getting employee onboarding', error: error instanceof Error ? error.message : 'Unknown error' });
-    }
-  });
-
-  app.get('/api/employee-onboarding/:id', async (req: Request, res: Response) => {
-    try {
-      const id = parseInt(req.params.id);
-      const onboarding = await storage.getEmployeeOnboarding(id);
-      if (!onboarding) {
-        return res.status(404).json({ message: 'Employee onboarding not found' });
-      }
-      res.status(200).json(onboarding);
-    } catch (error) {
-      res.status(500).json({ message: 'Server error getting employee onboarding', error: error instanceof Error ? error.message : 'Unknown error' });
-    }
-  });
-
-  app.post('/api/employee-onboarding', async (req: Request, res: Response) => {
-    try {
-      const onboarding = await storage.createEmployeeOnboarding(req.body);
-      res.status(201).json(onboarding);
-    } catch (error) {
-      res.status(500).json({ message: 'Server error creating employee onboarding', error: error instanceof Error ? error.message : 'Unknown error' });
-    }
-  });
-
-  app.put('/api/employee-onboarding/:id', async (req: Request, res: Response) => {
-    try {
-      const id = parseInt(req.params.id);
-      const updatedOnboarding = await storage.updateEmployeeOnboarding(id, req.body);
-      if (!updatedOnboarding) {
-        return res.status(404).json({ message: 'Employee onboarding not found' });
-      }
-      res.status(200).json(updatedOnboarding);
-    } catch (error) {
-      res.status(500).json({ message: 'Server error updating employee onboarding', error: error instanceof Error ? error.message : 'Unknown error' });
-    }
-  });
-
-  app.get('/api/onboarding-tasks', async (req: Request, res: Response) => {
-    try {
-      const onboardingId = req.query.onboardingId ? parseInt(req.query.onboardingId as string) : undefined;
-      const status = req.query.status as string | undefined;
-      const tasks = await storage.getOnboardingTasks(onboardingId, status);
-      res.status(200).json(tasks);
-    } catch (error) {
-      res.status(500).json({ message: 'Server error getting onboarding tasks', error: error instanceof Error ? error.message : 'Unknown error' });
-    }
-  });
 
   app.get('/api/onboarding-tasks/:id', async (req: Request, res: Response) => {
     try {
@@ -1525,28 +1170,9 @@ Sarah,Johnson,sarah.johnson@company.com,female,1988-03-20,British,12345678902,+9
     }
   });
 
-  app.post('/api/onboarding-tasks', async (req: Request, res: Response) => {
-    try {
-      const task = await storage.createOnboardingTask(req.body);
-      res.status(201).json(task);
-    } catch (error) {
-      res.status(500).json({ message: 'Server error creating onboarding task', error: error instanceof Error ? error.message : 'Unknown error' });
-    }
-  });
 
-  app.put('/api/onboarding-tasks/:id', async (req: Request, res: Response) => {
-    try {
-      const id = parseInt(req.params.id);
-      const updatedTask = await storage.updateOnboardingTask(id, req.body);
-      if (!updatedTask) {
-        return res.status(404).json({ message: 'Onboarding task not found' });
-      }
-      res.status(200).json(updatedTask);
-    } catch (error) {
-      res.status(500).json({ message: 'Server error updating onboarding task', error: error instanceof Error ? error.message : 'Unknown error' });
-    }
-  });
-
+  app.use('/api',(_req,res)=>res.status(404).json({message:'API endpoint not found'}));
   const httpServer = createServer(app);
+  httpServer.once('close',()=>clearInterval(reminderTimer));
   return httpServer;
 }

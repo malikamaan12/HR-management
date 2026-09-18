@@ -1,3 +1,4 @@
+import {canOpenPage} from '@shared/page-access';
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
@@ -20,7 +21,11 @@ interface NavItem {
   requiredPermission?: 'read' | 'create' | 'update' | 'admin';
 }
 
-const navItems: NavItem[] = [
+const navItems: NavItem[] = [{name:"Contract renewals",icon:"fas fa-file-contract",href:"/contracts",module:"employee_database",requiredPermission:"read"},{name:"Return-to-work clearance",icon:"fas fa-user-shield",href:"/return-to-work",module:"employee_database",requiredPermission:"update"},{name:"Exit checklist templates",icon:"fas fa-list-check",href:"/exit-templates",module:"employee_database",requiredPermission:"update"},{name:"Probation reviews",icon:"fas fa-user-check",href:"/probation",module:"employee_database",requiredPermission:"read"},{name:"Employee transfers",icon:"fas fa-exchange-alt",href:"/transfers",module:"employee_database",requiredPermission:"read"},{name:"Operational incidents",icon:"fas fa-clipboard-list",href:"/incidents",module:"employee_database",requiredPermission:"read"},{name:"Equipment and assets",icon:"fas fa-laptop",href:"/equipment",module:"employee_database",requiredPermission:"read"},{name:"Policy acknowledgements",icon:"fas fa-book",href:"/handbook",module:"employee_database",requiredPermission:"read"},
+  {name:"Expenses",icon:"fas fa-receipt",href:"/expenses",module:"employee_database",requiredPermission:"read"},
+  {name:"Benefits",icon:"fas fa-gift",href:"/benefits",module:"benefits_perks",requiredPermission:"read"},
+  {name:"Service operations",icon:"fas fa-bell",href:"/service-operations",module:"employee_database",requiredPermission:"read"},
+  {name: "Training and development", icon: "fas fa-graduation-cap", href: "/learning", module: "training_development", requiredPermission: "read"},
   { name: "Dashboard", icon: "fas fa-tachometer-alt", href: "/", module: "reports_analytics", requiredPermission: "read" },
   { name: "Employee Database", icon: "fas fa-users", href: "/employees", module: "employee_database", requiredPermission: "read" },
   { name: "Bulk Import", icon: "fas fa-upload", href: "/bulk-import", module: "employee_database", requiredPermission: "create" },
@@ -143,6 +148,7 @@ export default function Sidebar({ className }: SidebarProps) {
               <li><Link href="/helpdesk" className={cn('sidebar-item flex items-center px-3 py-2 rounded-md hover:bg-primary/10',location.startsWith('/helpdesk')&&'border-l-4 border-primary bg-primary/10 font-medium')}><i className="fas fa-life-ring w-6 text-primary"/><span className="ml-3">HR Helpdesk</span></Link></li>
               <li><Link href="/workforce" className={cn('sidebar-item flex items-center px-3 py-2 rounded-md hover:bg-primary/10',location==='/workforce'&&'border-l-4 border-primary bg-primary/10 font-medium')}><i className="fas fa-people-carry w-6 text-primary"/><span className="ml-3">Workforce</span></Link></li>
               {navItems.map((item, index) => {
+                if(!canOpenPage(user?.role,item.href))return null;
                 const isActive = location === item.href;
                 
                 // Check if this is the start of a new section

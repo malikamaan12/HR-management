@@ -1,3 +1,4 @@
+import {MyOnboardingTasks} from '@/components/lifecycle/HiringDelivery';
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import WelcomeBanner from "@/components/dashboard/WelcomeBanner";
@@ -29,7 +30,7 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6 pb-12 max-w-full overflow-hidden">
-      <WelcomeBanner stats={dashboardStats as any} />
+      <WelcomeBanner stats={dashboardStats as any} /><MyOnboardingTasks/>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
         <div className="md:col-span-2">

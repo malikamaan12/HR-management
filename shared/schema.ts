@@ -1,3 +1,4 @@
+import {uuid} from 'drizzle-orm/pg-core';
 import type {CalculationSnapshot,CalculationRules} from './calculation-rules';
 import { relations, sql } from "drizzle-orm";
 import { type AnyPgColumn, pgTable, doublePrecision, text, serial, integer, boolean, timestamp, pgEnum, varchar, date, json, decimal, jsonb, check, index, uniqueIndex } from "drizzle-orm/pg-core";
@@ -216,6 +217,12 @@ export type UserRole = typeof userRoleEnum.enumValues[number];
 
 // Bulk Import Jobs table (for tracking bulk operations)
 export const bulkImportJobs = pgTable("bulk_import_jobs", {
+  version: integer("version").notNull().default(1),
+  submissionKey: uuid("submission_key"),
+  fileHash: text("file_hash"),
+  includedRows: integer("included_rows").notNull().default(0),
+  validatedAt: timestamp("validated_at", {withTimezone:true}),
+  committedFromVersion: integer("committed_from_version"),
   id: serial("id").primaryKey(),
   fileName: text("file_name").notNull(),
   fileUrl: text("file_url").notNull(),
@@ -323,6 +330,16 @@ export const employees = pgTable("employees", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const employeeImportRows = pgTable("employee_import_rows", {
+  id: serial("id").primaryKey(),
+  jobId: integer("job_id").notNull().references(() => bulkImportJobs.id,{onDelete:"cascade"}),
+  rowNumber: integer("row_number").notNull(),
+  included: boolean("included").notNull().default(true),
+  payload: jsonb("payload").notNull(),
+  errors: jsonb("errors").notNull().default([]),
+  employeeId: integer("employee_id").references(() => employees.id),
+});
+
 // Effective-dated employee lifecycle events. This append-only history keeps
 // transfers, promotions, renewals and offboarding explainable without
 // overloading the current employee row with historical values.
@@ -367,6 +384,10 @@ export const documentVersions = pgTable("document_versions", {
 }));
 
 export const documentRenewalRequests = pgTable("document_renewal_requests", {
+  version: integer("version").default(1).notNull(),
+  assignedReviewerId: integer("assigned_reviewer_id").references(() => users.id),
+  policySnapshot: jsonb("policy_snapshot"),
+  reviewDueDate: date("review_due_date"),
   id: serial("id").primaryKey(),
   documentId: integer("document_id").references(() => documents.id).notNull(),
   requestedBy: integer("requested_by").references(() => users.id).notNull(),
@@ -923,6 +944,7 @@ export const jobPostings = pgTable("job_postings", {
 
 // Candidates
 export const candidates = pgTable("candidates", {
+  recordVersion: integer("record_version").notNull().default(1),
   id: serial("id").primaryKey(),
   fullNameEn: text("full_name_en").notNull(),
   fullNameAr: text("full_name_ar"),
@@ -1068,6 +1090,11 @@ export const employeeOnboarding = pgTable("employee_onboarding", {
 
 // Onboarding Tasks (assigned to specific employee)
 export const onboardingTasks = pgTable("onboarding_tasks", {
+  reviewRequired:boolean('review_required').notNull().default(false),
+  reviewState:text('review_state').notNull().default('not_required'),
+  reviewPolicyId:integer('review_policy_id'),
+  submittedBy:integer('submitted_by').references(() => users.id),
+  reviewedBy:integer('reviewed_by').references(() => users.id),
   version:integer('version').notNull().default(1),
   id: serial("id").primaryKey(),
   onboardingId: integer("onboarding_id").references(() => employeeOnboarding.id).notNull(),
@@ -1286,6 +1313,7 @@ export const insertJobPostingSchema = createInsertSchema(jobPostings).omit({
 });
 
 export const insertCandidateSchema = createInsertSchema(candidates).omit({
+  recordVersion: true,
   id: true,
   createdAt: true,
   updatedAt: true,

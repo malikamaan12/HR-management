@@ -566,7 +566,7 @@ export async function enrollUserInCourse(employeeId: number, courseId: number) {
       // Check if course exists
       const courseExists = await db.select({ id: trainingCourses.id })
         .from(trainingCourses)
-        .where(eq(trainingCourses.id, courseId))
+        .where(and(eq(trainingCourses.id, courseId),eq(trainingCourses.active,true)))
         .limit(1);
       
       if (courseExists.length === 0) {

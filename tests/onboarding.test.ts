@@ -138,3 +138,9 @@ test('failed audit rolls back checklist creation and task progress together',asy
  await pg.exec("CREATE FUNCTION fail_onboard_audit() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'test'; END; $$ LANGUAGE plpgsql; CREATE TRIGGER fail_onboard_audit BEFORE INSERT ON activity_logs FOR EACH ROW EXECUTE FUNCTION fail_onboard_audit();");
  try{expect((await request('/onboarding-tasks/'+tasks[0].id,'PUT',{expectedVersion:1,status:'completed',comments:'Done',assigneeId:null,dueDate:'2026-10-01'})).status).toBe(500);expect((await request('/employee-onboarding/'+made.body.id)).body.progress).toBe(0);expect((await request('/onboarding-tasks')).body[0].version).toBe(1);}finally{await pg.exec('DROP TRIGGER fail_onboard_audit ON activity_logs; DROP FUNCTION fail_onboard_audit();');}
 });
+
+test('onboarding summary resolves employee names without ambiguous employee identifiers',async()=>{
+ const f=await setup();const created=await request('/employee-onboarding','POST',f.payload);expect(created.status).toBe(201);
+ const r=await request('/onboarding-stats');expect(r.status).toBe(200);expect(Number(r.body.totalOnboardings)).toBe(1);expect(r.body.recentOnboardings[0].employeeName).toBe('Person 0001');
+ expect((await request('/onboarding-stats','GET',undefined,employeeToken)).status).toBe(403);
+});

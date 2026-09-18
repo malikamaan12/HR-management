@@ -1,5 +1,5 @@
 import {saveTemplate} from '../services/onboarding-templates';
-import {startOnboarding,changeOnboardingTask,OnboardingError} from '../services/onboarding-workflow';
+import {startOnboarding,editOnboarding,changeOnboardingTask,OnboardingError} from '../services/onboarding-workflow';
 import { Router } from "express";
 import { db } from "../db";
 import { 
@@ -123,7 +123,9 @@ router.get('/employee-onboarding', async (req, res) => {
       .select({
         id: employeeOnboarding.id,
         employeeId: employeeOnboarding.employeeId,
-        employeeName: sql<string>`(SELECT first_name || ' ' || last_name FROM employees WHERE id = ${employeeOnboarding.employeeId})`,
+        employeeName: sql<string>`(SELECT e.first_name || ' ' || e.last_name FROM employees e WHERE e.id = "employee_onboarding"."employee_id")`,
+        checklistId: employeeOnboarding.checklistId,
+        updatedAt: employeeOnboarding.updatedAt,
         checklistName: onboardingChecklists.name,
         startDate: employeeOnboarding.startDate,
         endDate: employeeOnboarding.endDate,
@@ -161,7 +163,7 @@ router.get('/employee-onboarding/:id', async (req, res) => {
       .select({
         id: employeeOnboarding.id,
         employeeId: employeeOnboarding.employeeId,
-        employeeName: sql<string>`(SELECT first_name || ' ' || last_name FROM employees WHERE id = ${employeeOnboarding.employeeId})`,
+        employeeName: sql<string>`(SELECT e.first_name || ' ' || e.last_name FROM employees e WHERE e.id = "employee_onboarding"."employee_id")`,
         employeeEmail: sql<string|null>`(SELECT work_email FROM employees WHERE id = ${employeeOnboarding.employeeId})`,
         checklistId: employeeOnboarding.checklistId,
         checklistName: onboardingChecklists.name,
@@ -170,7 +172,8 @@ router.get('/employee-onboarding/:id', async (req, res) => {
         status: employeeOnboarding.status,
         progress: employeeOnboarding.progress,
         notes: employeeOnboarding.notes,
-        createdAt: employeeOnboarding.createdAt
+        createdAt: employeeOnboarding.createdAt,
+        updatedAt: employeeOnboarding.updatedAt
       })
       .from(employeeOnboarding)
       .leftJoin(onboardingChecklists, eq(employeeOnboarding.checklistId, onboardingChecklists.id))
@@ -186,6 +189,8 @@ router.get('/employee-onboarding/:id', async (req, res) => {
       .select({
         id: onboardingTasks.id,
         version: onboardingTasks.version,
+        reviewRequired: onboardingTasks.reviewRequired,
+        reviewState: onboardingTasks.reviewState,
         taskName: checklistTasks.taskName,
         description: checklistTasks.description,
         category: checklistTasks.category,
@@ -217,7 +222,18 @@ router.post('/employee-onboarding', async (req,res)=>{
  catch(error){res.status(error instanceof OnboardingError?error.status:error instanceof z.ZodError?400:500).json({error:error instanceof OnboardingError||error instanceof z.ZodError?error.message:'Unable to start onboarding'});}
 });
 
+router.put('/employee-onboarding/:id',async(req,res)=>{
+ try{const id=z.coerce.number().int().positive().parse(req.params.id);res.json(await editOnboarding(id,req.body,req.user!.userId));}
+ catch(error){res.status(error instanceof OnboardingError?error.status:error instanceof z.ZodError?400:500).json({message:error instanceof OnboardingError?error.message:error instanceof z.ZodError?'Only notes or cancellation with a reason and current version can be saved':'Unable to edit onboarding'});}
+});
+router.get('/employee-onboarding/:id/history',async(req,res)=>{
+ try{const id=z.coerce.number().int().positive().parse(req.params.id);const rows=await db.execute(sql`SELECT version,actor_id,reason,created_at,snapshot FROM lifecycle_history WHERE kind='onboarding_edit' AND record_id=${id} ORDER BY version DESC LIMIT 50`);res.json(rows.rows);}
+ catch{res.status(400).json({message:'Unable to load onboarding history'});}
+});
+router.put('/checklist-tasks/:id',(_req,res)=>res.status(409).json({message:'Edit tasks through the versioned checklist editor'}));
+
 // Onboarding Tasks Routes
+router.post('/onboarding-tasks',(_req,res)=>res.status(409).json({message:'Start onboarding from a checklist so task ownership and review policy are applied together'}));
 router.get('/onboarding-tasks', async (req, res) => {
   try {
     const { onboardingId, status, assignedTo } = req.query;
@@ -237,8 +253,10 @@ router.get('/onboarding-tasks', async (req, res) => {
       .select({
         id: onboardingTasks.id,
         version: onboardingTasks.version,
+        reviewRequired: onboardingTasks.reviewRequired,
+        reviewState: onboardingTasks.reviewState,
         onboardingId: onboardingTasks.onboardingId,
-        employeeName: sql<string>`(SELECT first_name || ' ' || last_name FROM employees WHERE id = ${employeeOnboarding.employeeId})`,
+        employeeName: sql<string>`(SELECT e.first_name || ' ' || e.last_name FROM employees e WHERE e.id = "employee_onboarding"."employee_id")`,
         taskName: checklistTasks.taskName,
         description: checklistTasks.description,
         category: checklistTasks.category,
@@ -285,7 +303,7 @@ router.get('/onboarding-stats', async (req, res) => {
     const recentOnboardings = await db
       .select({
         id: employeeOnboarding.id,
-        employeeName: sql<string>`(SELECT first_name || ' ' || last_name FROM employees WHERE id = ${employeeOnboarding.employeeId})`,
+        employeeName: sql<string>`(SELECT e.first_name || ' ' || e.last_name FROM employees e WHERE e.id = "employee_onboarding"."employee_id")`,
         startDate: employeeOnboarding.startDate,
         status: employeeOnboarding.status,
         progress: employeeOnboarding.progress
@@ -298,8 +316,10 @@ router.get('/onboarding-stats', async (req, res) => {
       .select({
         id: onboardingTasks.id,
         version: onboardingTasks.version,
+        reviewRequired: onboardingTasks.reviewRequired,
+        reviewState: onboardingTasks.reviewState,
         taskName: checklistTasks.taskName,
-        employeeName: sql<string>`(SELECT first_name || ' ' || last_name FROM employees WHERE id = ${employeeOnboarding.employeeId})`,
+        employeeName: sql<string>`(SELECT e.first_name || ' ' || e.last_name FROM employees e WHERE e.id = "employee_onboarding"."employee_id")`,
         dueDate: onboardingTasks.dueDate,
         assignedTo: onboardingTasks.assignedTo,
         status: onboardingTasks.status

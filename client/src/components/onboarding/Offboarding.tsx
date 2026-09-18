@@ -12,6 +12,7 @@ export function Offboarding(){
  const cases=useQuery<{items:Case[]}>({queryKey:['/api/offboarding',{page}]});
  const people=useQuery<{employees:{id:number;firstName:string;lastName:string}[]}>({queryKey:['/api/employees/directory',{q:search.trim(),limit:50}],enabled:search.trim().length>=2});const save=useSave();
  return <details className="rounded border p-4"><summary className="cursor-pointer font-semibold">Offboarding and asset return</summary>
+  <p className="my-2"><a className="text-primary underline" href="/exit-templates">Start from a reusable exit checklist</a></p>
   <p className="my-3 text-sm">Track exit tasks and returned assets. Employment termination is recorded separately in the employee lifecycle. Completion can optionally deactivate the linked account.</p>
   {cases.error?<p role="alert">HR management access is required, or the offboarding service is unavailable.</p>:<>
   <form className="space-y-3 rounded border p-3" onSubmit={async e=>{e.preventDefault();try{await save.mutateAsync({path:'/api/offboarding',body:{employeeId:Number(employeeId),reason,tasks}});setTasks([]);setReason('');}catch{}}}>
@@ -32,8 +33,10 @@ export function Offboarding(){
 function CaseEditor({row}:{row:Case}){
  const [reason,setReason]=useState(''),[deactivate,setDeactivate]=useState(false);const save=useSave();
  return <details className="rounded border p-3"><summary>#{row.id} · {row.employee_name} · {row.status} · {row.tasks.filter(t=>t.status==='done').length}/{row.tasks.length} complete</summary>
+  {(row as any).template_snapshot&&<p>Template: {(row as any).template_snapshot.name} · v{(row as any).template_snapshot.version} · Target exit {(row as any).target_exit_date}</p>}
+  {(row as any).decision_reason&&<p>Decision: {(row as any).decision_reason}</p>}
   {row.tasks.map((task,index)=><TaskRow key={index} task={task} index={index} row={row}/>)}
-  {row.account_deactivated&&<p>Linked account deactivated.</p>}
+  <p>Outstanding equipment: {(row as any).outstanding_assets||0} · <a className="text-primary underline" href="/equipment">Open equipment register</a></p>{row.account_deactivated&&<p>Linked account deactivated.</p>}
   {row.status==='open'&&<div className="mt-3 space-y-2"><label className="grid gap-1">Completion or cancellation reason<Input value={reason} onChange={e=>setReason(e.target.value)} maxLength={1000}/></label><label className="flex gap-2"><input type="checkbox" checked={deactivate} onChange={e=>setDeactivate(e.target.checked)}/>Deactivate linked account and revoke sessions on completion (administrator only)</label><div className="flex gap-2"><Button disabled={save.isPending||reason.trim().length<5||row.tasks.some(t=>t.status!=='done')} onClick={()=>save.mutate({path:`/api/offboarding/${row.id}/actions`,body:{action:'complete',version:row.version,deactivateAccount:deactivate,reason}})}>Complete offboarding</Button><Button variant="outline" disabled={save.isPending||reason.trim().length<5} onClick={()=>save.mutate({path:`/api/offboarding/${row.id}/actions`,body:{action:'cancel',version:row.version,reason}})}>Cancel case</Button></div></div>}
  </details>;
 }

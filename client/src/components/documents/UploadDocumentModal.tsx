@@ -105,8 +105,7 @@ export function UploadDocumentModal({ isOpen, onClose, employee }: UploadDocumen
       
       // Reset form and invalidate queries to refresh document list
       form.reset();
-      queryClient.invalidateQueries({ queryKey: ['/api/documents'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/documents/expiring'] });
+      queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).startsWith('/api/documents') || String(q.queryKey[0]).startsWith('/api/dashboard') });
       queryClient.invalidateQueries({ queryKey: [`/api/employees/${data.employeeId}/documents`] });
       
       // Close modal

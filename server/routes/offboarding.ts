@@ -5,6 +5,7 @@ import {db} from '../db';
 import {employees,users,authSessions,activityLogs} from '@shared/schema';
 import {authenticate} from '../middleware/auth';
 import {OnboardingError} from '../services/onboarding-workflow';
+import {fromExitTemplateSchema,expandExitTemplate} from '../services/employmentContinuity';
 const router=Router();router.use(authenticate);
 router.use((req,res,next)=>{res.set('Cache-Control','no-store');if(!['super_admin','admin','hr_director','hr'].includes(req.user!.role))return res.status(403).json({message:'HR management access is required'});next();});
 const id=z.number().int().positive();
@@ -15,17 +16,20 @@ type Row={id:number;employee_id:number;version:number;status:string;tasks:Task[]
 function fail(res:any,error:unknown){const code=(error as any)?.code||(error as any)?.cause?.code;res.status(error instanceof OnboardingError?error.status:error instanceof z.ZodError?400:code==='23505'?409:500).json({message:error instanceof OnboardingError?error.message:error instanceof z.ZodError?error.issues.map(i=>i.message).join('; '):code==='23505'?'Employee already has an open offboarding case':'Unable to save offboarding'});}
 router.get('/',async(req,res)=>{try{
  const page=z.coerce.number().int().min(1).max(10000).default(1).parse(req.query.page);
- const result=await db.execute(sql`SELECT o.*, e.first_name || ' ' || e.last_name AS employee_name FROM offboarding_cases o JOIN employees e ON e.id=o.employee_id ORDER BY o.id DESC LIMIT 25 OFFSET ${(page-1)*25}`);
+ const result=await db.execute(sql`SELECT o.*,(SELECT count(*)::int FROM equipment_custody c WHERE c.employee_id=o.employee_id AND c.status<>'closed') AS outstanding_assets, e.first_name || ' ' || e.last_name AS employee_name FROM offboarding_cases o JOIN employees e ON e.id=o.employee_id ORDER BY o.id DESC LIMIT 25 OFFSET ${(page-1)*25}`);
  res.json({items:result.rows,page});
 }catch(error){fail(res,error);}});
 router.post('/',async(req,res)=>{try{
- const input=z.object({employeeId:id,reason:z.string().trim().min(5).max(1000),tasks:z.array(task).min(1).max(100)}).strict().parse(req.body);
- if(input.tasks.some(t=>t.status!=='pending'))throw new OnboardingError(400,'New checklist tasks must start pending');
+ const input=z.union([fromExitTemplateSchema,z.object({employeeId:id,reason:z.string().trim().min(5).max(1000),tasks:z.array(task).min(1).max(100)}).strict()]).parse(req.body);
+ if('tasks' in input&&input.tasks.some(t=>t.status!=='pending'))throw new OnboardingError(400,'New checklist tasks must start pending');
  const result=await db.transaction(async tx=>{
   const [employee]=await tx.select().from(employees).where(eq(employees.id,input.employeeId)).for('update');if(!employee)throw new OnboardingError(404,'Employee not found');
   if(employee.userId===req.user!.userId)throw new OnboardingError(403,'Another HR manager must handle your offboarding');
-  for(const t of input.tasks){const [owner]=await tx.select().from(employees).where(eq(employees.id,t.ownerId));if(!owner||owner.status!=='active'||owner.id===employee.id)throw new OnboardingError(400,'Each task needs an active owner other than the departing employee');}
-  const rows=await tx.execute(sql`INSERT INTO offboarding_cases(employee_id,tasks,reason,created_by) VALUES (${input.employeeId},${JSON.stringify(input.tasks)}::jsonb,${input.reason},${req.user!.userId}) RETURNING *`);
+  if('targetExitDate' in input&&input.targetExitDate<employee.joiningDate)throw new OnboardingError(400,'Target exit date must be on or after joining');
+  const expanded='templateId' in input?await expandExitTemplate(tx,input,employee.type):null;
+  const tasks=expanded?z.array(task).parse(expanded.tasks):('tasks' in input?input.tasks:[]);
+  for(const t of tasks){const [owner]=await tx.select().from(employees).where(eq(employees.id,t.ownerId));if(!owner||owner.status!=='active'||owner.id===employee.id)throw new OnboardingError(400,'Each task needs an active owner other than the departing employee');}
+  const rows=await tx.execute(sql`INSERT INTO offboarding_cases(employee_id,tasks,reason,created_by,template_snapshot,target_exit_date) VALUES (${input.employeeId},${JSON.stringify(tasks)}::jsonb,${input.reason},${req.user!.userId},${expanded?JSON.stringify(expanded.snapshot):null}::jsonb,${'targetExitDate' in input?input.targetExitDate:null}) RETURNING *`);
   await tx.insert(activityLogs).values({userId:req.user!.userId,action:'create',entityType:'offboarding',entityId:Number(rows.rows[0].id),details:'Offboarding checklist created'});return rows.rows[0];
  });res.status(201).json(result);
 }catch(error){fail(res,error);}});
@@ -37,6 +41,7 @@ router.post('/:id/actions',async(req,res)=>{try{
   z.object({action:z.literal('cancel'),version:id,reason:z.string().trim().min(5).max(1000)}).strict()
  ]).parse(req.body);
  const result=await db.transaction(async tx=>{
+  await tx.execute(sql`SELECT set_config('app.actor_id',${String(req.user!.userId)},true)`);
   const lookup=await tx.execute(sql`SELECT employee_id FROM offboarding_cases WHERE id=${caseId}`);if(!lookup.rows.length)throw new OnboardingError(404,'Offboarding case not found');
   const [employee]=await tx.select().from(employees).where(eq(employees.id,Number(lookup.rows[0].employee_id))).for('update');
   const rows=await tx.execute(sql`SELECT * FROM offboarding_cases WHERE id=${caseId} FOR UPDATE`);const row=rows.rows[0] as unknown as Row;
@@ -51,6 +56,7 @@ router.post('/:id/actions',async(req,res)=>{try{
   }else if(input.action==='cancel'){status='cancelled';}
   else{
    if(row.tasks.some(t=>t.status!=='done'))throw new OnboardingError(409,'Complete all checklist and asset-return tasks first');
+   const equipment=await tx.execute(sql`SELECT id FROM equipment_custody WHERE employee_id=${employee.id} AND status<>'closed' LIMIT 1`);if(equipment.rows.length)throw new OnboardingError(409,'Resolve outstanding equipment in the equipment register before completing offboarding');
    status='completed';
    if(input.deactivateAccount){
     if(!['admin','super_admin'].includes(req.user!.role))throw new OnboardingError(403,'An administrator must deactivate the account');
@@ -60,8 +66,8 @@ router.post('/:id/actions',async(req,res)=>{try{
     }
    }
   }
-  const saved=await tx.execute(sql`UPDATE offboarding_cases SET tasks=${JSON.stringify(row.tasks)}::jsonb,version=version+1,status=${status},completed_at=${status==='completed'?new Date():null},account_deactivated=${deactivated} WHERE id=${caseId} RETURNING *`);
-  await tx.insert(activityLogs).values({userId:req.user!.userId,action:'update',entityType:'offboarding',entityId:caseId,details:input.action==='task'?`Task ${input.index+1} ${input.task.status}; evidence: ${input.task.notes}`:`Offboarding ${status}; account deactivated: ${deactivated}; reason: ${input.reason}`});return saved.rows[0];
+  const saved=await tx.execute(sql`UPDATE offboarding_cases SET tasks=${JSON.stringify(row.tasks)}::jsonb,version=version+1,status=${status},completed_at=${status==='completed'?new Date():null},account_deactivated=${deactivated},decision_reason=${input.action==='task'?null:input.reason} WHERE id=${caseId} RETURNING *`);
+  await tx.insert(activityLogs).values({userId:req.user!.userId,action:'update',entityType:'offboarding',entityId:caseId,details:input.action==='task'?`Task ${input.index+1} ${input.task.status}`:`Offboarding ${status}; account deactivated: ${deactivated}`});return saved.rows[0];
  });res.json(result);
 }catch(error){fail(res,error);}});
 export default router;

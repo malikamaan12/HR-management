@@ -1,282 +1,90 @@
-import { randomUUID } from 'node:crypto';
-import { db } from "../db";
-import { employees, users, bulkImportJobs } from "@shared/schema";
-import { eq } from "drizzle-orm";
-import Papa from "papaparse";
-import bcrypt from "bcryptjs";
-
-interface BulkImportRow {
-  firstName: string;
-  lastName: string;
-  email: string;
-  gender: 'male' | 'female' | 'other';
-  dateOfBirth: string;
-  nationality: string;
-  qidNumber: string;
-  primaryMobile: string;
-  residentialAddress: string;
-  emergencyContactName: string;
-  emergencyContactNumber: string;
-  department: string;
-  position: string;
-  location: string;
-  joiningDate: string;
-  username?: string;
-  password?: string;
-  role?: 'admin' | 'hr' | 'finance' | 'employee' | 'temporary_staff' | 'manager' | 'department_head';
-  type: 'permanent' | 'temporary' | 'contract';
+import Papa from 'papaparse';
+import {z} from 'zod';
+import {and,eq,inArray,or,sql} from 'drizzle-orm';
+import {employees,employeeImportRows,bulkImportJobs} from '@shared/schema';
+import {employeeWriteFields,checkEmploymentDates} from '@shared/employee-records';
+import {employeeImportColumns,type ImportPayload,type ImportIssue} from '@shared/employee-import';
+import {OnboardingError} from './onboarding-workflow';
+import {recordHistory} from './workplaceRecords';
+export const IMPORT_MAX_ROWS=500,IMPORT_MAX_BYTES=2*1024*1024;
+export const importPayloadSchema=z.object(Object.fromEntries(employeeImportColumns.map(c=>[c.key,z.string().max(2000)]))).partial().strict();
+const fail=(message:string):never=>{throw new OnboardingError(400,message);};
+const canonical=(s:string)=>s.trim().toLowerCase();
+const headerKey=(s:string)=>s.trim().toLowerCase().replace(/[ _-]/g,'');
+const aliases=new Map(employeeImportColumns.map(c=>[headerKey(c.key),c.key]));aliases.set('email','personalEmail');aliases.set('employeetype','type');
+export function parseEmployeeCsv(buffer:Buffer):{rowNumber:number;payload:ImportPayload;included:boolean}[]{
+ if(!buffer.length||buffer.length>IMPORT_MAX_BYTES)fail('Choose a non-empty UTF-8 CSV file up to 2 MB');
+ let content:string;try{content=new TextDecoder('utf-8',{fatal:true}).decode(buffer);}catch{fail('Save the file as UTF-8 CSV before uploading');}
+ if(content!.includes('\0'))fail('Binary data is not supported; upload UTF-8 CSV');
+ const parsed=Papa.parse<string[]>(content!,{header:false,delimiter:',',skipEmptyLines:'greedy',dynamicTyping:false,preview:IMPORT_MAX_ROWS+2});
+ if(parsed.errors.length)fail('CSV quoting or record structure is invalid. Use comma-separated UTF-8 CSV with quoted values when needed');
+ if(parsed.data.length<2)fail('The file needs a header and at least one employee record');
+ if(parsed.data.length>IMPORT_MAX_ROWS+1)fail('Import at most 500 employee records per file');
+ const headers=parsed.data[0].map(h=>aliases.get(headerKey(h)));
+ if(headers.some(h=>!h))fail('The file contains unsupported columns. Use the current template; account credentials, roles and system fields are not imported');
+ if(new Set(headers).size!==headers.length)fail('Two columns map to the same employee field. Remove duplicate headers or aliases');
+ const missing=employeeImportColumns.filter(c=>c.required&&!headers.includes(c.key));
+ if(missing.length)fail('Required columns missing: '+missing.map(c=>c.key).join(', '));
+ return parsed.data.slice(1).map((cells,index)=>{
+  if(cells.length!==headers.length)fail('CSV record '+(index+2)+' has the wrong number of fields; check commas and quotation marks');
+  const payload=Object.fromEntries(headers.map((h,i)=>[h!,cells[i].trim()]));
+  const valid=importPayloadSchema.safeParse(payload);if(!valid.success)fail('CSV record '+(index+2)+' has a value longer than 2,000 characters');
+  return {rowNumber:index+2,payload,included:true};
+ });
 }
-
-interface ImportResult {
-  success: boolean;
-  totalRows: number;
-  successfulRows: number;
-  failedRows: number;
-  errors: Array<{ row: number; field: string; message: string; data: any }>;
+type Staged={id:number;rowNumber:number;payload:unknown;included:boolean;employeeId:number|null};
+type Validated=Staged&{payload:ImportPayload;errors:ImportIssue[];values?:z.infer<typeof employeeWriteFields>};
+export async function validateImportRows(tx:any,rows:Staged[]){
+ const result:Validated[]=rows.map(row=>{
+  const payload=importPayloadSchema.parse(row.payload) as ImportPayload,errors:ImportIssue[]=[];
+  const input:Record<string,unknown>={};
+  for(const col of employeeImportColumns){const value=payload[col.key]?.trim();if(value===undefined||value==='')continue;
+   if(col.key==='managerEmployeeId'||col.key==='secondaryManagerEmployeeId')continue;
+   if(col.kind==='boolean'){if(!['true','false'].includes(value.toLowerCase()))errors.push({field:col.key,message:'Use true or false'});else input[col.key]=value.toLowerCase()==='true';}
+   else if(col.kind==='integer'){if(!/^\d+$/.test(value))errors.push({field:col.key,message:'Use a non-negative whole number'});else input[col.key]=Number(value);}
+   else input[col.key]=col.options?value.toLowerCase():value;
+  }
+  const parsed=employeeWriteFields.safeParse(input);
+  if(!parsed.success)errors.push(...parsed.error.issues.map(e=>({field:String(e.path[0]||'record'),message:e.code==='invalid_enum_value'?'Choose an allowed value from the field guide':e.code==='invalid_type'?'A value in the expected format is required':e.message})));
+  else{const message=checkEmploymentDates(parsed.data);if(message)errors.push({field:'dates',message});}
+  return {...row,payload,errors,values:parsed.success?parsed.data:undefined};
+ });
+ const included=result.filter(r=>r.included),refs=[...new Set(included.flatMap(r=>[r.payload.employeeId,r.payload.managerEmployeeId,r.payload.secondaryManagerEmployeeId]).filter(Boolean).map(canonical))],qids=[...new Set(included.map(r=>r.payload.qidNumber).filter(Boolean).map(canonical))];
+ const existing: {id:number;employeeId:string;qidNumber:string;status:string}[]=refs.length||qids.length?await tx.select({id:employees.id,employeeId:employees.employeeId,qidNumber:employees.qidNumber,status:employees.status}).from(employees).where(or(refs.length?inArray(sql`lower(trim(${employees.employeeId}))`,refs):undefined,qids.length?inArray(sql`lower(trim(${employees.qidNumber}))`,qids):undefined)):[];
+ const ids=new Map<string,Validated[]>(),identity=new Map<string,Validated[]>();
+ for(const r of included){for(const [key,map] of [[r.payload.employeeId,ids],[r.payload.qidNumber,identity]] as const){if(!key)continue;const normalized=canonical(key);map.set(normalized,[...(map.get(normalized)||[]),r]);}}
+ for(const r of included){
+  for(const [field,map] of [['employeeId',ids],['qidNumber',identity]] as const){const key=r.payload[field]&&canonical(r.payload[field]);if(!key)continue;
+   if((map.get(key)?.length||0)>1)r.errors.push({field,message:'Duplicate value in included CSV records'});
+   if(existing.some(e=>canonical(e[field])===key))r.errors.push({field,message:'Already used by an existing employee; this import only creates new employees'});
+  }
+  for(const field of ['managerEmployeeId','secondaryManagerEmployeeId']){const key=r.payload[field]&&canonical(r.payload[field]);if(!key)continue;
+   if(key===canonical(r.payload.employeeId||'')){r.errors.push({field,message:'An employee cannot report to themselves'});continue;}
+   const candidates=existing.filter(e=>canonical(e.employeeId)===key),pending=ids.get(key)||[];
+   if(candidates.length+pending.length!==1)r.errors.push({field,message:'Choose one existing manager or one included employee from this file'});
+   else if(candidates[0]?.status==='inactive')r.errors.push({field,message:'The selected manager is inactive'});
+  }
+ }
+ // Existing records cannot point to these not-yet-created IDs. Cycles can only be introduced between staged employees.
+ for(const r of included){const origin=canonical(r.payload.employeeId||''),seen=new Set<string>(),queue=[r];
+  while(queue.length){const node=queue.pop()!;for(const field of ['managerEmployeeId','secondaryManagerEmployeeId']){const parent=node.payload[field]&&canonical(node.payload[field]);if(!parent)continue;
+   if(parent===origin){if(!r.errors.some(e=>e.field==='managers'))r.errors.push({field:'managers',message:'Reporting relationships form a cycle'});continue;}
+   if(seen.has(parent))continue;seen.add(parent);const matches=ids.get(parent);if(matches?.length===1)queue.push(matches[0]);
+  }}
+ }
+ // Invalid managers propagate to dependents, including chains of staged managers.
+ let changed=true;while(changed){changed=false;for(const r of included)for(const field of ['managerEmployeeId','secondaryManagerEmployeeId']){const parent=r.payload[field]?ids.get(canonical(r.payload[field])):undefined;if(parent?.length===1&&parent[0].errors.length&&!r.errors.some(e=>e.field===field)){r.errors.push({field,message:'Correct or replace the referenced manager record first'});changed=true;}}}
+ return {rows:result,existing,includedRows:included.length,failedRows:included.filter(r=>r.errors.length).length};
 }
-
-export class BulkImportService {
-  async processBulkImport(
-    jobId: number,
-    csvContent: string,
-    uploadedBy: number
-  ): Promise<ImportResult> {
-    const result: ImportResult = {
-      success: false,
-      totalRows: 0,
-      successfulRows: 0,
-      failedRows: 0,
-      errors: [],
-    };
-
-    try {
-      // Parse CSV content
-      const parseResult = Papa.parse<BulkImportRow>(csvContent, {
-        header: true,
-        skipEmptyLines: true,
-        transformHeader: (header) => {
-          // Transform common header variations to match our schema
-          const headerMap: { [key: string]: string } = {
-            'first_name': 'firstName',
-            'last_name': 'lastName',
-            'date_of_birth': 'dateOfBirth',
-            'qid_number': 'qidNumber',
-            'primary_mobile': 'primaryMobile',
-            'residential_address': 'residentialAddress',
-            'emergency_contact_name': 'emergencyContactName',
-            'emergency_contact_number': 'emergencyContactNumber',
-            'joining_date': 'joiningDate',
-            'employee_type': 'type',
-          };
-          return headerMap[header.toLowerCase()] || header;
-        },
-      });
-
-      if (parseResult.errors.length > 0) {
-        result.errors.push(...parseResult.errors.map((error, index) => ({
-          row: index,
-          field: 'csv_parse',
-          message: error.message,
-          data: error,
-        })));
-      }
-
-      const rows = parseResult.data;
-      if(rows.length>500)throw new Error('Import at most 500 rows per file');
-      if(parseResult.errors.length)throw new Error('CSV contains invalid rows; correct the file before importing');
-      result.totalRows = rows.length;
-
-      // Update job status
-      await db.update(bulkImportJobs)
-        .set({ 
-          status: 'processing',
-          totalRows: result.totalRows 
-        })
-        .where(eq(bulkImportJobs.id, jobId));
-
-      // Process each row
-      for (let i = 0; i < rows.length; i++) {
-        const row = rows[i];
-        
-        try {
-          await this.processEmployeeRow(row, i + 1);
-          result.successfulRows++;
-        } catch (error: any) {
-          result.failedRows++;
-          result.errors.push({
-            row: i + 1,
-            field: 'general',
-            message: error.message || 'Unknown error',
-            data: null,
-          });
-        }
-      }
-
-      // Update final job status
-      result.success = result.failedRows === 0;
-      await db.update(bulkImportJobs)
-        .set({
-          status: result.success ? 'completed' : 'failed',
-          successfulRows: result.successfulRows,
-          failedRows: result.failedRows,
-          errorLog: result.errors,
-          completedAt: new Date(),
-        })
-        .where(eq(bulkImportJobs.id, jobId));
-
-    } catch (error: any) {
-      // Update job as failed
-      await db.update(bulkImportJobs)
-        .set({
-          status: 'failed',
-          errorLog: [{ row: 0, field: 'system', message: error.message, data: null }],
-          completedAt: new Date(),
-        })
-        .where(eq(bulkImportJobs.id, jobId));
-      
-      throw error;
-    }
-
-    return result;
-  }
-
-  private async processEmployeeRow(row: BulkImportRow, rowNumber: number): Promise<void> {
-    // Validate required fields
-    const requiredFields = [
-      'firstName', 'lastName', 'email', 'gender', 'dateOfBirth',
-      'nationality', 'qidNumber', 'primaryMobile', 'residentialAddress',
-      'emergencyContactName', 'emergencyContactNumber', 'department',
-      'position', 'location', 'joiningDate', 'type'
-    ];
-
-    for (const field of requiredFields) {
-      if (!row[field as keyof BulkImportRow]) {
-        throw new Error(`Missing required field: ${field}`);
-      }
-    }
-
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(row.email)) {
-      throw new Error('Invalid email format');
-    }
-
-    // Validate QID format (assuming Qatar ID format)
-    if (!/^\d{11}$/.test(row.qidNumber)) {
-      throw new Error('QID number must be 11 digits');
-    }
-
-    // Validate date formats
-    const dateFields = ['dateOfBirth', 'joiningDate'];
-    for (const field of dateFields) {
-      const dateValue = row[field as keyof BulkImportRow] as string;
-      if (dateValue && isNaN(Date.parse(dateValue))) {
-        throw new Error(`Invalid date format for ${field}. Use YYYY-MM-DD format`);
-      }
-    }
-
-    await db.transaction(async tx=>{
-    let userId: number | null = null;
-
-    // Create user account if username is provided
-    if (row.username) {
-      // Check if user already exists
-      const existingUser = await tx.select()
-        .from(users)
-        .where(eq(users.username, row.username))
-        .limit(1);
-
-      if (existingUser.length > 0) {
-        throw new Error(`Username '${row.username}' already exists`);
-      }
-
-      // Check if email already exists
-      const existingEmail = await tx.select()
-        .from(users)
-        .where(eq(users.email, row.email))
-        .limit(1);
-
-      if (existingEmail.length > 0) {
-        throw new Error(`Email '${row.email}' already exists in users table`);
-      }
-
-      // Hash password
-      if(row.role && !['employee','permanent_employee','temporary_staff','contract_employee'].includes(row.role))throw new Error('Create privileged accounts individually in User management');
-      const password = row.password;
-      if(!password || password.length<12 || Buffer.byteLength(password)>72)throw new Error('An explicit password of at least 12 characters is required');
-      const hashedPassword = await bcrypt.hash(password, 12);
-
-      // Create user
-      const [newUser] = await tx.insert(users).values({
-        username: row.username,
-        password: hashedPassword,
-        email: row.email,
-        firstName: row.firstName,
-        lastName: row.lastName,
-        role: row.role || 'employee',
-        department: row.department,
-        qidNumber: row.qidNumber,
-        isActive: true,
-        isEmailVerified: false,
-        approvalStatus: 'approved',
-      }).returning({ id: users.id });
-
-      userId = newUser.id;
-    }
-
-    // Check if employee with QID already exists
-    const existingEmployee = await tx.select()
-      .from(employees)
-      .where(eq(employees.qidNumber, row.qidNumber))
-      .limit(1);
-
-    if (existingEmployee.length > 0) {
-      throw new Error(`Employee with QID '${row.qidNumber}' already exists`);
-    }
-
-    // Generate employee ID
-    const employeeId = await this.generateEmployeeId(row.department);
-
-    // Create employee record
-    await tx.insert(employees).values({
-      personalEmail:row.email,
-      userId: userId,
-      employeeId: employeeId,
-      firstName: row.firstName,
-      lastName: row.lastName,
-      gender: row.gender,
-      dateOfBirth: row.dateOfBirth,
-      nationality: row.nationality,
-      qidNumber: row.qidNumber,
-      primaryMobile: row.primaryMobile,
-      residentialAddress: row.residentialAddress,
-      emergencyContactName: row.emergencyContactName,
-      emergencyContactNumber: row.emergencyContactNumber,
-      type: row.type,
-      department: row.department,
-      position: row.position,
-      location: row.location,
-      joiningDate: row.joiningDate,
-      status: 'active',
-    });
-    });
-  }
-
-  private async generateEmployeeId(department:string):Promise<string>{return department.replace(/[^a-z]/gi,'').slice(0,3).toUpperCase()+'-'+randomUUID();}
-
-  async getImportJob(jobId: number) {
-    const [job] = await db.select()
-      .from(bulkImportJobs)
-      .where(eq(bulkImportJobs.id, jobId))
-      .limit(1);
-    
-    return job;
-  }
-
-  async getImportJobs(uploadedBy: number) {
-    return db.select()
-      .from(bulkImportJobs)
-      .where(eq(bulkImportJobs.uploadedBy, uploadedBy))
-      .orderBy(bulkImportJobs.createdAt);
-  }
+export async function saveImportValidation(tx:any,jobId:number,validation:Awaited<ReturnType<typeof validateImportRows>>,version:number){
+ await tx.execute(sql`UPDATE employee_import_rows AS r SET errors=v.errors FROM jsonb_to_recordset(${JSON.stringify(validation.rows.map(r=>({id:r.id,errors:r.errors})))}::jsonb) AS v(id integer,errors jsonb) WHERE r.id=v.id AND r.job_id=${jobId}`);
+ const [job]=await tx.update(bulkImportJobs).set({includedRows:validation.includedRows,failedRows:validation.failedRows,validatedAt:new Date(),version}).where(eq(bulkImportJobs.id,jobId)).returning();return job;
+}
+export function importJobView(job:typeof bulkImportJobs.$inferSelect){return {id:job.id,fileName:job.fileName,status:job.status,version:job.version,totalRows:job.totalRows||0,successfulRows:job.successfulRows||0,failedRows:job.failedRows||0,includedRows:job.includedRows,excludedRows:job.submissionKey?(job.totalRows||0)-job.includedRows:0,validRows:job.submissionKey?job.includedRows-(job.failedRows||0):0,createdAt:job.createdAt,completedAt:job.completedAt,validatedAt:job.validatedAt,committedFromVersion:job.committedFromVersion,staged:!!job.submissionKey};}
+export async function importHistory(tx:any,req:any,job:typeof bulkImportJobs.$inferSelect,action:string,reason:string,extra:Record<string,unknown>={}){
+ const {fileName,...safe}=importJobView(job);await recordHistory(tx,req,'employee_import',{...safe,action,...extra},reason);
+}
+export function importReportCsv(rows:{rowNumber:number;included:boolean;errors:unknown;employeeId:number|null}[]){
+ // Report contains record coordinates and validation guidance, not source personal data.
+ return Papa.unparse(rows.flatMap(r=>(r.errors as ImportIssue[]).length?(r.errors as ImportIssue[]).map(e=>({record:r.rowNumber,included:r.included,outcome:r.included?'needs correction':'excluded',field:e.field,message:e.message,createdEmployeeRecordId:r.employeeId??''})):[{record:r.rowNumber,included:r.included,outcome:r.employeeId?'imported':r.included?'valid':'excluded',field:'',message:'',createdEmployeeRecordId:r.employeeId??''}]),{escapeFormulae:true});
 }

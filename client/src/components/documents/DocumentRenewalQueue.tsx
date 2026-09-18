@@ -4,38 +4,28 @@ import {apiJson} from '@/lib/queryClient';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {useToast} from '@/hooks/use-toast';
-
-type Renewal={id:number;documentId:number;employeeName:string;documentType:string;status:string;createdAt:string;requestedBy:number;reviewedBy:number|null;reviewReason:string|null;canReview:boolean;canWithdraw:boolean;proposal:{documentNumber:string;issueDate:string;expiryDate:string;issueAuthority:string;notes:string;reason:string}};
+import {DocumentAudit,type ReviewPolicy} from './DocumentReviewPolicy';
+type Renewal={id:number;version:number;documentId:number;employeeName:string;documentType:string;status:string;createdAt:string;requestedBy:number;reviewedBy:number|null;reviewReason:string|null;assignedReviewerId:number|null;reviewerName:string|null;reviewDueDate:string|null;overdue:boolean;policySnapshot:ReviewPolicy|null;canAssign:boolean;canReview:boolean;canWithdraw:boolean;proposal:{documentNumber:string;issueDate:string;expiryDate:string;issueAuthority:string;notes:string;reason:string}};
 export function DocumentRenewalQueue(){
-  const [offset,setOffset]=useState(0);
-  const query=useQuery<{items:Renewal[];hasMore:boolean}>({queryKey:['/api/documents/renewal-requests',offset],queryFn:()=>apiJson(`/api/documents/renewal-requests?offset=${offset}`)});
-  return <section className="rounded-lg border bg-card p-4 space-y-3">
-    <h3 className="text-lg font-semibold">Renewal requests</h3>
-    <p className="text-sm text-muted-foreground">Review proposed files before they become current. Submit a request from a document’s details. Direct replacement remains available under existing permissions.</p>
-    {query.isLoading?<p>Loading requests…</p>:query.isError?<div role="alert">Unable to load renewal requests. <Button variant="outline" onClick={()=>query.refetch()}>Retry</Button></div>:<>
-      {!query.data?.items.length?<p className="text-sm">No renewal requests to show.</p>:query.data.items.map(row=><RenewalCard key={row.id} row={row}/>)}
-      <div className="flex gap-2"><Button variant="outline" disabled={offset===0} onClick={()=>setOffset(Math.max(0,offset-50))}>Previous requests</Button><Button variant="outline" disabled={!query.data?.hasMore} onClick={()=>setOffset(offset+50)}>Next requests</Button></div>
-    </>}
-  </section>;
+ const [offset,setOffset]=useState(0),[view,setView]=useState('all'),[status,setStatus]=useState('pending');
+ const query=useQuery<{items:Renewal[];hasMore:boolean}>({queryKey:['/api/documents/renewal-requests',{offset,view,status}]});
+ return <section className="rounded-lg border bg-card p-4 space-y-3"><h2 className="text-lg font-semibold">Renewal requests</h2><p className="text-sm text-muted-foreground">Review proposed files before they become current. Submit a request from document details. Approval rules control whether direct replacement is available.</p>
+ <div className="flex flex-wrap gap-3"><label>Queue<select className="block rounded border p-2" value={view} onChange={e=>{setView(e.target.value);setOffset(0);}}>{[['all','All accessible requests'],['mine','Submitted by me'],['assigned','Assigned to me'],['unassigned','Unassigned pending'],['overdue','Overdue pending']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label><label>Request status<select className="block rounded border p-2" value={status} onChange={e=>{setStatus(e.target.value);setOffset(0);}}>{['all','pending','approved','rejected','withdrawn'].map(s=><option key={s} value={s}>{s}</option>)}</select></label><Button variant="outline" onClick={()=>query.refetch()}>Refresh requests</Button></div>
+ {query.isLoading?<p>Loading requests…</p>:query.isError?<p role="alert">Unable to load renewal requests. <Button onClick={()=>query.refetch()}>Retry</Button></p>:<>{!query.data?.items.length?<p>No matching renewal requests.</p>:query.data.items.map(row=><RenewalCard key={row.id+':'+row.version} row={row}/>)}<div className="flex gap-2"><Button variant="outline" disabled={!offset} onClick={()=>setOffset(n=>n-50)}>Previous requests</Button><Button variant="outline" disabled={!query.data?.hasMore} onClick={()=>setOffset(n=>n+50)}>Next requests</Button></div></>}
+ </section>;
 }
 function RenewalCard({row}:{row:Renewal}){
-  const [reason,setReason]=useState('');const cache=useQueryClient(),{toast}=useToast();
-  const decision=useMutation({mutationFn:(value:string)=>apiJson(`/api/documents/renewal-requests/${row.id}/decision`,{method:'POST',body:JSON.stringify({decision:value,reason})}),
-    onSuccess:async()=>{await cache.invalidateQueries({predicate:q=>String(q.queryKey[0]).startsWith('/api/documents')||String(q.queryKey[0]).startsWith('/api/dashboard')});toast({title:'Renewal decision recorded'});},
-    onError:error=>toast({title:'Unable to record decision',description:error.message,variant:'destructive'})});
-  return <details className="rounded border p-3">
-    <summary className="cursor-pointer">#{row.id} · {row.employeeName} · {row.documentType} · {row.status}</summary>
-    <div className="space-y-2 pt-3 text-sm">
-      <p>Proposed number: {row.proposal.documentNumber}</p><p>Issue: {row.proposal.issueDate} · Expiry: {row.proposal.expiryDate}</p>
-      <p>Authority: {row.proposal.issueAuthority||'Not specified'}</p><p>Reason: {row.proposal.reason}</p>{row.proposal.notes&&<p>Notes: {row.proposal.notes}</p>}
-      <p>Submitted by account #{row.requestedBy} on {new Date(row.createdAt).toLocaleString()}</p>
-      <Button variant="outline" asChild><a href={`/api/documents/renewal-requests/${row.id}/download`} target="_blank" rel="noopener noreferrer">Download proposed file</a></Button>
-      {row.reviewReason&&<p>Decision by account #{row.reviewedBy}: {row.reviewReason}</p>}
-      {(row.canReview||row.canWithdraw)&&<fieldset disabled={decision.isPending} className="space-y-2">
-        <label className="grid gap-1">Decision reason<Input value={reason} onChange={e=>setReason(e.target.value)} minLength={5} maxLength={500}/></label>
-        <div className="flex gap-2">{row.canReview&&<><Button disabled={reason.trim().length<5||decision.isPending} onClick={()=>decision.mutate('approved')}>Approve renewal</Button><Button variant="outline" disabled={reason.trim().length<5||decision.isPending} onClick={()=>decision.mutate('rejected')}>Reject renewal</Button></>}
-        {row.canWithdraw&&<Button variant="outline" disabled={reason.trim().length<5||decision.isPending} onClick={()=>decision.mutate('withdrawn')}>Withdraw request</Button>}</div>
-      </fieldset>}
-    </div>
-  </details>;
+ const [open,setOpen]=useState(false),[reason,setReason]=useState(''),[assignmentReason,setAssignmentReason]=useState(''),[reviewer,setReviewer]=useState(''),[search,setSearch]=useState(''),[offset,setOffset]=useState(0);const cache=useQueryClient(),{toast}=useToast();
+ const base='/api/documents/renewal-requests/'+row.id;
+ const people=useQuery<{items:{id:number;name:string;role:string}[];hasMore:boolean}>({queryKey:[base+'/reviewers',{q:search,offset}],enabled:open&&row.canAssign});
+ const action=useMutation({mutationFn:({path,body}:{path:string;body:object})=>apiJson(base+path,{method:'POST',body:{version:row.version,...body}}),onSuccess:async()=>{await cache.invalidateQueries({predicate:q=>String(q.queryKey[0]).startsWith('/api/documents')||String(q.queryKey[0]).startsWith('/api/dashboard')});toast({title:'Renewal request updated'});},onError:error=>toast({title:'Unable to update request',description:error.message,variant:'destructive'})});
+ return <details className="rounded border p-3" onToggle={e=>{if(e.target===e.currentTarget)setOpen(e.currentTarget.open);}}><summary className="cursor-pointer">#{row.id} · {row.employeeName} · {row.documentType} · {row.status}{row.overdue?' · Overdue':''}</summary><div className="space-y-3 pt-3 text-sm">
+ <p>Reviewer: {row.reviewerName||'Unassigned'} · Due: {row.reviewDueDate||'No target recorded'}</p><p>{row.policySnapshot?'Policy version '+row.policySnapshot.version+' · '+(row.policySnapshot.requireAssignedReviewer?'Named reviewer required':'Assignment optional'):'Legacy request; independent review required'}</p>
+ <p>Proposed number: {row.proposal.documentNumber}</p><p>Issue: {row.proposal.issueDate} · Expiry: {row.proposal.expiryDate}</p><p>Authority: {row.proposal.issueAuthority||'Not specified'}</p><p>Reason: {row.proposal.reason}</p>{row.proposal.notes&&<p>Notes: {row.proposal.notes}</p>}<p>Submitted by account #{row.requestedBy} on {new Date(row.createdAt).toLocaleString()}</p><Button variant="outline" asChild><a href={base+'/download'} target="_blank" rel="noopener noreferrer">Download proposed file</a></Button>
+ {row.canAssign&&<fieldset disabled={action.isPending} className="rounded border p-3 space-y-2"><legend>Assign an independent reviewer</legend><p>HR reviewers with access to this employee may reassign pending requests. Only the assigned reviewer can approve or reject.</p><label className="block">Find eligible reviewers<Input value={search} maxLength={100} onChange={e=>{setSearch(e.target.value);setOffset(0);setReviewer('');}}/></label>
+ {people.isLoading?<p>Loading reviewers…</p>:people.isError?<p role="alert">Unable to load reviewers. <Button variant="outline" onClick={()=>people.refetch()}>Retry</Button></p>:<><label className="block">Reviewer<select aria-label="Renewal reviewer" className="block w-full rounded border p-2" value={reviewer} onChange={e=>setReviewer(e.target.value)}><option value="">Select a reviewer</option>{people.data?.items.map(p=><option key={p.id} value={p.id}>{p.name} ({p.role.replaceAll('_',' ')})</option>)}</select></label>{!people.data?.items.length&&<p>No eligible reviewers match this search.</p>}<div className="flex gap-2"><Button variant="outline" disabled={!offset} onClick={()=>{setOffset(n=>n-25);setReviewer('');}}>Previous reviewers</Button><Button variant="outline" disabled={!people.data?.hasMore} onClick={()=>{setOffset(n=>n+25);setReviewer('');}}>Next reviewers</Button></div></>}
+ <label className="block">Assignment reason<Input value={assignmentReason} minLength={5} maxLength={500} onChange={e=>setAssignmentReason(e.target.value)}/></label><div className="flex gap-2"><Button disabled={!reviewer||Number(reviewer)===row.assignedReviewerId||assignmentReason.trim().length<5||action.isPending} onClick={()=>action.mutate({path:'/assignment',body:{reviewerId:Number(reviewer),reason:assignmentReason}})}>Assign reviewer</Button>{row.assignedReviewerId&&<Button variant="outline" disabled={assignmentReason.trim().length<5||action.isPending} onClick={()=>action.mutate({path:'/assignment',body:{reviewerId:null,reason:assignmentReason}})}>Clear assignment</Button>}</div></fieldset>}
+ {row.reviewReason&&<p>Decision by account #{row.reviewedBy}: {row.reviewReason}</p>}
+ {(row.canReview||row.canWithdraw)&&<fieldset disabled={action.isPending} className="space-y-2"><label className="block">Decision reason<Input value={reason} onChange={e=>setReason(e.target.value)} minLength={5} maxLength={500}/></label><div className="flex gap-2">{(row.canReview?['approved','rejected']:[]).concat(row.canWithdraw?['withdrawn']:[]).map(value=><Button key={value} variant={value==='approved'?'default':'outline'} disabled={reason.trim().length<5||action.isPending} onClick={()=>action.mutate({path:'/decision',body:{decision:value,reason}})}>{{approved:'Approve renewal',rejected:'Reject renewal',withdrawn:'Withdraw request'}[value]}</Button>)}</div></fieldset>}
+ <DocumentAudit url={base+'/history'} label="Request history" version={row.version}/></div></details>;
 }

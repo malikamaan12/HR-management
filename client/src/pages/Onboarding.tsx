@@ -1,3 +1,7 @@
+import {OnboardingReviewPolicy,OnboardingReviewQueue} from '@/components/lifecycle/OnboardingReviews';
+import {WaiverPolicy} from '@/components/lifecycle/HiringDelivery';
+import {RequirementTemplates} from '@/components/lifecycle/WorkflowControls';
+import {DocumentChecks,ExitReadiness} from '@/components/lifecycle/Hiring';
 import {Offboarding} from '@/components/onboarding/Offboarding';
 import {TaskEditor} from '@/components/onboarding/TaskEditor';
 import React, { useState } from "react";
@@ -125,7 +129,7 @@ export default function Onboarding() {
   const [isEditing, setIsEditing] = useState(false);
 
   // Fetch data with React Query
-  const { data: stats, isLoading: isLoadingStats } = useQuery<OnboardingStats>({
+  const { data: stats, isLoading: isLoadingStats, error: statsError } = useQuery<OnboardingStats>({
     queryKey: ['/api/onboarding-stats'],
     enabled: activeTab === "dashboard"
   });
@@ -261,7 +265,7 @@ export default function Onboarding() {
       )}
 
       <Offboarding/>
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
+      <OnboardingReviewPolicy/><OnboardingReviewQueue/><WaiverPolicy/><RequirementTemplates/><DocumentChecks /><ExitReadiness /><Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="dashboard" className="flex items-center">
             <Users className="mr-2 h-4 w-4" />
@@ -283,7 +287,7 @@ export default function Onboarding() {
 
         {/* Dashboard Tab */}
         <TabsContent value="dashboard">
-          {isLoadingStats ? (
+          {statsError ? <p role="alert">Unable to load onboarding summary. Please retry.</p> : isLoadingStats ? (
             <div className="flex justify-center p-6">Loading dashboard...</div>
           ) : (
             <div className="space-y-6">

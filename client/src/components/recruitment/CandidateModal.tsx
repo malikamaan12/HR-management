@@ -1,3 +1,4 @@
+import {CandidateCorrections} from './CandidateCorrections';
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -22,7 +23,8 @@ interface CandidateModalProps {
   isEditing?: boolean;
 }
 
-export function CandidateModal({ isOpen, onClose, candidate, isEditing = false }: CandidateModalProps) {
+export function CandidateModal(props:CandidateModalProps){return props.candidate?<CandidateCorrections key={props.candidate.id} isOpen={props.isOpen} onClose={props.onClose} candidateId={props.candidate.id}/>:<CreateCandidateModal {...props}/>;}
+function CreateCandidateModal({ isOpen, onClose, candidate, isEditing = false }: CandidateModalProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   

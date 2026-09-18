@@ -1,5 +1,8 @@
 # HR module completion plan
 
+Current local checkpoint: **18 September 2026, Batch 14**. This development branch covers 295 passing tests across 24 files, production builds and focused browser acceptance. GitHub main has a separate, newer live implementation; direct deployment of this branch is unsafe until migration and feature reconciliation. See [RELEASE-READINESS.md](RELEASE-READINESS.md).
+
+
 Updated 15 September 2026. The application is live at https://e3-hr.onrender.com on Render Free and Supabase Free. Release `ee08c0e83ad2ccf28aaa5b67dce27533e34b81ce` passed 135 tests across 13 files, TypeScript checking and both production builds, was pushed to `malikamaan12/HR-management` on `main`, and is live in Render deployment `dep-dak8s7ek1f9s73cdu7j0`. Startup migrations completed, database readiness returned HTTP 200, and the authenticated live Documents screen and renewal request queue load; upload and renewal/history passed with isolated synthetic records. External production file delivery was not re-tested. This checklist separates the current foundation from workflows that still need implementation and acceptance. It does not certify every module as finished.
 
 ## Release standard
@@ -45,3 +48,22 @@ Each section must support its main workflow end to end, enforce server-side reco
 ## Validation record
 
 Employee API tests cover permissions, more than 100 records, filters and wildcards, account-versus-employee identity, private fields, duplicates, dates, protected writes, stale edits, manager cycles and atomic audit failure. Calculation-rule tests cover admin permissions, future/effective dates, same-day precedence, stale publication conflicts, immutable history, previews, holiday counting, attendance and timesheet snapshots, payroll rounding and rollback. The full suite has 135 passing tests across 13 files; TypeScript and frontend/server builds pass. Isolated browser checks passed for directory search beyond 100 records, create/edit, saved civil dates, manager selection, explicit save, history, employee-locked document selection and the admin Rules & calculations editor. Browser original upload/renewal passed with isolated records and in-memory storage. Production file-delivery acceptance and remaining role-by-role screen acceptance are separate checks.
+
+## Local development checkpoint — Batches 3–8
+
+The deployed-release information above remains historical. Local enhancements and their exact implementation/validation boundaries are recorded in [LOCAL-COMPLETION-PLAN.md](LOCAL-COMPLETION-PLAN.md), through Batch 8. The latest local regression passed 226 tests across 18 files plus TypeScript and both builds. New equipment custody and policy acknowledgement pages are local only. This does not certify completion of every legacy module or represent a new deployment.
+
+
+Local Batch 9 adds probation reviews, independently approved employee transfers and operational incident tracking, with admin-editable pinned rules and scoped version history. All 236 tests have passing verification: 235 in the consolidated run and the corrected migration test in its targeted rerun. TypeScript and production builds passed; isolated browser checks saved a transfer and incident and loaded probation. These modules remain local and unpushed. See [the Batch 9 scope and remaining limits](LOCAL-COMPLETION-PLAN.md).
+
+
+Local Batch 10 adds independently reviewed contract renewals and an admin-configurable expiry queue, versioned reusable exit templates, and independent return-to-work equipment clearance for specific completed exit versions. The full suite passed 246 tests across 20 files; a final clearance-version refinement then passed all 17 affected tests plus TypeScript and the server build. Frontend build and isolated template-to-exit browser checks passed. Work remains local, uncommitted and unpushed. Exact limits and validation are in [LOCAL-COMPLETION-PLAN.md](LOCAL-COMPLETION-PLAN.md).
+
+
+Local Batch 11 adds admin-controlled document replacement approval rules, named renewal reviewers with reassignment/history, pinned review targets and overdue queues, and a scoped searchable/paginated document register. The consolidated suite passed 255 tests; the final Qatar-date refinement then passed all 46 affected tests including one added midnight-boundary case. TypeScript, builds and isolated policy-to-assignment-to-approval browser acceptance passed. Defaults preserve optional approval until an administrator configures the policy. Initial uploads, retention and production storage acceptance remain separate. Changes remain local, uncommitted and unpushed; see [the detailed Batch 11 scope](LOCAL-COMPLETION-PLAN.md).
+
+
+Local Batch 12 replaces immediate CSV writes with private admin-owned import drafts, per-row correction/exclusion, duplicate/date/manager-cycle validation, atomic versioned commits, repeat-safe retries and downloadable result reports. Supports permanent, temporary and contract employees with event eligibility and work schedules. This imports new employee records only; login accounts stay in User Management. All 272 current tests have passing verification across the consolidated run and focused reruns; TypeScript, production builds and a synthetic upload-to-correction-to-commit browser check passed. No push or deployment. Exact validation history and remaining limits are in [LOCAL-COMPLETION-PLAN.md](LOCAL-COMPLETION-PLAN.md).
+
+
+Local Batch 13 closes legacy URL permission gaps, scopes event-staff data, prevents forged event/rating identities, removes duplicate workflow bypasses, and adds revision-safe onboarding notes/cancellation with private history. Navigation and direct-page access now agree on restricted management pages. All 285 tests passed together; final TypeScript/builds and isolated browser acceptance passed after fixing history refresh. Nothing was pushed or deployed. The next connected engineering batch is legacy reports/exports/communications and event-screen consolidation, followed by versioned candidate corrections and frontend loading/accessibility work; see [the release-readiness report](RELEASE-READINESS.md).

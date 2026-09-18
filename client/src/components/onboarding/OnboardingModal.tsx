@@ -1,3 +1,4 @@
+import {OnboardingEditModal} from './OnboardingEditModal';
 import type { Employee, OnboardingChecklist } from '@shared/schema';
 import { useState, useEffect } from "react";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
@@ -21,7 +22,12 @@ interface OnboardingModalProps {
   isEditing?: boolean;
 }
 
-export function OnboardingModal({ isOpen, onClose, onboarding, isEditing = false }: OnboardingModalProps) {
+export function OnboardingModal(props:OnboardingModalProps) {
+  if(!props.isOpen)return null;
+  if(props.isEditing&&props.onboarding)return <OnboardingEditModal key={props.onboarding.id} isOpen onClose={props.onClose} onboarding={props.onboarding}/>;
+  return <StartOnboardingModal {...props} isEditing={false} onboarding={undefined}/>;
+}
+function StartOnboardingModal({ isOpen, onClose, onboarding, isEditing = false }: OnboardingModalProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   

@@ -50,15 +50,7 @@ export function registerPerformanceRoutes(app: Express) {
       const [goal]=await db.insert(employeeGoals).values(data).returning();return res.status(201).json(goal);
     }catch(error){return res.status(error instanceof z.ZodError?400:500).json({message:error instanceof z.ZodError?'Check the goal fields':'Unable to create goal'});}
   });
-  app.patch('/api/performance/goals/:id',async(req,res)=>{
-    try{const id=z.coerce.number().int().positive().parse(req.params.id),data=insertEmployeeGoalSchema.omit({employeeId:true}).partial().parse(req.body);
-      const [current]=await db.select({employeeId:employeeGoals.employeeId}).from(employeeGoals).where(eq(employeeGoals.id,id));
-      if(!current)return res.status(404).json({message:'Goal not found'});
-      if (!(await canAccessEmployee(req, current.employeeId, 'update'))) return res.status(403).json({message:'You cannot update this goal'});
-      const [goal]=await db.update(employeeGoals).set({...data,updatedAt:new Date()}).where(eq(employeeGoals.id,id)).returning();
-      return res.json(goal);
-    }catch(error){return res.status(error instanceof z.ZodError?400:500).json({message:error instanceof z.ZodError?'Check the goal fields':'Unable to update goal'});}
-  });
+  app.patch('/api/performance/goals/:id',(_req,res)=>res.status(409).json({message:'Use Goal progress to update status with the current version and evidence'}));
   app.post('/api/performance/feedback',async(req,res)=>{
     try{const [provider]=await db.select({id:employees.id}).from(employees).where(eq(employees.userId,req.user!.userId));
       if(!provider)return res.status(400).json({message:'Link your account to an employee to provide feedback'});

@@ -118,7 +118,7 @@ export interface IStorage {
   updateEventRole(id: number, role: Partial<InsertEventRole>): Promise<EventRole | undefined>;
   
   // Event Staff Profiles methods
-  getEventStaffProfiles(): Promise<EventStaffProfile[]>;
+  getEventStaffProfiles(scope?: SQL): Promise<EventStaffProfile[]>;
   getEventStaffProfile(id: number): Promise<EventStaffProfile | undefined>;
   getEventStaffProfileByEmployeeId(employeeId: number): Promise<EventStaffProfile | undefined>;
   createEventStaffProfile(profile: InsertEventStaffProfile): Promise<EventStaffProfile>;
@@ -131,14 +131,14 @@ export interface IStorage {
   updateEventRoster(id: number, roster: Partial<InsertEventRoster>): Promise<EventRoster | undefined>;
   
   // Event Staff Assignment methods
-  getEventStaffAssignments(eventId: number): Promise<EventStaffAssignment[]>;
+  getEventStaffAssignments(eventId: number, scope?: SQL): Promise<EventStaffAssignment[]>;
   getEmployeeEventAssignments(employeeId: number): Promise<EventStaffAssignment[]>;
-  getEventRosterAssignments(rosterId: number): Promise<EventStaffAssignment[]>;
+  getEventRosterAssignments(eventId: number, role?: string, scope?: SQL): Promise<EventStaffAssignment[]>;
   createEventStaffAssignment(assignment: InsertEventStaffAssignment): Promise<EventStaffAssignment>;
   updateEventStaffAssignment(id: number, assignment: Partial<InsertEventStaffAssignment>): Promise<EventStaffAssignment | undefined>;
   
   // Event Staff Performance methods
-  getEventStaffPerformances(eventId?: number, employeeId?: number): Promise<EventStaffPerformance[]>;
+  getEventStaffPerformances(eventId?: number, employeeId?: number, scope?: SQL): Promise<EventStaffPerformance[]>;
   getEventStaffPerformance(id: number): Promise<EventStaffPerformance | undefined>;
   createEventStaffPerformance(performance: InsertEventStaffPerformance): Promise<EventStaffPerformance>;
   updateEventStaffPerformance(id: number, performance: Partial<InsertEventStaffPerformance>): Promise<EventStaffPerformance | undefined>;
@@ -150,7 +150,7 @@ export interface IStorage {
   updateEventCommunication(id: number, communication: Partial<InsertEventCommunication>): Promise<EventCommunication | undefined>;
   
   // Event Communication Recipients methods
-  getEventCommunicationRecipients(communicationId: number): Promise<EventCommunicationRecipient[]>;
+  getEventCommunicationRecipients(communicationId: number, scope?: SQL): Promise<EventCommunicationRecipient[]>;
   createEventCommunicationRecipient(recipient: InsertEventCommunicationRecipient): Promise<EventCommunicationRecipient>;
   
   // Activity Log methods
@@ -496,8 +496,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Event Staff Assignment methods
-  async getEventStaffAssignments(eventId: number): Promise<EventStaffAssignment[]> {
-    return db.select().from(eventStaffAssignments).where(eq(eventStaffAssignments.eventId,eventId));
+  async getEventStaffAssignments(eventId: number, scope?: SQL): Promise<EventStaffAssignment[]> {
+    const rows=await db.select({record:eventStaffAssignments}).from(eventStaffAssignments)
+      .innerJoin(employees,eq(eventStaffAssignments.employeeId,employees.id))
+      .where(and(eventId ? eq(eventStaffAssignments.eventId,eventId):undefined,scope));
+    return rows.map(row=>row.record);
   }
 
   async getEmployeeEventAssignments(employeeId: number): Promise<EventStaffAssignment[]> {
@@ -523,8 +526,11 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async getEventRosterAssignments(eventId: number, role?: string): Promise<EventStaffAssignment[]> {
-    return db.select().from(eventStaffAssignments).where(and(eq(eventStaffAssignments.eventId,eventId),role ? eq(eventStaffAssignments.role,role):undefined));
+  async getEventRosterAssignments(eventId: number, role?: string, scope?: SQL): Promise<EventStaffAssignment[]> {
+    const rows=await db.select({record:eventStaffAssignments}).from(eventStaffAssignments)
+      .innerJoin(employees,eq(eventStaffAssignments.employeeId,employees.id))
+      .where(and(eq(eventStaffAssignments.eventId,eventId),role ? eq(eventStaffAssignments.role,role):undefined,scope));
+    return rows.map(row=>row.record);
   }
 
   async getEventRoles(eventId?: number): Promise<EventRole[]> {
@@ -564,8 +570,10 @@ export class DatabaseStorage implements IStorage {
     const [row] = await db.update(eventRoles).set({...role,updatedAt:new Date()}).where(eq(eventRoles.id,id)).returning(); return row;
   }
 
-  async getEventStaffProfiles(): Promise<EventStaffProfile[]> {
-    return db.select().from(eventStaffProfiles);
+  async getEventStaffProfiles(scope?: SQL): Promise<EventStaffProfile[]> {
+    const rows=await db.select({record:eventStaffProfiles}).from(eventStaffProfiles)
+      .innerJoin(employees,eq(eventStaffProfiles.employeeId,employees.id)).where(scope);
+    return rows.map(row=>row.record);
   }
 
   async getEventStaffProfile(id: number): Promise<EventStaffProfile | undefined> {
@@ -600,10 +608,11 @@ export class DatabaseStorage implements IStorage {
     const [row] = await db.update(eventRosters).set({...roster,updatedAt:new Date()}).where(eq(eventRosters.id,id)).returning(); return row;
   }
 
-  async getEventStaffPerformances(eventId?: number, employeeId?: number): Promise<EventStaffPerformance[]> {
+  async getEventStaffPerformances(eventId?: number, employeeId?: number, scope?: SQL): Promise<EventStaffPerformance[]> {
     const rows = await db.select({performance:eventStaffPerformance}).from(eventStaffPerformance)
       .innerJoin(eventStaffAssignments,eq(eventStaffPerformance.assignmentId,eventStaffAssignments.id))
-      .where(and(eventId ? eq(eventStaffAssignments.eventId,eventId):undefined,employeeId ? eq(eventStaffAssignments.employeeId,employeeId):undefined));
+      .innerJoin(employees,eq(eventStaffAssignments.employeeId,employees.id))
+      .where(and(eventId ? eq(eventStaffAssignments.eventId,eventId):undefined,employeeId ? eq(eventStaffAssignments.employeeId,employeeId):undefined,scope));
     return rows.map(row=>row.performance);
   }
 
@@ -635,8 +644,11 @@ export class DatabaseStorage implements IStorage {
     const [row] = await db.update(eventCommunications).set({...communication,updatedAt:new Date()}).where(eq(eventCommunications.id,id)).returning(); return row;
   }
 
-  async getEventCommunicationRecipients(communicationId: number): Promise<EventCommunicationRecipient[]> {
-    return db.select().from(eventCommunicationRecipients).where(eq(eventCommunicationRecipients.communicationId,communicationId));
+  async getEventCommunicationRecipients(communicationId: number, scope?: SQL): Promise<EventCommunicationRecipient[]> {
+    const rows=await db.select({record:eventCommunicationRecipients}).from(eventCommunicationRecipients)
+      .innerJoin(employees,eq(eventCommunicationRecipients.recipientId,employees.id))
+      .where(and(eq(eventCommunicationRecipients.communicationId,communicationId),scope));
+    return rows.map(row=>row.record);
   }
 
   async createEventCommunicationRecipient(recipient: InsertEventCommunicationRecipient): Promise<EventCommunicationRecipient> {

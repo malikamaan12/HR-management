@@ -1,251 +1,49 @@
-import { apiJson } from '@/lib/queryClient';
-import { useState, useEffect } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { ObjectUploader } from "@/components/ObjectUploader";
-import { Download, Upload, CheckCircle, XCircle, Clock, AlertTriangle } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
-import type { UploadResult } from "@uppy/core";
+import {useState} from 'react';
+import {useQuery,useMutation,useQueryClient} from '@tanstack/react-query';
+import {apiJson} from '@/lib/queryClient';
+import {useAuth} from '@/contexts/AuthContext';
+import {useToast} from '@/hooks/use-toast';
+import {Button} from '@/components/ui/button';
+import {Input} from '@/components/ui/input';
+import {employeeImportColumns,type ImportJob,type ImportRow,type ImportPayload} from '@shared/employee-import';
 
-interface BulkImportJob {
-  id: number;
-  fileName: string;
-  fileUrl: string;
-  uploadedBy: number;
-  status: "processing" | "completed" | "failed";
-  totalRows: number;
-  successfulRows: number;
-  failedRows: number;
-  errorLog?: Array<{ row: number; field: string; message: string; data: any }>;
-  createdAt: string;
-  completedAt?: string;
+export default function BulkImport(){
+ const {user}=useAuth(),allowed=!!user&&['admin','super_admin'].includes(user.role);const cache=useQueryClient(),{toast}=useToast();
+ const [file,setFile]=useState<File|null>(null),[submissionKey,setSubmissionKey]=useState(''),[selected,setSelected]=useState<number|null>(null),[page,setPage]=useState(1);
+ const jobs=useQuery<{items:ImportJob[];hasMore:boolean}>({queryKey:['/api/bulk-import/jobs',{page}],enabled:allowed});
+ const upload=useMutation({mutationFn:async()=>{if(!file)throw new Error('Choose a CSV file');if(file.size>2*1024*1024)throw new Error('The file must be 2 MB or smaller');const data=new FormData();data.append('file',file);data.append('submissionKey',submissionKey);return apiJson<{jobId:number}>('/api/bulk-import/upload',{method:'POST',body:data});},onSuccess:async r=>{setSelected(r.jobId);await cache.invalidateQueries({predicate:q=>String(q.queryKey[0]).startsWith('/api/bulk-import')});toast({title:'Draft ready for review',description:'No employee records have been created yet.'});},onError:e=>toast({title:'Unable to stage file',description:e.message,variant:'destructive'})});
+ if(!allowed)return <div className="rounded border p-5"><h1 className="text-xl font-semibold">Bulk employee import</h1><p>Admin or Super Admin access is required.</p></div>;
+ return <div className="space-y-5"><div><h1 className="text-2xl font-semibold">Bulk employee import</h1><p className="text-muted-foreground">Upload → correct and review → import included employees together.</p></div>
+ <section className="rounded-lg border bg-card p-4 space-y-3"><h2 className="text-lg font-semibold">Create an import draft</h2><p className="text-sm">Creates new active employee records for permanent, temporary and contract staff. Existing employees are never overwritten. Set event eligibility and work schedules explicitly. Manage login accounts separately in User Management.</p>
+ <div className="flex flex-wrap gap-3 items-end"><Button variant="outline" asChild><a href="/api/bulk-import/template" download>Download CSV template</a></Button><label className="grid gap-1">UTF-8 CSV file · up to 500 records / 2 MB<Input type="file" accept=".csv,text/csv" disabled={upload.isPending} onChange={e=>{setFile(e.target.files?.[0]??null);setSubmissionKey(crypto.randomUUID());}}/></label><Button disabled={!file||upload.isPending} onClick={()=>upload.mutate()}>{upload.isPending?'Validating file…':'Validate and preview'}</Button></div>
+ <p className="text-sm text-muted-foreground">Use YYYY-MM-DD dates. Keep employee IDs, identity references and telephone numbers as text to preserve leading zeros. Uploading creates a draft only. CSV record numbers start at 2 after the header; quoted line breaks remain within one record.</p>
+ <details><summary className="cursor-pointer font-medium">CSV field guide</summary><div className="max-h-80 overflow-auto"><table className="w-full text-sm"><thead><tr className="text-left"><th className="p-2">Column</th><th className="p-2">Required</th><th className="p-2">Format / meaning</th></tr></thead><tbody>{employeeImportColumns.map(c=><tr key={c.key} className="border-t"><td className="p-2 font-mono">{c.key}</td><td className="p-2">{c.required?'Yes':'No'}</td><td className="p-2">{c.options?.join(' / ')|| (c.kind==='date'?'YYYY-MM-DD':c.kind==='integer'?'Whole number':c.kind==='boolean'?'true / false':'Text')}{c.help?' · '+c.help:''}</td></tr>)}</tbody></table></div></details></section>
+ {selected&&<ImportReview key={selected} id={selected}/>}
+ <section className="rounded-lg border bg-card p-4 space-y-3"><h2 className="text-lg font-semibold">Your import jobs</h2><p className="text-sm text-muted-foreground">Drafts, results and reports are private to the administrator who uploaded them.</p>{jobs.isLoading?<p>Loading imports…</p>:jobs.isError?<p role="alert">Unable to load jobs. <Button onClick={()=>jobs.refetch()}>Retry</Button></p>:<>{!jobs.data?.items.length&&<p>No import jobs yet.</p>}{jobs.data?.items.map(j=><div className="flex flex-wrap justify-between gap-3 border rounded p-3" key={j.id}><div><p className="font-medium">#{j.id} · {j.fileName} · {j.status}</p><p className="text-sm">{j.totalRows} records · {j.successfulRows} imported · {new Date(j.createdAt).toLocaleString()}</p></div><Button variant="outline" onClick={()=>setSelected(j.id)}>Open import #{j.id}</Button></div>)}<div className="flex gap-2"><Button variant="outline" disabled={page===1} onClick={()=>setPage(n=>n-1)}>Newer imports</Button><Button variant="outline" disabled={!jobs.data?.hasMore} onClick={()=>setPage(n=>n+1)}>Older imports</Button></div></>}</section></div>;
 }
-
-const BulkImport = () => {
-  const [currentJobId, setCurrentJobId] = useState<number | null>(null);
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
-
-  // Query for all import jobs
-  const { data: jobs = [], isLoading: jobsLoading } = useQuery<BulkImportJob[]>({
-    queryKey: ["/api/bulk-import/jobs"],
-  });
-
-  // Query for current job status (polling)
-  const { data: currentJob } = useQuery<BulkImportJob>({
-    queryKey: ["/api/bulk-import/job", currentJobId],
-    enabled: !!currentJobId,
-    refetchInterval: currentJobId ? 2000 : false, // Poll every 2 seconds when job is active
-  });
-
-  // Stop polling when job is completed or failed
-  useEffect(() => {
-    if (currentJob && (currentJob.status === "completed" || currentJob.status === "failed")) {
-      setCurrentJobId(null);
-      queryClient.invalidateQueries({ queryKey: ["/api/bulk-import/jobs"] });
-      
-      if (currentJob.status === "completed") {
-        toast({
-          title: "Import Completed",
-          description: `Successfully imported ${currentJob.successfulRows} out of ${currentJob.totalRows} employees`,
-          variant: "default",
-        });
-      } else {
-        toast({
-          title: "Import Failed",
-          description: `Import failed with ${currentJob.failedRows} errors`,
-          variant: "destructive",
-        });
-      }
-    }
-  }, [currentJob, queryClient, toast]);
-
-  const createJobMutation=useMutation({mutationFn:async(file:File)=>{const body=new FormData();body.append('file',file);return apiJson<{jobId:number}>('/api/bulk-import/upload',{method:'POST',body});},
-    onSuccess:data=>{setCurrentJobId(data.jobId);queryClient.invalidateQueries({queryKey:['/api/bulk-import/jobs']});queryClient.invalidateQueries({queryKey:['/api/employees']});},
-    onError:error=>toast({title:'Import failed',description:error.message,variant:'destructive'})});
-
-  // Download template
-  const downloadTemplate = () => {
-    window.open("/api/bulk-import/template", "_blank");
-  };
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "processing":
-        return <Badge variant="secondary" className="flex items-center gap-1"><Clock className="w-3 h-3" />Processing</Badge>;
-      case "completed":
-        return <Badge variant="default" className="flex items-center gap-1 bg-green-500"><CheckCircle className="w-3 h-3" />Completed</Badge>;
-      case "failed":
-        return <Badge variant="destructive" className="flex items-center gap-1"><XCircle className="w-3 h-3" />Failed</Badge>;
-      default:
-        return <Badge variant="outline">{status}</Badge>;
-    }
-  };
-
-  const getProgress = (job: BulkImportJob) => {
-    if (job.totalRows === 0) return 0;
-    return ((job.successfulRows + job.failedRows) / job.totalRows) * 100;
-  };
-
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Bulk Employee Import</h1>
-        <p className="text-muted-foreground">
-          Import multiple employees from a CSV file
-        </p>
-      </div>
-
-      {/* Upload Section */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Upload className="w-5 h-5" />
-            Upload Employee Data
-          </CardTitle>
-          <CardDescription>
-            Upload a CSV file containing employee information to import multiple employees at once
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Alert>
-            <AlertTriangle className="h-4 w-4" />
-            <AlertDescription>
-              <strong>Important:</strong> Make sure your CSV file follows the required format. 
-              Download the template below to see the expected structure.
-            </AlertDescription>
-          </Alert>
-
-          <div className="flex gap-4">
-            <Button variant="outline" onClick={downloadTemplate} className="flex items-center gap-2">
-              <Download className="w-4 h-4" />
-              Download Template
-            </Button>
-
-            <label className="space-y-2">CSV file (up to 500 rows, 2 MB)
-              <input type="file" accept=".csv,text/csv" disabled={createJobMutation.isPending} onChange={e=>{const file=e.target.files?.[0];if(file)createJobMutation.mutate(file);e.target.value='';}}/>
-              {createJobMutation.isPending && <p>Processing import…</p>}
-            </label>
-          </div>
-
-          {/* Current Job Progress */}
-          {currentJob && (
-            <Card className="border-blue-200 bg-blue-50">
-              <CardContent className="pt-6">
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h4 className="font-medium">Processing: {currentJob.fileName}</h4>
-                    {getStatusBadge(currentJob.status)}
-                  </div>
-                  
-                  <Progress value={getProgress(currentJob)} className="w-full" />
-                  
-                  <div className="grid grid-cols-3 gap-4 text-sm">
-                    <div>
-                      <p className="text-muted-foreground">Total Rows</p>
-                      <p className="font-medium">{currentJob.totalRows}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Successful</p>
-                      <p className="font-medium text-green-600">{currentJob.successfulRows}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Failed</p>
-                      <p className="font-medium text-red-600">{currentJob.failedRows}</p>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Import History */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Import History</CardTitle>
-          <CardDescription>
-            View previous bulk import jobs and their results
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {jobsLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
-            </div>
-          ) : jobs.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              No import jobs found. Upload your first CSV file to get started.
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {jobs.map((job) => (
-                <div key={job.id} className="border rounded-lg p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-medium">{job.fileName}</h4>
-                      <p className="text-sm text-muted-foreground">
-                        {new Date(job.createdAt).toLocaleString()}
-                        {job.completedAt && ` - Completed ${new Date(job.completedAt).toLocaleString()}`}
-                      </p>
-                    </div>
-                    {getStatusBadge(job.status)}
-                  </div>
-
-                  {job.totalRows > 0 && (
-                    <>
-                      <Progress value={getProgress(job)} className="w-full" />
-                      <div className="grid grid-cols-3 gap-4 text-sm">
-                        <div>
-                          <p className="text-muted-foreground">Total Rows</p>
-                          <p className="font-medium">{job.totalRows}</p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">Successful</p>
-                          <p className="font-medium text-green-600">{job.successfulRows}</p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">Failed</p>
-                          <p className="font-medium text-red-600">{job.failedRows}</p>
-                        </div>
-                      </div>
-                    </>
-                  )}
-
-                  {/* Error Details */}
-                  {job.errorLog && job.errorLog.length > 0 && (
-                    <details className="mt-3">
-                      <summary className="cursor-pointer text-sm font-medium text-red-600 hover:text-red-700">
-                        View Errors ({job.errorLog.length})
-                      </summary>
-                      <div className="mt-2 space-y-2 max-h-40 overflow-y-auto">
-                        {job.errorLog.slice(0, 10).map((error, index) => (
-                          <div key={index} className="text-xs bg-red-50 p-2 rounded border border-red-200">
-                            <p><strong>Row {error.row}:</strong> {error.message}</p>
-                            {error.field && <p className="text-muted-foreground">Field: {error.field}</p>}
-                          </div>
-                        ))}
-                        {job.errorLog.length > 10 && (
-                          <p className="text-xs text-muted-foreground">
-                            ... and {job.errorLog.length - 10} more errors
-                          </p>
-                        )}
-                      </div>
-                    </details>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </div>
-  );
-};
-
-export default BulkImport;
+function ImportReview({id}:{id:number}){
+ const base='/api/bulk-import/job/'+id;const cache=useQueryClient(),{toast}=useToast();const [page,setPage]=useState(1),[filter,setFilter]=useState('all'),[editor,setEditor]=useState<ImportRow|null>(null),[reason,setReason]=useState(''),[confirmedVersion,setConfirmedVersion]=useState<number|null>(null);
+ const job=useQuery<ImportJob>({queryKey:[base]});const records=useQuery<{items:ImportRow[];hasMore:boolean;version:number}>({queryKey:[base+'/rows',{page,filter},job.data?.version],queryFn:()=>apiJson(base+'/rows?page='+page+'&filter='+filter),enabled:!!job.data?.staged});
+ const refresh=()=>cache.invalidateQueries({predicate:q=>String(q.queryKey[0]).startsWith('/api/bulk-import')||String(q.queryKey[0]).startsWith('/api/employees')||String(q.queryKey[0]).startsWith('/api/dashboard')});
+ const action=useMutation({mutationFn:({path,body,method='POST'}:{path:string;body:object;method?:string})=>apiJson(base+path,{method,body}),onSuccess:async()=>{setEditor(null);setReason('');setConfirmedVersion(null);await refresh();toast({title:'Import job updated'});},onError:async e=>{await refresh();toast({title:'Import needs attention',description:e.message,variant:'destructive'});}});
+ if(job.isLoading)return <p>Loading import review…</p>;if(job.isError||!job.data)return <p role="alert">Unable to load this import. <Button onClick={()=>job.refetch()}>Retry</Button></p>;
+ const j=job.data,draft=j.staged&&j.status==='draft';
+ return <section className="rounded-lg border bg-card p-4 space-y-4"><div className="flex flex-wrap justify-between gap-3"><div><h2 className="text-lg font-semibold">Import #{j.id} · {j.fileName}</h2><p>Status: {j.status} · Version {j.version}</p></div><div className="flex gap-2"><Button variant="outline" onClick={()=>refresh()}>Refresh import</Button>{j.staged&&<Button variant="outline" asChild><a href={base+'/report'} download>Download results CSV</a></Button>}</div></div>
+ <p>{j.totalRows} total · {j.includedRows} included · {j.excludedRows} excluded · {j.failedRows} included records with errors · {j.successfulRows} imported</p>
+ {j.status==='completed'&&<p role="status" className="rounded bg-green-50 text-green-900 p-3">Import complete. {j.successfulRows} employee records created{j.staged?' together':''}.</p>}
+ {!j.staged?<p>This is a historical import. Its totals are retained; staged corrections and detailed CSV reports apply to new imports.</p>:<>
+ <div className="flex flex-wrap gap-3 items-end"><label>Show records<select className="block rounded border p-2" value={filter} onChange={e=>{setFilter(e.target.value);setPage(1);setEditor(null);}}>{[['all','All records'],['errors','Included with errors'],['included','Included'],['excluded','Excluded'],['imported','Imported']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label>{draft&&<Button variant="outline" disabled={action.isPending} onClick={()=>action.mutate({path:'/revalidate',body:{version:j.version}})}>Revalidate against current employees</Button>}</div>
+ {records.isLoading?<p>Loading records…</p>:records.isError?<p role="alert">Records unavailable. <Button onClick={()=>records.refetch()}>Retry</Button></p>:<><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left border-b">{['CSV record','Employee ID','Name','Employment','Review','Action'].map(s=><th className="p-2" key={s}>{s}</th>)}</tr></thead><tbody>{!records.data?.items.length?<tr><td colSpan={6} className="p-3">No matching records.</td></tr>:records.data.items.map(r=><tr key={r.id} className="border-b align-top"><td className="p-2">{r.rowNumber}</td><td className="p-2">{r.payload.employeeId||'Missing'}</td><td className="p-2">{r.payload.firstName} {r.payload.lastName}</td><td className="p-2">{r.payload.type} · {r.payload.department}<br/>{r.payload.workSchedule||'unassigned'}</td><td className="p-2">{r.employeeId?'Imported':!r.included?'Excluded':r.errors.length?'Needs correction':'Valid'}{r.included&&r.errors.length>0&&<ul className="list-disc pl-4">{r.errors.map((e,i)=><li key={i}>{e.field}: {e.message}</li>)}</ul>}</td><td className="p-2"><Button variant="outline" size="sm" disabled={action.isPending} onClick={()=>setEditor(r)}>{draft?'Review / correct':'View record'}</Button>{r.employeeId&&<a className="block underline mt-2" href="/employees">Employee directory</a>}</td></tr>)}</tbody></table></div><div className="flex gap-2"><Button variant="outline" disabled={page===1} onClick={()=>setPage(n=>n-1)}>Previous records</Button><span>Page {page}</span><Button variant="outline" disabled={!records.data?.hasMore} onClick={()=>setPage(n=>n+1)}>Next records</Button></div></>}
+ {editor&&<RowEditor key={editor.id+':'+j.version} row={editor} editable={draft} pending={action.isPending} onClose={()=>setEditor(null)} onSave={(payload,included,reason)=>action.mutate({path:'/rows/'+editor.id,method:'PATCH',body:{version:j.version,payload,included,reason}})}/>}
+ {draft&&<fieldset disabled={action.isPending} className="border rounded p-4 space-y-3"><legend className="font-medium">Finish review</legend><p className="text-sm">Included records import together only when all are valid. Excluded records stay in this job and are not created. Duplicate checks and manager validation run again at commit.</p><label className="block">Import or cancellation reason<Input value={reason} minLength={5} maxLength={1000} onChange={e=>setReason(e.target.value)}/></label><label className="flex gap-2 items-center"><input type="checkbox" checked={confirmedVersion===j.version} onChange={e=>setConfirmedVersion(e.target.checked?j.version:null)}/>I reviewed the {j.includedRows} included employee records in version {j.version}.</label><div className="flex gap-2"><Button disabled={j.failedRows>0||!j.includedRows||confirmedVersion!==j.version||reason.trim().length<5||action.isPending} onClick={()=>action.mutate({path:'/commit',body:{version:j.version,reason,confirmedRows:j.includedRows}})}>Import {j.includedRows} employees</Button><Button variant="outline" disabled={reason.trim().length<5||action.isPending} onClick={()=>action.mutate({path:'/cancel',body:{version:j.version,reason}})}>Cancel draft</Button></div></fieldset>}
+ <ImportHistory key={j.version} base={base}/></>}
+ </section>;
+}
+function RowEditor({row,editable,pending,onClose,onSave}:{row:ImportRow;editable:boolean;pending:boolean;onClose:()=>void;onSave:(payload:ImportPayload,included:boolean,reason:string)=>void}){
+ const [data,setData]=useState(row.payload),[included,setIncluded]=useState(row.included),[reason,setReason]=useState('');
+ return <form className="rounded border p-4 space-y-3" onSubmit={e=>{e.preventDefault();onSave(data,included,reason);}}><div className="flex justify-between gap-2"><h3 className="font-semibold">CSV record {row.rowNumber}</h3><Button type="button" variant="outline" onClick={onClose}>Close record</Button></div><fieldset disabled={!editable||pending} className="space-y-3"><label className="flex gap-2 items-center"><input type="checkbox" checked={included} onChange={e=>setIncluded(e.target.checked)}/>Include this employee in the import</label><div className="grid md:grid-cols-3 gap-3">{employeeImportColumns.map(col=><label key={col.key} className="text-sm">{col.label}{col.required?' *':''}<Input aria-label={col.label} maxLength={2000} value={data[col.key]??''} placeholder={col.kind==='date'?'YYYY-MM-DD':col.options?.join(' / ')||col.kind==='boolean'&&'true / false'||''} onChange={e=>setData({...data,[col.key]:e.target.value})}/>{col.help&&<span className="text-xs text-muted-foreground">{col.help}</span>}</label>)}</div>{editable&&<><label className="block">Correction / exclusion reason<Input value={reason} minLength={5} maxLength={1000} onChange={e=>setReason(e.target.value)} required/></label><Button type="submit" disabled={reason.trim().length<5||pending}>Save and revalidate draft</Button></>}</fieldset></form>;
+}
+function ImportHistory({base}:{base:string}){
+ const [open,setOpen]=useState(false),[page,setPage]=useState(1);const q=useQuery<{items:{version:number;reason:string;created_at:string;snapshot:{action:string;rowNumber?:number}}[];hasMore:boolean}>({queryKey:[base+'/history',{page}],enabled:open});
+ return <details onToggle={e=>setOpen(e.currentTarget.open)}><summary className="cursor-pointer font-medium">Import history</summary>{open&&<div className="space-y-2 p-2">{q.isLoading?<p>Loading history…</p>:q.isError?<p role="alert">History unavailable. <Button onClick={()=>q.refetch()}>Retry</Button></p>:<>{!q.data?.items.length&&<p>No history recorded.</p>}{q.data?.items.map(h=><div className="border-b py-2 text-sm" key={h.version}><p>Version {h.version} · {h.snapshot.action}{h.snapshot.rowNumber?' · CSV record '+h.snapshot.rowNumber:''} · {new Date(h.created_at).toLocaleString()}</p><p>{h.reason}</p></div>)}<div className="flex gap-2"><Button variant="outline" disabled={page===1} onClick={()=>setPage(n=>n-1)}>Newer history</Button><Button variant="outline" disabled={!q.data?.hasMore} onClick={()=>setPage(n=>n+1)}>Older history</Button></div></>}</div>}</details>;
+}

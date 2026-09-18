@@ -1,3 +1,6 @@
+import {InterviewScheduling} from '@/components/lifecycle/HiringDelivery';
+import {RecruitmentControls} from '@/components/lifecycle/WorkflowControls';
+import {HiringStages} from '@/components/lifecycle/Hiring';
 import {HiringHandoff} from '@/components/onboarding/HiringHandoff';
 import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -327,7 +330,7 @@ export default function Recruitment() {
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+      <InterviewScheduling/><RecruitmentControls/><HiringStages /><Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid grid-cols-5 mb-8">
           <TabsTrigger value="requisitions" className="flex items-center">
             <BriefcaseBusiness className="mr-2 h-4 w-4" />
@@ -451,7 +454,7 @@ export default function Recruitment() {
                         <TableCell>{new Date(candidate.createdAt).toLocaleDateString()}</TableCell>
                         <TableCell>
                           <div className="flex space-x-2">
-                            <Button variant="ghost" size="sm">
+                            <Button variant="ghost" size="sm" aria-label="View candidate" onClick={() => handleEditCandidate(candidate)}>
                               <Eye className="w-4 h-4" />
                             </Button>
                             <Button variant="ghost" size="sm" onClick={() => handleEditCandidate(candidate)}>
@@ -510,7 +513,7 @@ export default function Recruitment() {
                         <TableCell>
                           <div className="flex space-x-2">
                             <Button variant="ghost" size="sm">View</Button>
-                            <Button variant="outline" size="sm">Schedule</Button>
+                            <a className="text-primary underline" href="#interview-scheduling">Schedule interview</a>
                           </div>
                         </TableCell>
                       </TableRow>
