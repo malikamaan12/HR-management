@@ -13,8 +13,26 @@ const days = z.number().min(0).max(366).multipleOf(0.01);
 const amount = z.string().regex(/^\d{1,9}(\.\d{1,2})?$/, 'Use a positive amount with at most two decimals');
 export const attendanceRule = z.object({ timezone, workingDays: z.array(z.number().int().min(0).max(6)).min(1).max(7).refine(v => new Set(v).size === v.length), startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/), endTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/), breakMinutes: z.number().int().min(0).max(720), graceMinutes: z.number().int().min(0).max(120), holidays: z.array(z.object({ date: civilDate, name: z.string().trim().min(1).max(100) })).max(400) }).strict().refine(v => v.endTime > v.startTime && ((Number(v.endTime.slice(0, 2)) * 60 + Number(v.endTime.slice(3))) - (Number(v.startTime.slice(0, 2)) * 60 + Number(v.startTime.slice(3)))) > v.breakMinutes, 'End time must follow start time and allow for the break');
 export const leaveRule = z.object({ paid: z.boolean(), balanceRequired: z.boolean(), accrualMode: z.enum(['none', 'annual', 'monthly']), annualDays: days, monthlyDays: days, carryoverLimit: days, minServiceDays: z.number().int().min(0).max(3650), maxConsecutiveDays: z.number().int().min(1).max(366), approverId: positiveId.nullable(), allowHalfDays:z.boolean().default(false),additionalApproverIds:z.array(positiveId).max(3).default([]) }).strict().refine(v=>new Set(v.additionalApproverIds).size===v.additionalApproverIds.length&&!v.additionalApproverIds.includes(v.approverId||0),'Each approval stage must have a different approver');
-const payItems = z.record(amount).refine(v => Object.keys(v).length <= 50 && Object.keys(v).every(k => k.trim().length > 0 && k.length <= 100 && !['__proto__', 'constructor', 'prototype', 'Approved time'].includes(k)), 'Use up to 50 named items; Approved time is reserved');
-export const payrollRule = z.object({ currency: z.string().regex(/^[A-Z]{3}$/), cycleStartDay: z.number().int().min(1).max(28), payDay: z.number().int().min(1).max(28), basis: z.enum(['salary', 'hourly']), basicSalary: amount, hourlyRate: amount, regularMinutesPerDay: z.number().int().min(1).max(1440), overtimeMultiplier: z.number().min(1).max(5).multipleOf(0.01), allowances: payItems, deductions: payItems, approverId: positiveId }).strict().refine(v => v.payDay >= v.cycleStartDay - 1, 'Payday must be on or after the period end in the payment month');
+export const unpaidLeaveDeductionLabel = 'Approved unpaid leave';
+export const unpaidLeavePayrollRule = z.object({
+    enabled: z.boolean().default(false),
+    deductionBase: z.enum(['basic', 'basic_and_allowances']).default('basic'),
+    divisor: z.enum(['calendar_days', 'working_days', 'fixed']).default('calendar_days'),
+    fixedDays: z.number().int().min(1).max(366).default(30),
+}).strict();
+const payItems = z.record(amount).refine(v => Object.keys(v).length <= 50 && Object.keys(v).every(k => k.trim().length > 0 && k.length <= 100 && !['__proto__', 'constructor', 'prototype', 'Approved time', unpaidLeaveDeductionLabel].includes(k)), 'Use up to 50 named items; Approved time and Approved unpaid leave are reserved');
+export const payrollRule = z.object({
+    currency: z.string().regex(/^[A-Z]{3}$/), cycleStartDay: z.number().int().min(1).max(28), payDay: z.number().int().min(1).max(28),
+    basis: z.enum(['salary', 'hourly', 'daily', 'per_event']), basicSalary: amount, hourlyRate: amount,
+    dailyRate: amount.default('0.00'), eventRate: amount.default('0.00'), dailyPayMethod: z.enum(['full_day', 'prorated']).default('full_day'),
+    eventPayUnit: z.literal('assignment').default('assignment'), overtimeEnabled: z.boolean().default(true),
+    regularMinutesPerDay: z.number().int().min(1).max(1440), overtimeMultiplier: z.number().min(1).max(5).multipleOf(0.01),
+    unpaidLeave: unpaidLeavePayrollRule.default({}), allowances: payItems, deductions: payItems, approverId: positiveId,
+}).strict().superRefine((v, ctx) => {
+    if (v.payDay < v.cycleStartDay - 1) ctx.addIssue({ code: 'custom', path: ['payDay'], message: 'Payday must be on or after the period end in the payment month' });
+    if (v.basis === 'daily' && Number(v.dailyRate) <= 0) ctx.addIssue({ code: 'custom', path: ['dailyRate'], message: 'Daily pay requires a positive day rate' });
+    if (v.basis === 'per_event' && Number(v.eventRate) <= 0) ctx.addIssue({ code: 'custom', path: ['eventRate'], message: 'Per-event pay requires a positive assigned-shift rate' });
+});
 const common = { employeeId: positiveId.nullable(), effectiveFrom: civilDate, name: z.string().trim().min(1).max(100), reason };
 export const ruleInput = z.discriminatedUnion('kind', [
     z.object({ ...common, kind: z.literal('attendance'), config: attendanceRule }).strict(),

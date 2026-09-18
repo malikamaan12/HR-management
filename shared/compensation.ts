@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { civilDate, reason, positiveId } from './hr-rules';
+import { civilDate, reason, positiveId, unpaidLeavePayrollRule, unpaidLeaveDeductionLabel } from './hr-rules';
 import { moneyCents, moneyText } from './money';
 
 export const compensationCategories = ['base', 'housing', 'transportation', 'food', 'travel', 'flight_tickets', 'vehicle', 'benefits', 'other'] as const;
@@ -11,7 +11,7 @@ export const compensationFrequencies = ['monthly', 'annual', 'one_time', 'hourly
 export const compensationProvisions = ['cash', 'provided', 'reimbursement', 'not_applicable'] as const;
 const amount = z.string().regex(/^\d{1,9}(\.\d{1,2})?$/, 'Enter an amount with up to two decimals');
 export const compensationItem = z.object({
-  category: z.enum(compensationCategories), label: z.string().trim().min(1).max(100).refine(v => !['__proto__', 'constructor', 'prototype', 'Approved time'].includes(v), 'Choose a different label'),
+  category: z.enum(compensationCategories), label: z.string().trim().min(1).max(100).refine(v => !['__proto__', 'constructor', 'prototype', 'Approved time', unpaidLeaveDeductionLabel].includes(v), 'Choose a different label'),
   provision: z.enum(compensationProvisions), frequency: z.enum(compensationFrequencies), amount,
   terms: z.string().trim().max(2000),
 }).strict().superRefine((v, ctx) => {
@@ -36,6 +36,9 @@ export const compensationPayrollInput = z.object({
   cycleStartDay: z.number().int().min(1).max(28), payDay: z.number().int().min(1).max(28),
   regularMinutesPerDay: z.number().int().min(1).max(1440), overtimeMultiplier: z.number().min(1).max(5).multipleOf(0.01), approverId: positiveId,
   hourlyRate: amount,
+  dailyPayMethod: z.enum(['full_day', 'prorated']).optional(),
+  overtimeEnabled: z.boolean().optional(),
+  unpaidLeave: unpaidLeavePayrollRule.optional(),
 }).strict();
 export type CompensationItem = z.infer<typeof compensationItem>;
 export type CompensationDefinition = z.infer<typeof compensationDefinition>;

@@ -86,8 +86,11 @@ test('leave uses the scoped authoritative policy, holidays and saved totals afte
  const preview=(employeeId:number,endDate=end)=>request(owner.token,'/leaves/preview',{employeeId,leaveType:'annual',startDate:start,endDate});
  const quote=await preview(person.id);expect(quote.body.totalDays).toBe(6);
  expect((await preview(other.id)).status).toBe(404);
- const row=await request(owner.token,'/leaves',{employeeId:person.id,leaveType:'annual',startDate:start,endDate:end,reason:'Test leave duration',totalDays:999,calculationSnapshot:{version:999}});
- expect(row.status).toBe(201);expect(row.body.totalDays).toBe(6);expect(row.body.calculationSnapshot.version).toBe(published.body.id);
+ const payload={employeeId:person.id,leaveType:'annual',startDate:start,endDate:end,reason:'Test leave duration'};
+ const forged=await request(owner.token,'/leaves',{...payload,totalDays:999,calculationSnapshot:{version:999}});
+ expect(forged.status,forged.body.message).toBe(400);
+ const row=await request(owner.token,'/leaves',payload);
+ expect(row.status,row.body.message).toBe(201);expect(row.body.totalDays).toBe(6);expect(row.body.calculationSnapshot.version).toBe(published.body.id);
  expect((await preview(person.id,addDays(start,10))).status).toBe(400);
  const replacement=await publish(u.token,fresh(),{expectedVersion:published.body.id});expect(replacement.status).toBe(201);
  expect((await request(owner.token,`/leaves/${row.body.id}`)).body.totalDays).toBe(6);

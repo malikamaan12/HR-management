@@ -12,6 +12,7 @@ import { generatePayroll, payrollRecord, versionMatch, addHistory, payrollAmount
 import { fail } from '../services/workforce';
 import { hasPermission } from '@shared/permissions';
 import {requireApprovedPresence} from '../services/attendance-location';
+import { assertUnpaidLeaveUnchanged } from '../services/payroll-leave';
 const router = Router();
 router.use(authenticate);
 router.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
@@ -40,6 +41,10 @@ router.post('/:id/action', handle(async (req, res) => {
             fail(409, 'This action is unavailable for the current payroll status');
         if (['approve', 'return'].includes(input.action) && (review.approverId !== req.user!.userId || review.createdBy === req.user!.userId || row.owner === req.user!.userId))
             fail(403, 'The independent designated pay approver must review this payroll');
+        if (input.action === 'submit' || input.action === 'approve') {
+            const saved = review.policy as { unpaidLeave?: unknown };
+            if (saved.unpaidLeave !== undefined) await assertUnpaidLeaveUnchanged(tx, row.record.employeeId, { start: review.periodStart, end: review.periodEnd }, saved.unpaidLeave);
+        }
         const status = { submit: 'submitted', approve: 'approved', return: 'draft', cancel: 'cancelled' }[input.action];
         if (input.action === 'cancel')
             await tx.delete(payrollTimeLines).where(eq(payrollTimeLines.payrollId, row.record.id));
@@ -57,6 +62,8 @@ router.post('/:id/mark-paid', handle(async (req, res) => {
             fail(409, 'Only independently approved payroll can be marked paid');
         if (row.review!.approverId !== req.user!.userId || row.owner === req.user!.userId)
             fail(403, 'The designated pay approver must record payment');
+        const savedPolicy = row.review!.policy as { unpaidLeave?: unknown };
+        if (savedPolicy.unpaidLeave !== undefined) await assertUnpaidLeaveUnchanged(tx, row.record.employeeId, { start: row.review!.periodStart, end: row.review!.periodEnd }, savedPolicy.unpaidLeave);
         const lines = await tx.select().from(payrollTimeLines).where(eq(payrollTimeLines.payrollId, row.record.id));
         for (const line of lines) {
             const [sheet] = await tx.select().from(sheets).where(eq(sheets.id, line.timesheetId)).for('update');

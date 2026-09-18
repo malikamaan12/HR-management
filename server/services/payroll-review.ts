@@ -1,6 +1,6 @@
 import { and, eq, gte, lte, isNull, sql } from 'drizzle-orm';
 import { employees, payroll, payrollReviews, payrollTimeLines, workforceTimesheets as sheets, workforceAssignments as assignments, workforceShifts as shifts, workforceTeams as teams, workforceSites as sites } from '@shared/schema';
-import { payrollRule, payPeriod, dayAt, dateRange, type PayrollRule } from '@shared/hr-rules';
+import { payrollRule, payPeriod, dayAt, dateRange, unpaidLeaveDeductionLabel, type PayrollRule } from '@shared/hr-rules';
 import { calculatePayroll, moneyCents, moneyText } from '@shared/money';
 import { ruleFor, scopedEmployee, audit, businessToday } from './hr-rules';
 import { fail, type WorkforceTransaction } from './workforce';
@@ -9,6 +9,8 @@ import type { TokenPayload } from './auth';
 import { calculationSnapshot } from './calculation-rules';
 import { calculatePolicyPayroll, defaultCalculationRules, type CalculationRules } from '@shared/calculation-rules';
 import {requireApprovedPresence} from './attendance-location';
+import { calculateApprovedTime, type ApprovedTimeInput } from '@shared/payroll-time';
+import { buildUnpaidLeaveDeduction } from './payroll-leave';
 export async function payrollRecord(tx: WorkforceTransaction, user: TokenPayload, id: number, permission: 'read' | 'update' | 'approve' = 'read') {
     // Employee first, then payroll and time records, matching timesheet writes.
     const [initial] = await tx.select({ employeeId: payroll.employeeId }).from(payroll).innerJoin(employees, eq(payroll.employeeId, employees.id)).where(and(eq(payroll.id, id), employeeScope(user, 'payroll_management', permission)));
@@ -86,8 +88,7 @@ export async function generatePayroll(tx: WorkforceTransaction, user: TokenPaylo
         amount: string;
         snapshot: unknown;
     }[] = [];
-    const used = new Map<string, number>();
-    let timeCents = 0;
+    const timeInputs: ApprovedTimeInput[] = [];
     for (const { sheet, timezone } of selected) {
         await requireApprovedPresence(tx,sheet.assignmentId,sheet.actualEndAt);
         const [reserved] = await tx.select({ id: payrollTimeLines.payrollId }).from(payrollTimeLines).where(eq(payrollTimeLines.timesheetId, sheet.id));
@@ -96,14 +97,15 @@ export async function generatePayroll(tx: WorkforceTransaction, user: TokenPaylo
         const date = dayAt(sheet.actualStartAt, timezone), rule = policies.get(date)!;
         if (date < employee.joiningDate || (employee.contractEndDate && date > employee.contractEndDate) || (employee.terminationDate && date > employee.terminationDate))
             fail(409, 'Reconcile approved time outside employment dates');
-        const regular = Math.min(sheet.payableMinutes!, Math.max(0, rule.config.regularMinutesPerDay - (used.get(date) || 0))), overtime = sheet.payableMinutes! - regular;
-        used.set(date, (used.get(date) || 0) + sheet.payableMinutes!);
-        if ((rule.config.basis === 'hourly' || overtime > 0) && moneyCents(rule.config.hourlyRate) === 0)
-            fail(409, 'Configure a positive hourly rate for paid regular or overtime work');
-        const rate = moneyCents(rule.config.hourlyRate), multiplier = Math.round(rule.config.overtimeMultiplier * 100);
-        const cents = Number((BigInt(rate) * BigInt((rule.config.basis === 'hourly' ? regular : 0) * 100 + overtime * multiplier) + 3000n) / 6000n);
-        timeCents += cents;
-        timeLines.push({ timesheetId: sheet.id, timesheetVersion: sheet.version, workDate: date, regularMinutes: regular, overtimeMinutes: overtime, amount: moneyText(cents), snapshot: { sheet, rule, timezone } });
+        timeInputs.push({ timesheetId: sheet.id, assignmentId: sheet.assignmentId, workDate: date, payableMinutes: sheet.payableMinutes!, rule });
+    }
+    let approvedTime: ReturnType<typeof calculateApprovedTime>;
+    try { approvedTime = calculateApprovedTime(timeInputs); }
+    catch (error) { fail(409, error instanceof Error ? error.message : 'Review approved work and pay rules before generating payroll'); }
+    const sourceSheets = new Map(selected.map(source => [source.sheet.id, source]));
+    for (const line of approvedTime.lines) {
+        const { sheet, timezone } = sourceSheets.get(line.timesheetId)!;
+        timeLines.push({ timesheetId: sheet.id, timesheetVersion: sheet.version, workDate: line.workDate, regularMinutes: line.regularMinutes, overtimeMinutes: line.overtimeMinutes, amount: line.amount, snapshot: { sheet, rule: policies.get(line.workDate)!, timezone, calculation: line.snapshot } });
     }
     let basicNumerator = 0;
     const allowances: Record<string, number> = {}, deductions: Record<string, number> = {};
@@ -118,11 +120,14 @@ export async function generatePayroll(tx: WorkforceTransaction, user: TokenPaylo
             deductions[k] = (deductions[k] || 0) + moneyCents(v);
     }
     const calculation = await calculationSnapshot(employee, period.start, tx);
-    const amounts = { ...payrollAmounts(moneyText(Math.round(basicNumerator / dates.length)), { ...Object.fromEntries(Object.entries(allowances).map(([k, v]) => [k, moneyText(Math.round(v / dates.length))])), 'Approved time': moneyText(timeCents) }, Object.fromEntries(Object.entries(deductions).map(([k, v]) => [k, moneyText(Math.round(v / dates.length))])), calculation.rules.payroll), calculationSnapshot: calculation };
+    const unpaidLeave = await buildUnpaidLeaveDeduction(tx, employee, period, policies);
+    const recurringDeductions = Object.fromEntries(Object.entries(deductions).map(([k, v]) => [k, moneyText(Math.round(v / dates.length))]));
+    if (moneyCents(unpaidLeave.amount) > 0) recurringDeductions[unpaidLeaveDeductionLabel] = unpaidLeave.amount;
+    const amounts = { ...payrollAmounts(moneyText(Math.round(basicNumerator / dates.length)), { ...Object.fromEntries(Object.entries(allowances).map(([k, v]) => [k, moneyText(Math.round(v / dates.length))])), 'Approved time': approvedTime.totalAmount }, recurringDeductions, calculation.rules.payroll), calculationSnapshot: calculation };
     const previousLines = duplicate ? await tx.select().from(payrollTimeLines).where(eq(payrollTimeLines.payrollId, duplicate.record.id)) : [];
     const [record] = replace ? await tx.update(payroll).set({ ...amounts, status: 'draft', wpsReference: null, processedBy: null, processedAt: null, updatedAt: new Date() }).where(eq(payroll.id, replace.id)).returning() : await tx.insert(payroll).values({ ...input, ...amounts, status: 'draft' }).returning();
     const nextVersion = (duplicate?.review?.version || 0) + 1;
-    const review = { payrollId: record.id, version: nextVersion, currency: basePolicy.currency, periodStart: period.start, periodEnd: period.end, payDate: `${input.year}-${String(input.month).padStart(2, '0')}-${String(basePolicy.payDay).padStart(2, '0')}`, policy: { rules: Object.fromEntries(policies), baseAmounts: amounts, employee: { name: employee.firstName + ' ' + employee.lastName, employeeId: employee.employeeId, department: employee.department, position: employee.position } }, createdBy: user.userId, approverId: basePolicy.approverId, adjustments: [], approvedBy: null, approvedAt: null, history: [...(duplicate?.review?.history || []), { action: replace ? 'Regenerated' : 'Generated', actorId: user.userId, reason: replace?.reason || 'Generated from effective employee rules and approved time', at: new Date().toISOString(), version: nextVersion, snapshot: { previous: duplicate ? { record: duplicate.record, policy: duplicate.review?.policy, adjustments: duplicate.review?.adjustments, lines: previousLines } : null, amounts, lines: timeLines } }] };
+    const review = { payrollId: record.id, version: nextVersion, currency: basePolicy.currency, periodStart: period.start, periodEnd: period.end, payDate: `${input.year}-${String(input.month).padStart(2, '0')}-${String(basePolicy.payDay).padStart(2, '0')}`, policy: { rules: Object.fromEntries(policies), baseAmounts: amounts, unpaidLeave, employee: { name: employee.firstName + ' ' + employee.lastName, employeeId: employee.employeeId, department: employee.department, position: employee.position } }, createdBy: user.userId, approverId: basePolicy.approverId, adjustments: [], approvedBy: null, approvedAt: null, history: [...(duplicate?.review?.history || []), { action: replace ? 'Regenerated' : 'Generated', actorId: user.userId, reason: replace?.reason || 'Generated from effective employee rules and approved time', at: new Date().toISOString(), version: nextVersion, snapshot: { previous: duplicate ? { record: duplicate.record, policy: duplicate.review?.policy, adjustments: duplicate.review?.adjustments, lines: previousLines } : null, amounts, lines: timeLines } }] };
     if (replace)
         await tx.delete(payrollTimeLines).where(eq(payrollTimeLines.payrollId, replace.id));
     await tx.insert(payrollReviews).values(review).onConflictDoUpdate({ target: payrollReviews.payrollId, set: review });

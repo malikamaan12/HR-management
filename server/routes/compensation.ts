@@ -67,11 +67,24 @@ router.post('/employees/:employeeId/packages/:packageId/payroll-rule', handle(as
     const previous = await ruleFor(tx, employeeId, 'payroll', 'Pay policy', row.effectiveFrom);
     if ((previous?.id || null) !== input.expectedRuleId) fail(409, 'The effective payroll rule changed. Reload and review it before publishing');
     const base = row.definition.items.find(item => item.category === 'base')!;
-    if (base.provision !== 'cash' || !['monthly', 'hourly'].includes(base.frequency)) fail(400, 'Payroll mapping requires monthly or hourly cash base pay. Daily and per-event pay remain recorded in the package');
+    if (base.provision !== 'cash' || !['monthly', 'hourly', 'daily', 'per_event'].includes(base.frequency)) fail(400, 'Payroll mapping requires monthly, hourly, daily or per-event cash base pay');
     const allowances = Object.fromEntries(row.definition.items.filter(item => item.category !== 'base' && item.provision === 'cash' && item.frequency === 'monthly').map(item => [item.label, item.amount]));
     const previousConfig = previous ? payrollRule.parse(previous.config) : null;
     if (previousConfig && previousConfig.currency !== row.definition.currency && Object.values(previousConfig.deductions).some(value => moneyCents(value) > 0)) fail(409, 'Resolve deductions in the previous currency before publishing a package in another currency');
-    const config = payrollRule.parse({ currency: row.definition.currency, cycleStartDay: input.cycleStartDay, payDay: input.payDay, basis: base.frequency === 'hourly' ? 'hourly' : 'salary', basicSalary: base.frequency === 'monthly' ? base.amount : '0.00', hourlyRate: base.frequency === 'hourly' ? base.amount : input.hourlyRate, regularMinutesPerDay: input.regularMinutesPerDay, overtimeMultiplier: input.overtimeMultiplier, allowances, deductions: previousConfig?.deductions || {}, approverId: input.approverId });
+    const config = payrollRule.parse({
+      currency: row.definition.currency, cycleStartDay: input.cycleStartDay, payDay: input.payDay,
+      basis: base.frequency === 'monthly' ? 'salary' : base.frequency,
+      basicSalary: base.frequency === 'monthly' ? base.amount : '0.00',
+      hourlyRate: base.frequency === 'hourly' ? base.amount : input.hourlyRate,
+      dailyRate: base.frequency === 'daily' ? base.amount : '0.00',
+      eventRate: base.frequency === 'per_event' ? base.amount : '0.00',
+      dailyPayMethod: input.dailyPayMethod ?? previousConfig?.dailyPayMethod ?? 'full_day',
+      eventPayUnit: 'assignment',
+      overtimeEnabled: input.overtimeEnabled ?? previousConfig?.overtimeEnabled ?? true,
+      unpaidLeave: input.unpaidLeave ?? previousConfig?.unpaidLeave,
+      regularMinutesPerDay: input.regularMinutesPerDay, overtimeMultiplier: input.overtimeMultiplier,
+      allowances, deductions: previousConfig?.deductions || {}, approverId: input.approverId,
+    });
     await approver(tx, input.approverId, 'payroll_management', employee);
     const [rule] = await tx.insert(hrRules).values({ kind: 'payroll', employeeId, effectiveFrom: row.effectiveFrom, name: 'Pay policy', config, reason: input.reason, createdBy: req.user!.userId }).returning();
     await tx.execute(sql`INSERT INTO employee_compensation_payroll_links(package_id,rule_id,created_by,reason) VALUES(${packageId},${rule.id},${req.user!.userId},${input.reason})`);

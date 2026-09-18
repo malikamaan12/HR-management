@@ -25,9 +25,17 @@ Admin, Super Admin, HR Director and HR roles can edit within employee access. De
 
 ## Publish to payroll
 
-Saving a package does not change payroll rules. An Admin or Super Admin can select Review payroll mapping, inspect the dated replacement and publish it explicitly. Monthly base cash or hourly base cash can be mapped to the existing payroll engine. Only monthly cash allowances are copied. Existing deductions are retained and shown for review. The administrator selects an independent approver, cycle/payment days, regular daily minutes, overtime multiplier and (for monthly salaries) overtime hourly rate.
+Saving a package does not change payroll rules. An Admin or Super Admin can select Review payroll mapping, inspect the dated replacement and publish it explicitly. Monthly, hourly, daily and per-event cash base pay map to their corresponding payroll basis. Only monthly cash allowances are copied. Existing recurring deductions are retained and shown for review. The unpaid-leave settings start from the effective previous payroll rule; publishing a package does not silently enable them.
 
-Daily and per-event base rates remain in the package and are not automatically mapped to the salary/hourly engine. Annual cash, one-time cash, reimbursements and provided benefits are not silently prorated into monthly payroll. Published package links are recorded. A later change requires a new package revision. Existing saved payroll records keep their amounts; eligible drafts must be regenerated explicitly to use revised rules.
+The administrator selects an independent approver, cycle/payment days, regular daily minutes, overtime enablement and multiplier. Monthly, daily and per-event bases have a separate overtime hourly rate. Hourly pay uses its base hourly rate for overtime. New controls default to the previous rule when available; legacy salary/hourly rules retain their behavior until a dated revision is published.
+
+- Daily pay counts approved worked time across timesheets for an employee work date, capped at one day. Choose full-day payment for any approved worked time, or prorate by approved regular minutes divided by regular minutes per day, capped at one day. Additional overtime is paid only when enabled.
+- Per-event pay means **one assigned event shift**, as selected for the current roster. An assignment with approved worked time receives its base amount once, including a shift crossing midnight. Separate assigned shifts are separate payment units. Additional overtime is paid only when enabled.
+- Approved unpaid-leave deductions apply only to monthly salaries when explicitly enabled. Choose basic salary alone or basic plus recurring monthly allowances, and divide by calendar days in the pay period, scheduled working days in the pay period, or an administrator-defined fixed number of days. Approved half-day leave uses its saved half-day units. Hourly, daily and per-event pay already depend on approved worked time; they do not receive a second automatic leave deduction, and their monthly allowances are not automatically reduced for leave.
+
+Annual cash, one-time cash, reimbursements and provided benefits are not silently prorated into monthly payroll. Published package links are recorded. A later change requires a new package revision. The HR rules screen can also publish a dated revision directly. Existing saved payroll records keep their amounts; return, cancel and regenerate an eligible payroll draft explicitly to use revised rules or corrected approved records.
+
+Payroll details show the saved work unit, rate, base amount, overtime and assigned-shift/timesheet references. Unpaid-leave details show request IDs, approved dates and units, the monthly deduction base, divisor and final amount, including a cap when applicable. Older saved runs remain available even when they predate this detailed breakdown.
 
 ## Deployment
 
