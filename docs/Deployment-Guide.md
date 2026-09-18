@@ -1,10 +1,10 @@
 # E3 HR free deployment
 
-18 September 2026 employee/document release candidate: reviewed CSV imports, employee correction requests and administrator document review rules are ready for deployment. See [EMPLOYEE-DOCUMENT-REVIEW-RELEASE.md](EMPLOYEE-DOCUMENT-REVIEW-RELEASE.md).
+18 September 2026: reviewed CSV imports, employee correction requests and administrator document review rules are live in commit `1d0013344a636aecc31ce32b640b79d4399405aa`. Render deployment `dep-dammk3ou01pc73ardpp0` succeeded, startup migrations completed, and public health/readiness plus authenticated workflow screens passed verification. See [EMPLOYEE-DOCUMENT-REVIEW-RELEASE.md](EMPLOYEE-DOCUMENT-REVIEW-RELEASE.md).
 
 18 September 2026: reporting snapshots, candidate corrections and shared event/FEC navigation are live in commit `d64f3c21fef5c2bd838b7a9f31b6911f8597b4e8`. Render deployment `dep-damm7usri2ms73drt3ig` succeeded, startup migrations completed, and `/healthz` plus `/readyz` returned HTTP 200. See [REPORTING-CORRECTIONS-RELEASE.md](REPORTING-CORRECTIONS-RELEASE.md) for validation and branch compatibility limits.
 
-Updated 18 September 2026. The existing Free service is live at [e3-hr.onrender.com](https://e3-hr.onrender.com), sourced from `malikamaan12/HR-management` on `main`. The reporting and candidate correction release extends the prior combined module release `f69d238`. Production had no operational employee records at the 16 September check; no demonstration employees were added by this release. The existing administrator and private storage remain configured; Resend sender setup remains pending. Automatic deployments remain off.
+Updated 18 September 2026. The existing Free service is live at [e3-hr.onrender.com](https://e3-hr.onrender.com), sourced from `malikamaan12/HR-management` on `main`. The employee/document review release extends reporting and candidate corrections in `d64f3c2`. Production had no employee records at this release's read-only check; no demonstration employees were added. The existing administrator and private storage remain configured; Resend sender setup remains pending. Automatic deployments remain off.
 
 ## Budget and services
 

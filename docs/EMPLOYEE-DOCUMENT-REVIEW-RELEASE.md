@@ -25,4 +25,10 @@ The isolated browser used synthetic data and in-memory files. It verified: inval
 
 ## Deployment
 
-Prepared for the existing Render Free service srv-dajuem0jo6nc73fb36r0 and Supabase Free. No new hosting, paid resource or environment change is required. Deployment verification is pending.
+Live on the existing Render Free service srv-dajuem0jo6nc73fb36r0 and Supabase Free. No hosting, paid resource or environment changes were made.
+
+- Application revision: `1d0013344a636aecc31ce32b640b79d4399405aa`, pushed to `malikamaan12/HR-management` main.
+- Manual Render deployment [dep-dammk3ou01pc73ardpp0](https://dashboard.render.com/web/srv-dajuem0jo6nc73fb36r0/deploys/dep-dammk3ou01pc73ardpp0) succeeded on 18 September 2026 at 19:44 Qatar time. Startup confirmed `Database migrations completed` before serving.
+- `/healthz`, `/readyz` and `/` returned HTTP 200. The public page serves the expected client entry `/assets/index-CaiyRRKf.js`.
+- Authenticated production checks confirmed the reviewed CSV draft screen/private jobs list, document register, persisted approval policy, renewal review queue and employee correction inbox. The existing optional-approval policy remained at version 0. No production HR records, files or policy values were created or changed during these read-only checks.
+- End-to-end writes were verified in the isolated synthetic preview described above; real production file delivery remains an acceptance task.
