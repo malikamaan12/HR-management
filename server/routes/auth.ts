@@ -15,6 +15,7 @@ const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHea
 router.use(['/login','/signup','/register','/forgot-password','/reset-password'], authLimiter);
 // Cookies are sent only to this application; no browser cross-origin writes.
 router.use((req, res, next) => {
+  res.set('Cache-Control', 'no-store');
   if (!['GET','HEAD','OPTIONS'].includes(req.method) && req.headers.origin) {
     const expected = process.env.APP_URL ? new URL(process.env.APP_URL).origin : req.protocol + '://' + req.get('host');
     if (req.headers.origin !== expected) return res.status(403).json({ message: 'Cross-origin request denied' });
@@ -405,7 +406,7 @@ router.get("/sessions/:userId", authenticate, async (req: express.Request, res: 
     }
     
     // Get sessions
-    const sessions = await authService.getUserSessions(userId);
+    const sessions = await authService.getUserSessions(userId, req.user!.userId === userId ? req.cookies?.refreshToken : undefined);
     
     res.json({
       success: true,

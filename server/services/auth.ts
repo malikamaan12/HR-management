@@ -593,15 +593,16 @@ export class AuthService {
   /**
    * Get user's active sessions
    */
-  async getUserSessions(userId: number) {
+  async getUserSessions(userId: number, currentRefreshToken?: string) {
     try {
       const sessions = await db.select({ id: authSessions.id, userId: authSessions.userId, ipAddress: authSessions.ipAddress,
-        userAgent: authSessions.userAgent, issuedAt: authSessions.issuedAt, lastUsed: authSessions.lastUsed, expiresAt: authSessions.expiresAt })
+          userAgent: authSessions.userAgent, issuedAt: authSessions.issuedAt, lastUsed: authSessions.lastUsed, expiresAt: authSessions.expiresAt,
+          isCurrent: currentRefreshToken ? sql<boolean>`${authSessions.refreshToken}=${currentRefreshToken}` : sql<boolean>`false` })
         .from(authSessions)
         .where(
           and(
             eq(authSessions.userId, userId),
-            eq(authSessions.isActive, true)
+              eq(authSessions.isActive, true), gt(authSessions.expiresAt, new Date())
           )
         );
       

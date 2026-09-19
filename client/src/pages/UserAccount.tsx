@@ -1,17 +1,40 @@
-import {useState} from 'react';
-import {Link} from 'wouter';
-import {useMutation} from '@tanstack/react-query';
-import {useAuth} from '@/contexts/AuthContext';
-import {apiJson} from '@/lib/queryClient';
-import {Card,CardHeader,CardTitle,CardContent} from '@/components/ui/card';
-import {Input} from '@/components/ui/input';
-import {Button} from '@/components/ui/button';
-import {useToast} from '@/hooks/use-toast';
-export default function UserAccount(){
- const {user,refreshToken}=useAuth(),{toast}=useToast();
- const [firstName,setFirstName]=useState(user?.firstName||''),[lastName,setLastName]=useState(user?.lastName||'');
- const save=useMutation({mutationFn:()=>apiJson('/api/auth/profile',{method:'PUT',body:{firstName,lastName}}),onSuccess:async()=>{await refreshToken();toast({title:'Profile saved'});},onError:error=>toast({title:'Unable to save profile',description:error.message,variant:'destructive'})});
- return <Card><CardHeader><CardTitle>My account</CardTitle></CardHeader><CardContent className="space-y-5"><p>{user?.username} · {user?.role}</p><p>Account email: {user?.email}</p><form className="max-w-lg space-y-4" onSubmit={e=>{e.preventDefault();save.mutate();}}>
-  <label className="block">First name<Input required maxLength={100} value={firstName} onChange={e=>setFirstName(e.target.value)}/></label><label className="block">Last name<Input required maxLength={100} value={lastName} onChange={e=>setLastName(e.target.value)}/></label><Button disabled={save.isPending}>Save profile</Button></form>
-  <p>Contact HR for changes to your employee record or account email.</p><Link href="/settings" className="text-primary">Change password →</Link></CardContent></Card>;
+import { useState } from 'react';
+import { Link } from 'wouter';
+import { useMutation } from '@tanstack/react-query';
+import { UserRound, ShieldCheck, KeyRound, Monitor, Mail, BadgeCheck, Building2, Save, RotateCcw, LogOut, ArrowUpRight, LifeBuoy, CheckCircle2 } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { usePageAccess } from '@/hooks/usePageAccess';
+import { roleLabel, pageLabel } from '@shared/navigation';
+import { apiJson } from '@/lib/queryClient';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { useToast } from '@/hooks/use-toast';
+import AccountPassword from '@/components/AccountPassword';
+import AccountSessions from '@/components/AccountSessions';
+
+export default function UserAccount() {
+  const { user, refreshToken, logout } = useAuth(), { pages } = usePageAccess(), { toast } = useToast();
+  const [firstName, setFirstName] = useState(user?.firstName || ''), [lastName, setLastName] = useState(user?.lastName || ''), [saved, setSaved] = useState(false);
+  const dirty = firstName.trim() !== (user?.firstName || '') || lastName.trim() !== (user?.lastName || '');
+  const save = useMutation({ mutationFn: (names: { firstName: string; lastName: string }) => apiJson('/api/auth/profile', { method: 'PUT', body: names }), onSuccess: async (_data, names) => {
+    setFirstName(names.firstName); setLastName(names.lastName); setSaved(true); await refreshToken(); toast({ title: 'Profile saved' });
+  } });
+  const signOut = useMutation({ mutationFn: logout, onError: error => toast({ title: 'Unable to sign out', description: error.message, variant: 'destructive' }) });
+  if (!user) return <p role="status">Loading your account…</p>;
+  const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.username;
+  const initials = [user.firstName, user.lastName].filter(Boolean).map(name => name![0]).join('').slice(0, 2) || user.username.slice(0, 2);
+  return <div className="space-y-6 pb-10">
+    <header className="rounded-2xl border bg-gradient-to-br from-primary/10 via-card to-card p-5 sm:p-7"><div className="flex flex-wrap items-center justify-between gap-5"><div className="flex min-w-0 items-center gap-4"><span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-primary text-xl font-semibold uppercase text-primary-foreground">{initials}</span><div className="min-w-0"><p className="mb-1 text-xs font-semibold uppercase tracking-widest text-primary">My account</p><h1 className="break-words text-2xl font-semibold">{fullName}</h1><p className="mt-1 break-all text-sm text-muted-foreground">{user.email || user.username}</p></div></div><span className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary"><CheckCircle2 className="h-3.5 w-3.5"/>Signed in</span></div><p className="mt-5 text-sm text-muted-foreground">Manage your profile, password and signed-in devices in one place.</p></header>
+    <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <Tabs defaultValue="profile" className="min-w-0 space-y-5"><TabsList className="flex h-auto w-fit max-w-full flex-wrap gap-1"><TabsTrigger value="profile"><UserRound className="mr-2 h-4 w-4"/>Profile</TabsTrigger><TabsTrigger value="security"><KeyRound className="mr-2 h-4 w-4"/>Password</TabsTrigger><TabsTrigger value="sessions"><Monitor className="mr-2 h-4 w-4"/>Sessions</TabsTrigger></TabsList>
+        <TabsContent value="profile"><section className="rounded-2xl border bg-card p-5 sm:p-6"><div className="mb-6"><h2 className="text-lg font-semibold">Personal profile</h2><p className="mt-1 text-sm text-muted-foreground">Update the name shown on your account. Official employee records are managed separately by HR.</p></div><form className="space-y-5" onSubmit={e => { e.preventDefault(); if (dirty && firstName.trim() && lastName.trim()) { setSaved(false); save.mutate({ firstName: firstName.trim(), lastName: lastName.trim() }); } }}><fieldset disabled={save.isPending} className="space-y-5"><div className="grid gap-4 sm:grid-cols-2"><div><label htmlFor="account-first-name" className="mb-2 block text-sm font-medium">First name</label><Input id="account-first-name" required maxLength={100} autoComplete="given-name" value={firstName} onChange={e => { setFirstName(e.target.value); setSaved(false); save.reset(); }}/></div><div><label htmlFor="account-last-name" className="mb-2 block text-sm font-medium">Last name</label><Input id="account-last-name" required maxLength={100} autoComplete="family-name" value={lastName} onChange={e => { setLastName(e.target.value); setSaved(false); save.reset(); }}/></div></div><div className="grid gap-4 rounded-xl bg-muted/30 p-4 sm:grid-cols-2"><div><label htmlFor="account-username" className="mb-2 block text-sm font-medium">Username</label><Input id="account-username" readOnly value={user.username} className="bg-muted/50"/></div><div><label htmlFor="account-email" className="mb-2 block text-sm font-medium">Sign-in email</label><Input id="account-email" readOnly value={user.email || ''} className="bg-muted/50"/></div><p className="text-xs leading-5 text-muted-foreground sm:col-span-2">An administrator manages your username, email, role and account access. Use HR Helpdesk if these details need changing.</p></div>{save.error && <p role="alert" className="text-sm text-destructive">{save.error.message}</p>}{saved && <p role="status" className="flex items-center gap-2 text-sm text-primary"><CheckCircle2 className="h-4 w-4"/>Your profile has been saved.</p>}<div className="flex flex-wrap items-center gap-3"><Button type="submit" disabled={save.isPending || !dirty || !firstName.trim() || !lastName.trim()}><Save className="mr-2 h-4 w-4"/>{save.isPending ? 'Saving…' : 'Save profile'}</Button><Button type="button" variant="outline" disabled={save.isPending || !dirty} onClick={() => { setFirstName(user.firstName || ''); setLastName(user.lastName || ''); setSaved(false); save.reset(); }}><RotateCcw className="mr-2 h-4 w-4"/>Reset</Button>{dirty && <span className="text-xs text-muted-foreground">Unsaved changes</span>}</div></fieldset></form></section></TabsContent>
+        <TabsContent value="security"><section className="rounded-2xl border bg-card p-5 sm:p-6"><h2 className="mb-5 text-lg font-semibold">Change your password</h2><AccountPassword/></section></TabsContent>
+        <TabsContent value="sessions"><section className="rounded-2xl border bg-card p-5 sm:p-6"><h2 className="mb-5 text-lg font-semibold">Signed-in devices</h2><AccountSessions/></section></TabsContent>
+      </Tabs>
+      <aside className="space-y-5 xl:pt-14"><section className="rounded-2xl border bg-card p-5"><h2 className="mb-4 flex items-center gap-2 font-semibold"><ShieldCheck className="h-4 w-4 text-primary"/>Your access</h2><dl className="space-y-4"><div className="flex gap-3"><BadgeCheck className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground"/><div><dt className="text-xs text-muted-foreground">Assigned role</dt><dd className="mt-1 text-sm font-medium">{roleLabel(user.role)}</dd></div></div><div className="flex gap-3"><Building2 className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground"/><div><dt className="text-xs text-muted-foreground">Account department</dt><dd className="mt-1 text-sm">{user.department || 'Not assigned'}</dd></div></div><div className="flex gap-3"><Mail className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground"/><div className="min-w-0"><dt className="text-xs text-muted-foreground">Account email</dt><dd className="mt-1 break-all text-sm">{user.email || 'Not recorded'}</dd></div></div></dl><p className="mt-5 border-t pt-4 text-xs leading-5 text-muted-foreground">Your role and team assignments determine which modules and records you can access. HR or an administrator can help with access changes.</p></section>
+      <section className="rounded-2xl border bg-card p-5"><h2 className="mb-3 flex items-center gap-2 font-semibold"><LifeBuoy className="h-4 w-4 text-primary"/>Need something changed?</h2><p className="mb-4 text-sm leading-6 text-muted-foreground">For contact details, employee records or account access, use the relevant workspace below.</p><div className="space-y-2">{pages.filter(p => ['/employees', '/helpdesk'].includes(p.href)).map(p => <Link key={p.href} href={p.href} className="flex items-center justify-between rounded-xl border p-3 text-xs font-medium hover:bg-muted/40">{pageLabel(p, user.role)}<ArrowUpRight className="h-4 w-4"/></Link>)}</div></section>
+      <Button variant="outline" className="w-full" disabled={signOut.isPending} onClick={() => signOut.mutate()}><LogOut className="mr-2 h-4 w-4"/>{signOut.isPending ? 'Signing out…' : 'Sign out of this browser'}</Button></aside>
+    </div>
+  </div>;
 }
