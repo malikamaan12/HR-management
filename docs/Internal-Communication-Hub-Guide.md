@@ -4,20 +4,22 @@ Initial implementation and deployment date: 19 September 2026. Application commi
 
 **Daily chat upgrade:** implemented and verified locally on 19 September 2026; awaiting deployment with migration `0047_team_chat_coordination.sql`. See [Daily-Team-Chat-Release.md](Daily-Team-Chat-Release.md) for release scope and acceptance evidence.
 
+**Announcements, inbox and administration upgrade:** implemented and verified locally on 19 September 2026; awaiting deployment. See [Announcement-Hub-Release.md](Announcement-Hub-Release.md). This upgrade adds no migration; a combined deployment still needs the pending daily-chat migration above.
+
 The `/communications` workspace replaces the old placeholder announcement/notification screens and Slack integration. It runs in the existing Express/React application, PostgreSQL database and configured private Supabase/R2 storage. No paid messaging service or new dependency is added; the Slack SDK is removed. Existing email workflows elsewhere in HR are unaffected.
 
 ## Working features
 
 | Area | Behavior |
 | --- | --- |
-| Announcements and briefings | Draft, edit, review, publish, schedule, expire, pin and archive. Whole-company, department, role and managed-channel audiences. Published wording is immutable; corrections require a new notice. |
-| Acknowledgements | Explicit read followed by explicit acknowledgement of the exact publication. Managers can view paginated receipts. Reading does not approve an HR transaction. |
+| Announcements and briefings | Guided Message → Audience & timing → Review draft creation, with audience counts and separate publication confirmation. Personal unread/acknowledgement/pinned filters and a management board for drafts, scheduled, live, expired and archived notices. Whole-company, department, role and managed-channel audiences. Published wording is immutable; corrections require a new notice. |
+| Acknowledgements | Explicit read followed by explicit acknowledgement of the exact publication. Managers see current eligible recipients, read/acknowledgement progress, searchable pending lists and retained receipt history. Reading does not approve an HR transaction. |
 | Conversations | Participant-only direct messages, invited private groups and workforce channels. Recent-message previews, colleague names for direct chats, favorites, unread and mention filters, in-conversation and cross-conversation search, paginated reply views, current-member mentions, five emoji reactions, personal saved messages and manager pins. |
 | Daily workspace | Two-pane desktop chat, mobile conversation navigation, light/dark modes and Focus chat. Drafts survive switching conversations and Hub tabs within the page; drafts are held in memory and do not survive reload/logout. Ctrl/Command + Enter sends; Enter adds a line. |
 | Private files | Channel Files and global Shared files views; one PDF, PNG or JPEG per message, checked by file signature and administrator size limit. Downloads require current channel access and use a 60-second private URL. No public attachment URLs or keys in message responses. |
 | Message history | Sent text is immutable. Authors and channel managers may withdraw a message with a reason; the visible message becomes a marker and its attachment becomes unavailable through the app. Stored records remain. Retried sends use an idempotency key. |
-| Action inbox | Existing HR workflow reminders, unread filter, explicit read state and safe links to the originating module. Notification delivery status is preserved separately. |
-| Administration | Versioned direct-message/group-creation switches, message length, file size and visible-history limits; change reason and policy history. |
+| Action inbox | Existing HR workflow reminders with unread/all/read filters, search, role-aware module shortcuts, bulk read for up to 25 visible unread reminders and individual mark-unread controls. Notification delivery status is preserved separately. |
+| Administration | Switches and cards for versioned direct-message/group-creation settings, message length, file size and visible-history limits; unsaved-change state, reset, required change reason and a policy-history table. |
 
 ## Access rules
 
@@ -73,3 +75,13 @@ The upgraded open conversation and reply view poll every 5 seconds; channel acce
 - **Header badge:** counts unmuted unread conversations, notices awaiting acknowledgement and unread workflow reminders. Mentions have their own Hub summary card to avoid double-counting messages.
 
 Reactions and pin/save interactions are limited to 120 attempts per user per minute per application process. The existing send limit remains 30 per minute. Favorites, saved messages, mute and read state belong to the current user. Pins are shared within the channel and audited without copying message content into organization-wide logs. These features do not grant additional channel access.
+
+## Announcement and inbox controls
+
+- **New announcement:** write the message, select the permitted audience and timing, then review and save a draft. Optional starter outlines populate only an empty message. Saving a draft does not publish it.
+- **Publish / Schedule publication:** review the audience, timing and current eligible count, confirm the review and enter a reason. Drafts and future publications stay hidden from recipients. Archiving cancels a scheduled notice or removes a live notice while retaining its records.
+- **Recipient tracker:** counts current active accounts whose employment, Hub permission and team membership permit access and whose password setup is complete. Counts can change as accounts and membership change; they are not a frozen delivery list. The tracker separates not-read, read, pending acknowledgement and acknowledged recipients. Receipt history retains earlier receipts, including people who have since left the audience.
+- **Mark as read / I acknowledge:** employees act explicitly in that order on a live notice addressed to them. A publisher viewing a notice outside their own audience cannot create a personal receipt through the management preview.
+- **Action inbox:** select visible unread reminders to mark them read together, or restore one reminder to unread. These actions affect only the signed-in user's read state and do not complete the underlying HR task or change notification delivery status.
+
+The announcement/inbox upgrade passed the full suite: **501 passed, one existing skip, across 40 files**. TypeScript and client/server production builds passed. Disposable local browser checks covered publication, employee read/acknowledgement, recipient totals, inbox bulk read/unread, policy saving/history and narrow-screen layouts in dark mode. No live announcements or business settings were changed during this verification.

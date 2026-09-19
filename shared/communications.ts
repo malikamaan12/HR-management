@@ -42,3 +42,9 @@ export type ChatReaction=typeof chatReactions[number];
 export type ChatMessage=CommMessage & {channel_id:number;channel_name?:string;saved:boolean;pinned:boolean;reply_count:number;reactions:{emoji:ChatReaction;count:number;mine:boolean}[];reply_preview:{id:number;body:string;author_name:string}|null};
 export type ChatChannel=Channel & {favorite:boolean;last_message:string|null;last_author:string|null;last_activity:string|null;display_name:string};
 export type HubSummary={unreadConversations:number;mentions:number;pendingAcknowledgements:number;unreadActions:number};
+
+export type BulletinView = Bulletin & {stage:'draft'|'scheduled'|'live'|'expired'|'archived';audience_label:string;addressed_to_me?:boolean};
+export type BulletinOverview = {mine:{all:number;unread:number;needs_ack:number;pinned:number};managed:Partial<Record<BulletinView['stage'],number>>};
+export type BulletinRecipient = {id:number;name:string;department:string|null;read_at:string|null;acknowledged_at:string|null};
+export type HubContext = {userId:number;department:string|null;roles:string[];canManage:boolean;canPublishCompany:boolean;canPublishDepartment:boolean;canConfigure:boolean;policy:{version:number;definition:CommunicationPolicy}};
+export type InboxItem = {id:number;message:string;timestamp:string;channel:string;read_at:string|null;url:string|null};

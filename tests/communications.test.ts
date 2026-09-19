@@ -309,3 +309,80 @@ test('reply and discovery pagination show newest messages first without losing t
  expect(results.hasMore).toBe(true);expect(results.items).toHaveLength(25);expect(results.items[0].id).toBe(ids[0]);
  expect((await request(worker,'/search?q=Shift%20note&offset=25')).body.items.map((m:any)=>m.id)).toEqual(ids.slice(25));
 });
+
+test('announcement overview and status filters separate addressed notices from the publishing board',async()=>{
+ const live=await publish(await draft());await draft();await publish(await draft(admin,{publishAt:instant(1),expiresAt:instant(3)}));
+ const old=await publish(await draft());await request(admin,`/bulletins/${old.id}/archive`,{version:old.version,reason:why});
+ const expired=await draft(admin,{publishAt:instant(-3),expiresAt:instant(-1)});await pg.query("UPDATE comm_bulletins SET status='published' WHERE id=$1",[expired.id]);
+ const overview=await request(admin,'/bulletins/overview');expect(overview.status,overview.body.message).toBe(200);expect(overview.body).toMatchObject({mine:{all:1,unread:1,needs_ack:1,pinned:0},managed:{draft:1,live:1,scheduled:1,archived:1,expired:1}});
+ for(const stage of ['draft','live','scheduled','archived','expired'])expect((await request(admin,`/bulletins?managed=true&filter=${stage}`)).body.items).toHaveLength(1);
+ expect((await request(worker,'/bulletins?filter=draft')).body.items).toHaveLength(0);expect((await request(worker,'/bulletins?managed=true')).body.items).toHaveLength(0);
+ await request(worker,`/bulletins/${live.id}/read`,{});expect((await request(worker,'/bulletins?filter=unread')).body.items).toHaveLength(0);expect((await request(worker,'/bulletins?filter=needs_ack')).body.items).toHaveLength(1);
+ await request(worker,`/bulletins/${live.id}/acknowledge`,{});expect((await request(worker,'/bulletins/overview')).body.mine).toMatchObject({all:1,unread:0,needs_ack:0});
+});
+
+test('audience previews require publishing scope and count only current eligible accounts',async()=>{
+ const audit=await account('audit','finance_audit');const frozen=await account('frozen','employee');await pg.query("UPDATE users SET account_state='frozen' WHERE id=$1",[frozen.id]);
+ await pg.query('UPDATE users SET password_setup_required=true WHERE id=$1',[colleague.id]);
+ await pg.query("UPDATE employees SET status='inactive' WHERE id=$1",[employee.id]);
+ expect((await request(worker,'/bulletins/audience-preview?audience=all')).status).toBe(403);
+ expect((await request(dept,'/bulletins/audience-preview?audience=department&target=Finance')).status).toBe(403);
+ const preview=await request(admin,'/bulletins/audience-preview?audience=all');expect(preview.status,preview.body.message).toBe(200);expect(preview.body.eligible).toBe(4);
+ expect(JSON.stringify(preview.body)).not.toContain('@example.test');
+ const departments=await request(dept,'/bulletins/audience-options?kind=department');expect(departments.body.items).toEqual([{id:'Operations',name:'Operations'}]);
+ expect((await request(lead,'/bulletins/audience-options?kind=department')).status).toBe(403);
+ expect((await request(admin,'/bulletins/audience-preview?audience=all&target=forged')).status).toBe(400);
+ expect((await request(admin,'/bulletins/audience-preview?audience=role&target=finance_audit')).body.eligible).toBe(0);
+});
+
+test('recipient tracker totals and filters distinguish read from acknowledgement without disclosing private fields',async()=>{
+ const b=await publish(await draft(dept,{audience:'department',target:'Operations'}),dept);
+ await request(worker,`/bulletins/${b.id}/read`,{});
+ let tracked=await request(dept,`/bulletins/${b.id}/recipients?filter=pending`);expect(tracked.status,tracked.body.message).toBe(200);expect(tracked.body.totals).toMatchObject({eligible:5,read:1,acknowledged:0});expect(tracked.body.items).toHaveLength(5);
+ expect(JSON.stringify(tracked.body)).not.toContain('SECRET');expect(JSON.stringify(tracked.body)).not.toContain('@example.test');
+ await request(worker,`/bulletins/${b.id}/acknowledge`,{});
+ expect((await request(dept,`/bulletins/${b.id}/recipients?filter=acknowledged`)).body.items.map((p:any)=>p.id)).toEqual([worker.id]);
+ expect((await request(dept,`/bulletins/${b.id}/recipients?filter=unread`)).body.items).toHaveLength(4);
+ expect((await request(dept,`/bulletins/${b.id}/recipients?q=%25_`)).body.items).toHaveLength(0);
+ expect((await request(colleague,`/bulletins/${b.id}/recipients`)).status).toBe(403);
+ expect((await request(worker,`/bulletins/${b.id}/recipients`)).status).toBe(403);
+});
+
+test('channel audience removal updates current tracking while historical receipts remain',async()=>{
+ let c=await add(await group());const b=await publish(await draft(admin,{audience:'channel',target:String(c.id)}));
+ await request(worker,`/bulletins/${b.id}/read`,{});await request(worker,`/bulletins/${b.id}/acknowledge`,{});
+ expect((await request(admin,`/bulletins/${b.id}/recipients`)).body.totals).toEqual({eligible:2,read:1,acknowledged:1});
+ expect((await request(outsider,`/bulletins/${b.id}/recipients`)).status).toBe(403);
+ await request(admin,`/channels/${c.id}/members/${worker.id}/remove`,{version:c.version,reason:why});
+ expect((await request(admin,`/bulletins/${b.id}/recipients`)).body.totals).toEqual({eligible:1,read:0,acknowledged:0});
+ expect((await request(admin,`/bulletins/${b.id}/receipts`)).body.items).toHaveLength(1);
+ expect((await request(worker,`/bulletins/${b.id}`)).status).toBe(404);
+});
+
+test('recipient and audience option pagination apply authorization before page limits',async()=>{
+ const c=await group();
+ await pg.query("INSERT INTO comm_channels(name,kind,owner_id) SELECT 'A foreign group '||n,'group',$1 FROM generate_series(1,27) n",[outsider.id]);
+ const options=await request(admin,'/bulletins/audience-options?kind=channel');expect(options.status,options.body.message).toBe(200);expect(options.body.items).toEqual([{id:String(c.id),name:c.name}]);expect(options.body.hasMore).toBe(false);
+ await pg.exec("INSERT INTO users(username,email,password,first_name,last_name,role,department,is_active,approval_status) SELECT 'recipient'||n,'recipient'||n||'@example.test','synthetic','Recipient '||n,'Synthetic','employee','Operations',true,'approved' FROM generate_series(1,27) n");
+ const b=await draft();const first=(await request(admin,`/bulletins/${b.id}/recipients`)).body,second=(await request(admin,`/bulletins/${b.id}/recipients?offset=25`)).body;
+ expect(first.totals.eligible).toBe(33);expect(first.items).toHaveLength(25);expect(first.hasMore).toBe(true);expect(second.items).toHaveLength(8);expect(second.hasMore).toBe(false);expect(new Set([...first.items,...second.items].map(p=>p.id)).size).toBe(33);
+});
+
+test('inbox batch reads are owned and atomic, and marking unread does not change delivery status',async()=>{
+ const rows=await ctx.db.insert(s.notifications).values([{userId:worker.id,message:'First reminder',channel:'push',status:'pending'},{userId:worker.id,message:'Second reminder',channel:'push',status:'sent'},{userId:colleague.id,message:'Private reminder',channel:'push',status:'pending'}]).returning();
+ expect((await request(worker,'/inbox/read',{ids:[]})).status).toBe(400);
+ expect((await request(worker,'/inbox/read',{ids:[rows[0].id,rows[2].id]})).status).toBe(404);expect((await request(worker,'/inbox?filter=read')).body.items).toHaveLength(0);
+ for(let i=0;i<2;i++)expect((await request(worker,'/inbox/read',{ids:[rows[0].id,rows[1].id]})).status).toBe(200);
+ expect((await request(worker,'/inbox?filter=read')).body.items).toHaveLength(2);expect((await request(worker,'/inbox?filter=unread')).body.items).toHaveLength(0);expect((await request(worker,'/summary')).body.unreadActions).toBe(0);
+ expect((await request(worker,`/inbox/${rows[2].id}/unread`,{})).status).toBe(404);
+ expect((await request(worker,`/inbox/${rows[0].id}/unread`,{})).status).toBe(200);expect((await request(worker,'/inbox?filter=unread')).body.items.map((n:any)=>n.id)).toEqual([rows[0].id]);expect((await request(worker,'/summary')).body.unreadActions).toBe(1);
+ expect((await pg.query('SELECT status FROM notifications WHERE id=$1',[rows[0].id])).rows[0].status).toBe('pending');
+});
+
+test('announcement detail identifies an addressed reader without granting publishers receipt actions outside their audience',async()=>{
+ const b=await publish(await draft(admin,{audience:'department',target:'Finance'}));
+ expect((await request(admin,`/bulletins/${b.id}`)).body).toMatchObject({stage:'live',audience_label:'Finance',addressed_to_me:false,can_manage:true});
+ expect((await request(admin,`/bulletins/${b.id}/read`,{})).status).toBe(409);
+ expect((await request(colleague,`/bulletins/${b.id}`)).body.addressed_to_me).toBe(true);
+ const future=await publish(await draft(admin,{publishAt:instant(1),expiresAt:instant(2)}));expect((await request(admin,`/bulletins/${future.id}`)).body).toMatchObject({stage:'scheduled',addressed_to_me:false});
+});

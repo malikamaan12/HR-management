@@ -1,3 +1,5 @@
+import bulletinTools from './bulletinTools';
+import {bulletinManagement,bulletinStage,bulletinLabel,bulletinVisible,bulletinFilter} from '../services/bulletins';
 import chatRouter from './chat';
 import {chatColumns,safeChatMessage} from '../services/chat';
 import { Router } from 'express';
@@ -20,6 +22,7 @@ const router = Router();
 router.use(authenticate);
 router.use(requireCommunicationAccess);
 router.use(chatRouter);
+router.use(bulletinTools);
 const sameVersion = (row: any, version: number) => { if (Number(row.version) !== version) throw new WorkflowError(409, 'This record changed; reload before continuing'); };
 const page = (rows: any[]) => ({ items: rows.slice(0, 25), hasMore: rows.length > 25 });
 const sendLimit = rateLimit({ windowMs: 60000, limit: 30, keyGenerator: req => String(req.user!.userId), standardHeaders: 'draft-8', legacyHeaders: false, message: { message: 'Wait a moment before sending more messages' } });
@@ -200,10 +203,11 @@ router.post('/channels/:id/state', recordHandler(async (req, res) => {
 }));
 
 router.get('/bulletins', recordHandler(async (req, res) => {
-  const q = pageQuery.extend({ managed: z.enum(['true','false']).default('false') }).strict().parse(req.query);
-  const visible = sql`${liveBulletin()} AND (${bulletinAudience(req.user)})`;
-  const management = sql`(${commPublisher(req.user.role)} AND (${commAdmin(req.user.role)} OR b.author_id=${req.user.userId}) AND b.audience<>'channel') OR (b.author_id=${req.user.userId} AND ((b.audience='department' AND ${req.user.role === 'hr_manager'} AND b.target=${req.user.department || ''}) OR (b.audience='channel' AND EXISTS(SELECT 1 FROM comm_channels c WHERE c.id::text=b.target AND ${channelScope(sql`${req.user.userId}`, req.user.role)} AND (${channelManage(req.user.userId, req.user.role)})))))`;
-  res.json(page((await db.execute(sql`SELECT b.*,u.first_name || ' ' || u.last_name AS author_name,r.read_at,r.acknowledged_at FROM comm_bulletins b JOIN users u ON u.id=b.author_id LEFT JOIN comm_bulletin_receipts r ON r.bulletin_id=b.id AND r.user_id=${req.user.userId} WHERE (${q.managed === 'true' ? management : visible}) AND (b.title ILIKE ${searchTerm(q.q)} OR b.body ILIKE ${searchTerm(q.q)}) ORDER BY b.pinned DESC,b.publish_at DESC,b.id DESC LIMIT 26 OFFSET ${q.offset}`)).rows));
+  const q = pageQuery.extend({ managed: z.enum(['true','false']).default('false'), filter:z.enum(['all','unread','needs_ack','pinned','draft','scheduled','live','expired','archived']).default('all') }).strict().parse(req.query);
+  res.json(page((await db.execute(sql`SELECT b.*,u.first_name || ' ' || u.last_name AS author_name,r.read_at,r.acknowledged_at,${bulletinStage()} AS stage,${bulletinLabel()} AS audience_label,(${bulletinManagement(req.user)}) AS can_manage
+    FROM comm_bulletins b JOIN users u ON u.id=b.author_id LEFT JOIN comm_bulletin_receipts r ON r.bulletin_id=b.id AND r.user_id=${req.user.userId}
+    WHERE (${q.managed==='true'?bulletinManagement(req.user):bulletinVisible(req.user)}) AND (${bulletinFilter(q.filter)}) AND (b.title ILIKE ${searchTerm(q.q)} OR b.body ILIKE ${searchTerm(q.q)})
+    ORDER BY b.pinned DESC,b.publish_at DESC,b.id DESC LIMIT 26 OFFSET ${q.offset}`)).rows));
 }));
 router.post('/bulletins', recordHandler(async (req, res) => {
   const input = bulletinInput.parse(req.body);
@@ -216,7 +220,8 @@ router.post('/bulletins', recordHandler(async (req, res) => {
 router.get('/bulletins/:id', recordHandler(async (req, res) => {
   const row = await bulletin(db, req.user, positiveId.parse(req.params.id));
   const receipt = (await db.execute(sql`SELECT read_at,acknowledged_at FROM comm_bulletin_receipts WHERE bulletin_id=${row.id} AND user_id=${req.user.userId}`)).rows[0];
-  res.json({ ...row, ...receipt });
+  const detail=(await db.execute(sql`SELECT ${bulletinStage()} AS stage,${bulletinLabel()} AS audience_label,(${bulletinVisible(req.user)}) AS addressed_to_me FROM comm_bulletins b WHERE b.id=${row.id}`)).rows[0];
+  res.json({ ...row, ...receipt, ...detail });
 }));
 router.patch('/bulletins/:id', recordHandler(async (req, res) => {
   const input = z.object({ version: positiveId, definition: bulletinInput }).strict().parse(req.body), v = input.definition;
@@ -254,8 +259,8 @@ router.get('/bulletins/:id/receipts', recordHandler(async (req, res) => {
   res.json(page((await db.execute(sql`SELECT u.first_name || ' ' || u.last_name AS name,r.read_at,r.acknowledged_at FROM comm_bulletin_receipts r JOIN users u ON u.id=r.user_id WHERE r.bulletin_id=${b.id} ORDER BY r.read_at DESC,u.id LIMIT 26 OFFSET ${q.offset}`)).rows));
 }));
 router.get('/inbox', recordHandler(async (req, res) => {
-  const q = pageQuery.extend({ unread: z.enum(['true','false']).default('false') }).strict().parse(req.query);
-  const rows = (await db.execute(sql`SELECT n.id,n.message,n.timestamp,n.channel,n.status,n.data,r.read_at FROM notifications n LEFT JOIN comm_notification_reads r ON r.notification_id=n.id AND r.user_id=${req.user.userId} WHERE n.user_id=${req.user.userId} AND (${q.unread === 'false'} OR r.read_at IS NULL) AND n.message ILIKE ${searchTerm(q.q)} ORDER BY n.id DESC LIMIT 26 OFFSET ${q.offset}`)).rows;
+  const q = pageQuery.extend({ unread: z.enum(['true','false']).default('false'),filter:z.enum(['all','unread','read']).optional() }).strict().parse(req.query);
+  const rows = (await db.execute(sql`SELECT n.id,n.message,n.timestamp,n.channel,n.status,n.data,r.read_at FROM notifications n LEFT JOIN comm_notification_reads r ON r.notification_id=n.id AND r.user_id=${req.user.userId} WHERE n.user_id=${req.user.userId} AND (${(q.filter ?? (q.unread==='true'?'unread':'all')) !== 'unread'} OR r.read_at IS NULL) AND (${q.filter!=='read'} OR r.read_at IS NOT NULL) AND n.message ILIKE ${searchTerm(q.q)} ORDER BY n.id DESC LIMIT 26 OFFSET ${q.offset}`)).rows;
   res.json(page(rows.map((r: any) => { const { data, ...safe } = r; return { ...safe, url: notificationLink(data) }; })));
 }));
 router.post('/inbox/:id/read', recordHandler(async (req, res) => {
