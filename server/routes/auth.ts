@@ -1,27 +1,18 @@
 import express from "express";
 import { rateLimit } from 'express-rate-limit';
 import { authService } from "../services/auth";
-import { insertUserSchema } from "@shared/schema";
 import { authenticate, authorize } from "../middleware/auth";
 import { body, validationResult } from "express-validator";
 import { z } from "zod";
 import { db } from "../db";
 import { users, employees, userRoleEnum } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import bcrypt from "bcryptjs";
 
 
 const router = express.Router();
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false,
   message: { success: false, message: 'Too many attempts. Please try again later.' } });
 router.use(['/login','/signup','/register','/forgot-password','/reset-password'], authLimiter);
-const signupSchema = z.object({
-  username: z.string().trim().min(3).max(100), password: z.string().min(8).max(72)
-    .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/),
-  email: z.string().trim().email().max(254), firstName: z.string().trim().min(1).max(100),
-  lastName: z.string().trim().min(1).max(100), qidNumber: z.string().regex(/^\d{11}$/),
-  department: z.string().trim().min(1).max(100), employeeType: z.enum(['permanent','temporary','contract']),
-});
 // Cookies are sent only to this application; no browser cross-origin writes.
 router.use((req, res, next) => {
   if (!['GET','HEAD','OPTIONS'].includes(req.method) && req.headers.origin) {
@@ -31,178 +22,8 @@ router.use((req, res, next) => {
   next();
 });
 
-/**
- * Register a new user
- * POST /api/auth/register
- */
-router.post("/register", async (req: express.Request, res: express.Response) => {
-  try {
-    // Validate the request data with Zod schema
-    const validationResult = insertUserSchema.safeParse(req.body);
-    
-    if (!validationResult.success) {
-      return res.status(400).json({
-        success: false,
-        errors: validationResult.error.errors
-      });
-    }
-    
-    // Extract user data (excluding confirmPassword)
-    const { confirmPassword, ...userData } = validationResult.data;
-    
-    // Check if username already exists
-    const existingUser = await authService.findUserByUsername(userData.username);
-    if (existingUser) {
-      return res.status(400).json({
-        success: false,
-        message: "Username already exists"
-      });
-    }
-    
-    // Check if email already exists
-    const existingEmail = await authService.findUserByEmail(userData.email);
-    if (existingEmail) {
-      return res.status(400).json({
-        success: false,
-        message: "Email already exists"
-      });
-    }
-    
-    // Add IP and user agent
-    const userDataWithMetadata = {
-      ...userData,
-      ipAddress: req.ip,
-      userAgent: req.headers["user-agent"]
-    };
-    
-    // Create new user
-    const newUser = await authService.registerUser(userDataWithMetadata);
-    
-    res.status(201).json({
-      success: true,
-      message: "User registered successfully, pending approval",
-      user: newUser
-    });
-  } catch (error) {
-    console.error("Registration error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Registration failed"
-    });
-  }
-});
-
-/**
- * Signup endpoint for new employees
- * POST /api/auth/signup
- */
-router.post("/signup", async (req: express.Request, res: express.Response) => {
-  const parsed = signupSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ success: false, errors: parsed.error.errors });
-  try {
-    const {
-      username,
-      password,
-      email,
-      firstName,
-      lastName,
-      qidNumber,
-      department,
-      employeeType,
-    } = parsed.data;
-    
-    // Determine the correct role based on employee type and position
-    const role = employeeType === 'temporary' ? 'temporary_staff' : 'permanent_employee';
-    
-    // Check if username already exists
-    const [existingUser] = await db.select().from(users).where(eq(users.username, username));
-    if (existingUser) {
-      return res.status(400).json({
-        success: false,
-        message: "Username already exists"
-      });
-    }
-    
-    // Check if email already exists
-    const [existingEmail] = await db.select().from(users).where(eq(users.email, email));
-    if (existingEmail) {
-      return res.status(400).json({
-        success: false,
-        message: "Email already exists"
-      });
-    }
-    
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
-    
-    // Create user account
-    const [newUser] = await db.insert(users).values({
-      username,
-      password: hashedPassword,
-      email,
-      firstName,
-      lastName,
-      role,
-      department,
-      qidNumber,
-      isActive: false, // Requires admin approval
-      isEmailVerified: false,
-      approvalStatus: 'pending',
-    }).returning();
-    
-    // Generate employee ID based on type for future use
-    const employeeIdPrefix = employeeType === 'permanent' ? 'EMP' : 
-                            employeeType === 'temporary' ? 'TMP' : 'CON';
-    const employeeId = `${employeeIdPrefix}${Date.now().toString().slice(-6)}`;
-    
-    // TODO: Employee record creation will be handled by HR after approval
-    // For now, just create the user account
-    
-    res.status(201).json({
-      success: true,
-      message: "Account created successfully. HR will complete your employee profile after approval.",
-      userId: newUser.id,
-      employeeId: employeeId,
-      employeeType: employeeType
-    });
-    
-  } catch (error: any) {
-    console.error("Signup error:", error);
-    
-    // Handle specific database constraint errors
-    if (error?.code === '23505') {
-      if (error?.constraint === 'users_username_unique') {
-        return res.status(400).json({
-          success: false,
-          message: "Username already exists"
-        });
-      }
-      if (error?.constraint === 'users_email_unique') {
-        return res.status(400).json({
-          success: false,
-          message: "Email already exists"
-        });
-      }
-      if (error?.constraint === 'users_qid_number_key') {
-        return res.status(400).json({
-          success: false,
-          message: "QID number already exists"
-        });
-      }
-      
-      // Generic duplicate key error for any other constraint
-      return res.status(400).json({
-        success: false,
-        message: "This information is already in use"
-      });
-    }
-    
-    res.status(500).json({
-      success: false,
-      message: "Failed to create account"
-    });
-  }
-});
+// Employee accounts are provisioned by administrators, never through public registration.
+router.post(['/register','/signup'], (_req,res) => res.status(403).json({success:false,message:'Self-registration is disabled. Contact HR for an administrator-created account.'}));
 
 /**
  * Login user

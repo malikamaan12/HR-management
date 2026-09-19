@@ -48,9 +48,26 @@ async function approvedTime(f: Awaited<ReturnType<typeof fixture>>, start: strin
     const [sheet] = await ctx.db.insert(s.workforceTimesheets).values({ assignmentId: assignment.id, status: 'approved', actualStartAt: startAt, actualEndAt: endAt, breakMinutes: 0, workedMinutes: minutes, employeeNote: 'Verified actual shift', reviewerId: f.reviewer.id, reviewedAt: new Date(), payableMinutes: minutes, policyReference: 'Approved time policy' }).returning();
     return sheet;
 }
+test('completed service years and employee type gate leave, with dated acting cover',async()=>{
+ const f=await fixture();
+ await ctx.db.update(s.employees).set({joiningDate:'2025-09-17'}).where(eq(s.employees.id,f.a.id));
+ await rule(f,'leave',{...leaveConfig,annualDays:30,carryoverLimit:0,minServiceYears:1,employeeTypes:['permanent'],approverId:f.reviewer.id,actingApprover:{userId:f.admin.id,startsOn:'2026-09-01',endsOn:'2026-09-30'}});
+ const payload={employeeId:f.a.id,leaveType:'Annual',startDate:'2026-09-16',endDate:'2026-09-16'};
+ expect((await request(f.alice.token,'/leave/preview',payload)).status).toBe(400);
+ const valid=await request(f.alice.token,'/leave/preview',{...payload,startDate:'2026-09-17',endDate:'2026-09-17'});
+ expect(valid.status,valid.body.message).toBe(200);
+ await ctx.db.update(s.employees).set({type:'contract'}).where(eq(s.employees.id,f.a.id));
+ expect((await request(f.alice.token,'/leave/preview',{...payload,startDate:'2026-09-17',endDate:'2026-09-17'})).status).toBe(400);
+ await ctx.db.update(s.employees).set({joiningDate:'2025-01-01',type:'permanent'}).where(eq(s.employees.id,f.a.id));
+ const saved=await request(f.alice.token,'/leave',{...payload,reason:'Acting manager coverage test'});
+ expect(saved.status,saved.body.message).toBe(201);
+ expect((await request(f.reviewer.token,`/leave/${saved.body.id}/status`,{status:'approved'},'PATCH')).status).toBe(403);
+ expect((await request(f.admin.token,`/leave/${saved.body.id}/status`,{status:'approved'},'PATCH')).status).toBe(200);
+});
+
 test('invalid date ranges are actionable errors and grace applies only to assigned calendars', async () => {
     const f = await fixture();
-    expect((await request(f.admin.token, '/rules', { kind: 'payroll', name: 'Pay policy', employeeId: null, effectiveFrom: '2026-01-01', reason: 'Validate payday order', config: { ...payConfig, approverId: f.reviewer.id, cycleStartDay: 20, payDay: 5 } })).status).toBe(400);
+    expect((await request(f.admin.token, '/rules', { kind: 'payroll', name: 'Pay policy', employeeId: null, effectiveFrom: '2026-01-01', reason: 'Validate payday order', config: { ...payConfig, approverId: f.reviewer.id, cycleStartDay: 20, payDay: 5 } })).status).toBe(201);
     await rule(f, 'leave', leaveConfig);
     expect((await request(f.alice.token, '/leave/preview', { employeeId: f.a.id, leaveType: 'Annual', startDate: '2026-09-17', endDate: '2026-09-16' })).status).toBe(400);
     await ctx.db.update(s.employees).set({ workSchedule: 'unassigned' }).where(eq(s.employees.id, f.b.id));

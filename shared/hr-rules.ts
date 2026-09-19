@@ -12,7 +12,7 @@ catch {
 const days = z.number().min(0).max(366).multipleOf(0.01);
 const amount = z.string().regex(/^\d{1,9}(\.\d{1,2})?$/, 'Use a positive amount with at most two decimals');
 export const attendanceRule = z.object({ timezone, workingDays: z.array(z.number().int().min(0).max(6)).min(1).max(7).refine(v => new Set(v).size === v.length), startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/), endTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/), breakMinutes: z.number().int().min(0).max(720), graceMinutes: z.number().int().min(0).max(120), holidays: z.array(z.object({ date: civilDate, name: z.string().trim().min(1).max(100) })).max(400) }).strict().refine(v => v.endTime > v.startTime && ((Number(v.endTime.slice(0, 2)) * 60 + Number(v.endTime.slice(3))) - (Number(v.startTime.slice(0, 2)) * 60 + Number(v.startTime.slice(3)))) > v.breakMinutes, 'End time must follow start time and allow for the break');
-export const leaveRule = z.object({ paid: z.boolean(), balanceRequired: z.boolean(), accrualMode: z.enum(['none', 'annual', 'monthly']), annualDays: days, monthlyDays: days, carryoverLimit: days, minServiceDays: z.number().int().min(0).max(3650), maxConsecutiveDays: z.number().int().min(1).max(366), approverId: positiveId.nullable(), allowHalfDays:z.boolean().default(false),additionalApproverIds:z.array(positiveId).max(3).default([]) }).strict().refine(v=>new Set(v.additionalApproverIds).size===v.additionalApproverIds.length&&!v.additionalApproverIds.includes(v.approverId||0),'Each approval stage must have a different approver');
+export const leaveRule = z.object({ paid: z.boolean(), balanceRequired: z.boolean(), accrualMode: z.enum(['none', 'annual', 'monthly']), annualDays: days, monthlyDays: days, carryoverLimit: days, minServiceDays: z.number().int().min(0).max(3650), minServiceYears: z.number().int().min(0).max(50).default(0), employeeTypes: z.array(z.enum(['permanent','temporary','contract'])).max(3).default([]), actingApprover: z.object({userId:positiveId,startsOn:civilDate,endsOn:civilDate}).strict().refine(v=>v.endsOn>=v.startsOn,'Acting assignment end must follow its start').nullable().default(null), maxConsecutiveDays: z.number().int().min(1).max(366), approverId: positiveId.nullable(), allowHalfDays:z.boolean().default(false),additionalApproverIds:z.array(positiveId).max(3).default([]) }).strict().refine(v=>new Set(v.additionalApproverIds).size===v.additionalApproverIds.length&&!v.additionalApproverIds.includes(v.approverId||0),'Each approval stage must have a different approver').refine(v=>!v.actingApprover || (!!v.approverId && v.actingApprover.userId!==v.approverId && !v.additionalApproverIds.includes(v.actingApprover.userId)), 'Acting approver must replace a named primary approver and differ from every stage');
 export const unpaidLeaveDeductionLabel = 'Approved unpaid leave';
 export const unpaidLeavePayrollRule = z.object({
     enabled: z.boolean().default(false),
@@ -29,7 +29,6 @@ export const payrollRule = z.object({
     regularMinutesPerDay: z.number().int().min(1).max(1440), overtimeMultiplier: z.number().min(1).max(5).multipleOf(0.01),
     unpaidLeave: unpaidLeavePayrollRule.default({}), allowances: payItems, deductions: payItems, approverId: positiveId,
 }).strict().superRefine((v, ctx) => {
-    if (v.payDay < v.cycleStartDay - 1) ctx.addIssue({ code: 'custom', path: ['payDay'], message: 'Payday must be on or after the period end in the payment month' });
     if (v.basis === 'daily' && Number(v.dailyRate) <= 0) ctx.addIssue({ code: 'custom', path: ['dailyRate'], message: 'Daily pay requires a positive day rate' });
     if (v.basis === 'per_event' && Number(v.eventRate) <= 0) ctx.addIssue({ code: 'custom', path: ['eventRate'], message: 'Per-event pay requires a positive assigned-shift rate' });
 });
@@ -46,4 +45,16 @@ export const dayAt = (now: Date, tz: string) => new Intl.DateTimeFormat('en-CA',
 export function dateRange(start: string, end: string) { civilDate.parse(start); civilDate.parse(end); if (end < start || Date.parse(end) - Date.parse(start) > 366 * 86400000)
     throw new z.ZodError([{ code: 'custom', path: ['endDate'], message: 'Choose an end date on or after the start, within one year' }]); const out: string[] = []; for (let d = Date.parse(start); d <= Date.parse(end); d += 86400000)
     out.push(new Date(d).toISOString().slice(0, 10)); return out; }
-export function payPeriod(year: number, month: number, startDay: number) { const end = new Date(Date.UTC(year, month - 1, startDay)); const start = new Date(Date.UTC(year, month - 2, startDay)); return { start: start.toISOString().slice(0, 10), end: new Date(+end - 86400000).toISOString().slice(0, 10) }; }
+// Payment month identifies the due date. Select the last cycle that ends before that date.
+export function payPeriod(year: number, month: number, startDay: number, payDay = 28) {
+  const offset = payDay < startDay - 1 ? 1 : 0;
+  const end = new Date(Date.UTC(year, month - 1 - offset, startDay));
+  const start = new Date(Date.UTC(year, month - 2 - offset, startDay));
+  return { start: start.toISOString().slice(0, 10), end: new Date(+end - 86400000).toISOString().slice(0, 10) };
+}
+
+export function serviceAnniversary(joiningDate:string, years:number) {
+ const year=Number(joiningDate.slice(0,4))+years,month=Number(joiningDate.slice(5,7));
+ const day=Math.min(Number(joiningDate.slice(8,10)),new Date(Date.UTC(year,month,0)).getUTCDate());
+ return year+'-'+String(month).padStart(2,'0')+'-'+String(day).padStart(2,'0');
+}

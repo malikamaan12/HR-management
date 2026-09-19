@@ -42,7 +42,7 @@ export async function generatePayroll(tx: WorkforceTransaction, user: TokenPaylo
     if (!initial)
         fail(409, 'Configure a pay policy for this employee first');
     const basePolicy = payrollRule.parse(initial.config);
-    const period = payPeriod(input.year, input.month, basePolicy.cycleStartDay);
+    const period = payPeriod(input.year, input.month, basePolicy.cycleStartDay, basePolicy.payDay);
     if (period.end >= businessToday())
         fail(409, 'Generate payroll after the pay period has ended');
     const [duplicate] = await tx.select({ record: payroll, review: payrollReviews }).from(payroll).leftJoin(payrollReviews, eq(payroll.id, payrollReviews.payrollId)).where(and(eq(payroll.employeeId, employee.id), eq(payroll.year, input.year), eq(payroll.month, input.month))).for('update', { of: payroll });

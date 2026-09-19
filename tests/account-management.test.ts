@@ -12,12 +12,13 @@ vi.mock('../server/services/email',()=>({emailConfigured:()=>false,sendPasswordR
 import {authService} from '../server/services/auth';
 import {updateAccount,provisionEmployees} from '../server/services/account-management';
 import router from '../server/routes/users';
+import authRouter from '../server/routes/auth';
 let pg:PGlite, server:ReturnType<ReturnType<typeof express>['listen']>, origin:string;
 const password='CorrectHorse7!';
 beforeAll(async()=>{
  process.env.JWT_SECRET='test-access-secret-at-least-32-characters';process.env.JWT_REFRESH_SECRET='test-refresh-secret-at-least-32-characters';
  pg=new PGlite();for(const file of readdirSync('migrations').filter(n=>n.endsWith('.sql')).sort())await pg.exec(readFileSync('migrations/'+file,'utf8'));
- ctx.db=drizzle(pg);const app=express();app.use(express.json());app.use('/users',router);server=app.listen(0,'127.0.0.1');await new Promise<void>(resolve=>server.once('listening',resolve));origin=`http://127.0.0.1:${(server.address() as {port:number}).port}`;
+ ctx.db=drizzle(pg);const app=express();app.use(express.json());app.use('/auth',authRouter);app.use('/users',router);server=app.listen(0,'127.0.0.1');await new Promise<void>(resolve=>server.once('listening',resolve));origin=`http://127.0.0.1:${(server.address() as {port:number}).port}`;
 });
 beforeEach(async()=>{await pg.exec('TRUNCATE users,employees,auth_sessions,security_logs RESTART IDENTITY CASCADE');});
 afterAll(async()=>{await new Promise<void>(resolve=>server.close(()=>resolve()));await pg.close();});
@@ -25,6 +26,27 @@ async function account(name='admin',role:any='super_admin') {const [row]=await c
 async function employee(n:number,type:any='permanent') {const [row]=await ctx.db.insert(employees).values({employeeId:String(n),firstName:'Employee',lastName:String(n),gender:'other',dateOfBirth:'1990-01-01',nationality:'Test',qidNumber:'TEST'+n,primaryMobile:'00000000',residentialAddress:'Doha',emergencyContactName:'Test',emergencyContactNumber:'00000000',type,department:'Operations',position:'Host',location:'Doha',joiningDate:'2026-01-01',workEmail:`employee${n}@example.test`}).returning();return row;}
 async function call(token:string,path:string,body?:unknown,method='POST'){const res=await fetch(origin+'/users'+path,{method,headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});return {status:res.status,data:await res.json(),cache:res.headers.get('cache-control')};}
 async function admin(){const actor=await account();const token=(await authService.login(actor.username,password)).accessToken;return {actor,token};}
+
+test('public signup and registration cannot create accounts',async()=>{
+ for(const path of ['/signup','/register']){
+  const response=await fetch(origin+'/auth'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'intruder',email:'intruder@example.test',password,role:'super_admin'})});
+  expect(response.status).toBe(403);
+ }
+ expect(await ctx.db.select().from(users)).toHaveLength(0);
+});
+test('admin password override revokes sessions and preserves held access',async()=>{
+ const {actor,token}=await admin(),target=await account('staff','employee'),login=await authService.login('staff',password),replacement='ReplacementPass9!';
+ expect((await call(login.accessToken,`/${actor.id}/set-password`,{accountVersion:1,reason:'Unauthorized reset',password:replacement})).status).toBe(403);
+ expect((await call(token,`/${target.id}/set-password`,{accountVersion:1,reason:'Requested password override',password:replacement})).status).toBe(200);
+ await expect(authService.authenticateToken(login.accessToken)).rejects.toThrow();
+ await expect(authService.refreshToken(login.refreshToken)).rejects.toThrow();
+ await expect(authService.login('staff',password)).rejects.toThrow();
+ expect((await authService.login('staff',replacement)).user.id).toBe(target.id);
+ await updateAccount(actor.id,target.id,{accountState:'on_hold',accountVersion:2});
+ expect((await call(token,`/${target.id}/set-password`,{accountVersion:3,reason:'Reset while access held',password})).status).toBe(200);
+ await expect(authService.login('staff',password)).rejects.toThrow();
+ expect(JSON.stringify(await ctx.db.select().from(securityLogs))).not.toContain(replacement);
+});
 
 test.each(['frozen','on_hold','revoked'] as const)('%s invalidates all tokens; restore never revives sessions',async state=>{
  const actor=await account(), target=await account('staff','employee'), login=await authService.login('staff',password);

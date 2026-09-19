@@ -1,6 +1,6 @@
 import { and, eq, lte, gte, or, isNull, sql, desc } from 'drizzle-orm';
 import { employees, hrRules, leaveLedger, leaves, leaveSnapshots, workforceAssignments, workforceShifts, workforceTeams, workforceSites } from '@shared/schema';
-import { leaveRule, dateRange, dayAt } from '@shared/hr-rules';
+import { leaveRule, dateRange, dayAt, serviceAnniversary } from '@shared/hr-rules';
 import { attendancePolicy, ruleFor, businessToday } from './hr-rules';
 import { fail, type WorkforceTransaction } from './workforce';
 import { calculationSnapshot } from './calculation-rules';
@@ -16,7 +16,7 @@ export async function accrue(tx: WorkforceTransaction, employee: typeof employee
         return;
     const key = `${employee.id}:${type}:${year}`;
     const jan = rules.find(r => r.effectiveFrom <= `${year}-01-01`);
-    if (year > first && jan) {
+    if (year > first && jan && leaveRule.parse(jan.config).carryoverLimit > 0) {
         const [carried] = await tx.select({ id: leaveLedger.id }).from(leaveLedger).where(eq(leaveLedger.sourceKey, key + ':carry'));
         if (!carried) {
             await accrue(tx, employee, type, year - 1);
@@ -33,6 +33,8 @@ export async function accrue(tx: WorkforceTransaction, employee: typeof employee
         if (!rule)
             continue;
         const policy = leaveRule.parse(rule.config);
+        if (policy.employeeTypes.length && !policy.employeeTypes.includes(employee.type)) continue;
+        if (day < serviceAnniversary(employee.joiningDate, policy.minServiceYears)) continue;
         if (Date.parse(day) - Date.parse(employee.joiningDate) < policy.minServiceDays * 86400000)
             continue;
         const next = new Date(Date.parse(day) + 86400000).toISOString().slice(0, 10);
@@ -42,7 +44,7 @@ export async function accrue(tx: WorkforceTransaction, employee: typeof employee
             credit = Math.round(policy.annualDays * 100);
             source = 'annual';
         }
-        if (policy.accrualMode === 'monthly' && next.slice(5, 7) !== day.slice(5, 7) && day < today && Date.parse(employee.joiningDate) + policy.minServiceDays * 86400000 <= Date.parse(day.slice(0, 8) + '01') && rule.effectiveFrom <= day.slice(0, 8) + '01') {
+        if (policy.accrualMode === 'monthly' && next.slice(5, 7) !== day.slice(5, 7) && day < today && serviceAnniversary(employee.joiningDate,policy.minServiceYears)<=day.slice(0,8)+'01' && Date.parse(employee.joiningDate) + policy.minServiceDays * 86400000 <= Date.parse(day.slice(0, 8) + '01') && rule.effectiveFrom <= day.slice(0, 8) + '01') {
             credit = Math.round(policy.monthlyDays * 100);
             source = 'month:' + day.slice(5, 7);
         }
@@ -63,7 +65,11 @@ export async function leavePlan(tx: WorkforceTransaction, employee: typeof emplo
             fail(409, `An administrator must configure ${type} rules for this employee and date`);
         const policy = leaveRule.parse(rule.config);
         if(dayPortion!=='full'&&!policy.allowHalfDays)fail(400,'Half-day requests are disabled by the applicable leave rule');
-        const chain=[policy.approverId,...policy.additionalApproverIds];
+        if(policy.employeeTypes.length&&!policy.employeeTypes.includes(employee.type))fail(400,'This leave type is not available for this employee type');
+        if(day<serviceAnniversary(employee.joiningDate,policy.minServiceYears))fail(400,'Minimum completed service years requirement has not been met');
+        const acting=policy.actingApprover, submittedOn=businessToday();
+        const primary=acting&&acting.startsOn<=submittedOn&&acting.endsOn>=submittedOn?acting.userId:policy.approverId;
+        const chain=[primary,...policy.additionalApproverIds];
         if(approvalChain&&JSON.stringify(approvalChain)!==JSON.stringify(chain))fail(400,'Split the request where approval stages change');
         approvalChain=chain;
         if (balanceRequired !== undefined && (balanceRequired !== policy.balanceRequired || approverId !== policy.approverId))

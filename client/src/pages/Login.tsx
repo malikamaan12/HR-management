@@ -152,10 +152,7 @@ const Login: React.FC = () => {
         </CardContent>
         <CardFooter className="flex flex-col space-y-4">
           <div className="text-sm text-center text-muted-foreground">
-            Don't have an account?{' '}
-            <a href="/signup" className="text-primary hover:underline font-medium">
-              Sign up
-            </a>
+            Accounts are created by your administrator. Contact HR for access.
           </div>
           <div className="text-sm text-center text-muted-foreground">
             <a href="/forgot-password" className="hover:text-primary underline underline-offset-4">

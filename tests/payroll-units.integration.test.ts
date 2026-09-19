@@ -78,6 +78,13 @@ beforeEach(async () => {
 afterEach(() => vi.useRealTimers());
 afterAll(async () => { if (server) await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); if (pg) await pg.close(); });
 
+test('first-day payday saves the previous completed 28th to 27th cycle',async()=>{
+ const f=await fixture();await policy(f,{cycleStartDay:28,payDay:1});
+ const result=await draft(f);expect(result.status,result.body.message).toBe(201);
+ const [review]=await ctx.db.select().from(s.payrollReviews).where(eq(s.payrollReviews.payrollId,result.body.id));
+ expect(review).toMatchObject({periodStart:'2026-07-28',periodEnd:'2026-08-27',payDate:'2026-09-01'});
+});
+
 test('daily pay counts one work date and preserves the independent attendance gate', async () => {
   const f = await fixture(); await policy(f, { basis: 'daily', dailyRate: '150.00', dailyPayMethod: 'full_day', overtimeEnabled: false });
   await approvedShift(f, '2026-08-10T06:00:00Z', 240); await approvedShift(f, '2026-08-10T11:00:00Z', 240);

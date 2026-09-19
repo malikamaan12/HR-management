@@ -117,7 +117,10 @@ export function evaluateOperationsSetup(data:OperationsSetupData,asOf:string):Op
     const rule=ruleMap.get(`${employee.id}:${type}`)||ruleMap.get(`company:${type}`);
     if(!rule){add('leave',`missing-${employee.id}-${type}`,`${label(employee)} has no effective ${type} rule on ${asOf}.`, '/operations-setup?tab=leave');continue;}
     const parsed=parsedRules.get(rule.id)!;if(!parsed.success){add('leave',`invalid-${employee.id}-${type}`,`${label(employee)} has an invalid ${type} approval rule.`, '/operations-setup?tab=leave');continue;}
-    const ids=[parsed.data.approverId,...parsed.data.additionalApproverIds];
+    if(parsed.data.employeeTypes.length&&!parsed.data.employeeTypes.includes(employee.type))continue;
+    const acting=parsed.data.actingApprover;
+    const primary=acting&&acting.startsOn<=asOf&&acting.endsOn>=asOf?acting.userId:parsed.data.approverId;
+    const ids=[primary,...parsed.data.additionalApproverIds];
     for(let stage=0;stage<ids.length;stage++){
       const id=ids[stage];
       const candidateKeys=['all',`department:${employee.department}`,`team:${employee.reportingManagerId}`,...(employee.type==='temporary'?['event_staff']:[])];

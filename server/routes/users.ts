@@ -39,6 +39,20 @@ router.patch('/:id', async(req,res) => {
   try { return res.json(await updateAccount(req.user!.userId,idSchema.parse(req.params.id),req.body)); }
   catch(error) { return errorResponse(res,error); }
 });
+router.post('/:id/set-password', async(req,res) => {
+  try {
+    const id=idSchema.parse(req.params.id);
+    const input=controlSchema.extend({password:z.string().min(12).max(72).refine(value=>Buffer.byteLength(value,'utf8')<=72,'Password must be at most 72 UTF-8 bytes')}).parse(req.body);
+    const password=await bcrypt.hash(input.password,12);
+    await db.transaction(async tx=>{
+      const actor=await accountActor(tx,req.user!.userId),target=await accountTarget(tx,actor,id,input.accountVersion);
+      await tx.update(users).set({password,passwordSetupRequired:false,passwordResetToken:null,passwordResetExpires:null,refreshToken:null,failedLoginAttempts:0,lockoutUntil:null,accountVersion:target.accountVersion+1,updatedAt:new Date()}).where(eq(users.id,id));
+      await invalidateAccount(tx,id);
+      await auditAccount(tx,actor.id,id,'Administrator password override',input.reason);
+    });
+    return res.json({success:true});
+  } catch(error) {return errorResponse(res,error);}
+});
 router.get('/:id/history', async(req,res) => {
   try { const id=idSchema.parse(req.params.id); return res.json(await db.select({id:securityLogs.id,actorId:securityLogs.userId,timestamp:securityLogs.timestamp,description:securityLogs.description,metadata:securityLogs.metadata}).from(securityLogs).where(and(eq(securityLogs.resourceType,'account'),eq(securityLogs.resourceId,String(id)))).orderBy(desc(securityLogs.id)).limit(100)); }
   catch(error) { return errorResponse(res,error); }
