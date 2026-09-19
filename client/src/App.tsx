@@ -54,6 +54,7 @@ const Recruitment=lazy(()=>import('@/pages/Hiring'));
 const Onboarding=lazy(()=>import('@/pages/Lifecycle'));
 const Equipment=lazy(()=>import('@/pages/Equipment'));
 const Handbook=lazy(()=>import('@/pages/Handbook'));
+const HrLetters=lazy(()=>import('@/pages/HrLetters'));
 const Employment=lazy(()=>import('@/pages/Employment'));
 const Retention=lazy(()=>import('@/pages/Retention'));
 const ReminderRules=lazy(()=>import('@/pages/ReminderRules'));
@@ -184,6 +185,7 @@ function App() {
           <Route path="/hr-rules"><HrRules /></Route>
           <Route path="/operations-setup" component={OperationsSetup} />
           <Route path="/documents" component={Documents} />
+          <Route path="/hr-letters" component={HrLetters} />
           <Route path="/event-staff/archive" component={EventArchive} />
           <Route path="/event-staff" component={EventStaff} />
           <Route path="/workforce" component={Workforce} />

@@ -10,6 +10,7 @@ import operationsTrainingRoutes from './routes/operations-training';
 import lifecycleRoutes from './routes/lifecycle';
 import equipmentRoutes from './routes/equipment';
 import handbookRoutes from './routes/handbook';
+import hrLetterRoutes from './routes/hr-letters';
 import employmentRoutes from './routes/employment';
 import retentionRoutes from './routes/retention';
 import reminderRuleRoutes from './routes/reminder-rules';
@@ -117,6 +118,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/lifecycle',lifecycleRoutes);
   app.use('/api/equipment',equipmentRoutes);
   app.use('/api/handbook',handbookRoutes);
+  app.use('/api/hr-letters',hrLetterRoutes);
   app.use('/api/employment',employmentRoutes);
   app.use('/api/retention',retentionRoutes);
   app.use('/api/reminder-rules',reminderRuleRoutes);
