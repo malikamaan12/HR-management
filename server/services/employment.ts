@@ -177,6 +177,6 @@ export async function endEmploymentAccess(tx: any, employee: Employee, leavingDa
     const admins = await tx.select({ id: users.id }).from(users).where(and(inArray(users.role, ['admin', 'super_admin']), eq(users.isActive, true), eq(users.approvalStatus, 'approved'))).orderBy(users.id).for('update');
     if (!admins.some((admin: { id: number }) => admin.id !== employee.userId)) reject(409, 'Keep another active approved administrator before deactivating this account');
   }
-  await tx.update(users).set({ isActive: false, refreshToken: null, passwordResetToken: null, passwordResetExpires: null, updatedAt: new Date() }).where(eq(users.id, employee.userId));
+  await tx.update(users).set({ isActive: false, accountState: sql`case when ${users.accountState} = 'deleted' then 'deleted' else 'revoked' end`, accountVersion: sql`${users.accountVersion} + 1`, refreshToken: null, passwordResetToken: null, passwordResetExpires: null, updatedAt: new Date() }).where(eq(users.id, employee.userId));
   await tx.update(authSessions).set({ isActive: false, updatedAt: new Date() }).where(eq(authSessions.userId, employee.userId));
 }

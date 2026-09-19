@@ -52,7 +52,9 @@ test('setup requires an authenticated administrator and never marks an empty com
 test('readiness detects inactive employee accounts without exposing private employee fields or writing configuration', async () => {
   const admin = await account('admin', 'super_admin'), worker = await account('worker', 'permanent_employee'); await employee(1, worker.id);
   const first = await read(admin.token); expect(first.body.counts.activeEmployees).toBe(1); expect(first.body.counts.linkedEmployees).toBe(1); expect(section(first, 'people').status).toBe('ready');
-  await ctx.db.update(s.users).set({ isActive: false }).where(eq(s.users.id, worker.id));
+  await ctx.db.update(s.users).set({ passwordSetupRequired: true }).where(eq(s.users.id, worker.id));
+  const pending = await read(admin.token); expect(pending.body.counts.linkedEmployees).toBe(0); expect(section(pending, 'people').status).toBe('action_required');
+  await ctx.db.update(s.users).set({ isActive: false, passwordSetupRequired: false }).where(eq(s.users.id, worker.id));
   const countBefore = (await ctx.db.select().from(s.activityLogs)).length, second = await read(admin.token);
   expect(second.body.counts.linkedEmployees).toBe(0); expect(section(second, 'people').status).toBe('action_required');
   const serialized = JSON.stringify(second.body); expect(serialized).not.toContain('PRIVATE-'); expect(serialized).not.toContain('password');

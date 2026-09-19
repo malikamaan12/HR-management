@@ -5,6 +5,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { emailConfigured, sendPasswordResetEmail } from './email';
+import { updateAccount, accountActor, accountTarget, auditAccount, invalidateAccount } from './account-management';
 
 export function validateAuthConfiguration() {
   const access = process.env.JWT_SECRET;
@@ -22,7 +23,8 @@ function safeUser(user: typeof users.$inferSelect) {
   return safe;
 }
 function requireActive(user: typeof users.$inferSelect | null | undefined) {
-  if (!user || !user.isActive || user.approvalStatus !== 'approved') throw new Error('Account is pending approval or inactive');
+  if (!user || !user.isActive || user.approvalStatus !== 'approved' || user.accountState !== 'active') throw new Error('Account is pending approval or inactive');
+  if (user.passwordSetupRequired) throw new Error('Set your password using your account setup link before signing in');
 }
 const hashResetToken = (token: string) => createHash('sha256').update(token).digest('hex');
 
@@ -135,14 +137,18 @@ export class AuthService {
       const refreshToken = this.generateRefreshToken(tokenPayload);
       
       // Store refresh token in database (only update existing fields)
-      await db.update(users)
+      await db.transaction(async tx => {
+      const [current] = await tx.select().from(users).where(eq(users.id,user.id)).for('update');
+      requireActive(current);
+      if (current.accountVersion !== user.accountVersion || current.password !== user.password) throw new Error('Account changed. Sign in again');
+      await tx.update(users)
         .set({ 
           lastLogin: new Date(), failedLoginAttempts: 0, lockoutUntil: null
         })
         .where(eq(users.id, user.id));
       
       // Create auth session
-      await db.insert(authSessions).values({
+      await tx.insert(authSessions).values({
         userId: user.id,
         accessToken,
         refreshToken,
@@ -150,6 +156,7 @@ export class AuthService {
         userAgent: userAgent || null,
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
         isActive: true
+      });
       });
       
       // Log successful login
@@ -309,7 +316,7 @@ export class AuthService {
         .from(users)
         .where(eq(users.email, email));
       
-      if (!user) {
+      if (!user || !user.isActive || user.approvalStatus !== 'approved' || user.accountState !== 'active') {
         // Don't reveal that the email doesn't exist
         return { 
           success: true, 
@@ -327,7 +334,7 @@ export class AuthService {
           passwordResetToken: hashedToken,
           passwordResetExpires: new Date(Date.now() + 60 * 60 * 1000) // 2 hours
         })
-        .where(eq(users.id, user.id));
+        .where(and(eq(users.id, user.id), eq(users.accountVersion, user.accountVersion), eq(users.accountState, 'active'), eq(users.isActive, true)));
       
       // Log the event
       await this.logSecurityEvent({
@@ -366,11 +373,13 @@ export class AuthService {
       const hashedPassword = await bcrypt.hash(newPassword, 12);
       await db.transaction(async tx => {
         const [user] = await tx.update(users).set({ password: hashedPassword, passwordResetToken: null,
-          passwordResetExpires: null, refreshToken: null, failedLoginAttempts: 0, lockoutUntil: null })
-          .where(and(eq(users.passwordResetToken, hashResetToken(resetToken)), gt(users.passwordResetExpires, new Date())))
+          passwordResetExpires: null, refreshToken: null, failedLoginAttempts: 0, lockoutUntil: null, passwordSetupRequired: false,
+          accountVersion: sql`${users.accountVersion} + 1`, updatedAt: new Date() })
+          .where(and(eq(users.passwordResetToken, hashResetToken(resetToken)), gt(users.passwordResetExpires, new Date()), eq(users.accountState,'active'), eq(users.isActive,true), eq(users.approvalStatus,'approved')))
           .returning({ id: users.id });
         if (!user) throw new Error('Invalid or expired reset token');
         await tx.update(authSessions).set({ isActive: false }).where(eq(authSessions.userId, user.id));
+        await auditAccount(tx,user.id,user.id,'Password setup/reset completed','Account holder used a valid one-time link');
       });
       return { success: true, message: "Password has been reset successfully" };
     } catch (error) {
@@ -420,11 +429,15 @@ export class AuthService {
       const hashedPassword = await bcrypt.hash(newPassword, 12);
       
       // Update user password
-      await db.update(users)
-        .set({ password: hashedPassword, passwordResetToken: null, passwordResetExpires: null, refreshToken: null })
-        .where(eq(users.id, userId));
-      await db.update(authSessions).set({ isActive: false }).where(eq(authSessions.userId, userId));
-      
+      await db.transaction(async tx => {
+        const [current] = await tx.select().from(users).where(eq(users.id,userId)).for('update');
+        requireActive(current);
+        if (current.password !== user.password || current.accountVersion !== user.accountVersion) throw new Error('Account changed. Sign in again');
+        await tx.update(users).set({ password: hashedPassword, passwordResetToken: null, passwordResetExpires: null, refreshToken: null,
+          accountVersion: current.accountVersion + 1, updatedAt: new Date() }).where(eq(users.id,userId));
+        await invalidateAccount(tx,userId);
+      });
+
       // Log the event
       await this.logSecurityEvent({
         eventType: "password_change",
@@ -446,86 +459,25 @@ export class AuthService {
    * Admin approval of a user account
    */
   async approveUserAccount(userId: number, approvedByUserId: number) {
-    try {
-      // Find user to approve
-      const [user] = await db.select()
-        .from(users)
-        .where(eq(users.id, userId));
-      
-      if (!user) {
-        throw new Error("User not found");
-      }
-      
-      const approver = await this.getUserById(approvedByUserId);
-      if (userId === approvedByUserId) throw new Error('Cannot approve your own account');
-      if (!['admin','super_admin'].includes(approver?.role || '') &&
-          !['employee','permanent_employee','temporary_staff'].includes(user.role)) throw new Error('Administrator approval required');
-      // Check if already approved
-      if (user.approvalStatus === "approved") {
-        return { success: true, message: "User is already approved" };
-      }
-      
-      // Update user status
-      await db.update(users)
-        .set({
-          approvalStatus: "approved",
-          isActive: true,
-          approvedBy: approvedByUserId,
-          approvedAt: new Date()
-        })
-        .where(eq(users.id, userId));
-      
-      // Log the event
-      await this.logSecurityEvent({
-        eventType: "user_approval",
-        userId: approvedByUserId,
-        description: `User account approved: ${user.username}`,
-        resourceId: userId.toString(),
-        severity: "info"
-      });
-      
-      return { success: true, message: "User account has been approved" };
-    } catch (error) {
-      console.error("User approval error:");
-      throw new Error("Failed to approve user account");
-    }
+    return db.transaction(async tx => {
+      const actor = await accountActor(tx, approvedByUserId);
+      const target = await accountTarget(tx, actor, userId);
+      if (target.accountState !== 'active') throw new Error('Restore account access before approval');
+      if (target.approvalStatus === 'approved') return { success: true, message: 'User is already approved' };
+      await tx.update(users).set({ approvalStatus: 'approved', isActive: true, approvedBy: actor.id, approvedAt: new Date(),
+        accountVersion: target.accountVersion + 1, updatedAt: new Date() }).where(eq(users.id,userId));
+      await invalidateAccount(tx,userId);
+      await auditAccount(tx,actor.id,userId,'Account approved','Administrator approval');
+      return { success: true, message: 'User account has been approved' };
+    });
   }
 
   /**
    * Update user role
    */
   async updateUserRole(userId: number, newRole: string, updatedByUserId: number) {
-    try {
-      // Find user
-      const [user] = await db.select()
-        .from(users)
-        .where(eq(users.id, userId));
-      
-      if (!user) {
-        throw new Error("User not found");
-      }
-      
-      if (!userRoleEnum.enumValues.includes(newRole as UserRole)) throw new Error('Invalid role');
-      if (userId === updatedByUserId) throw new Error('Cannot change your own role');
-      // Update role
-      await db.update(users)
-        .set({ role: newRole as UserRole })
-        .where(eq(users.id, userId));
-      
-      // Log the event
-      await this.logSecurityEvent({
-        eventType: "role_assignment",
-        userId: updatedByUserId,
-        description: `User role updated for ${user.username} to ${newRole}`,
-        resourceId: userId.toString(),
-        severity: "info"
-      });
-      
-      return { success: true, message: "User role has been updated" };
-    } catch (error) {
-      console.error("Role update error:");
-      throw new Error("Failed to update user role");
-    }
+    await updateAccount(updatedByUserId,userId,{ role: newRole as UserRole, reason: 'Administrator role update' });
+    return { success: true, message: 'User role has been updated' };
   }
 
   /**

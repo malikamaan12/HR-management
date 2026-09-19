@@ -516,7 +516,7 @@ router.get("/pending-users", authenticate, authorize(["super_admin", "admin", "h
  * Approve user (Admin only)
  * POST /api/auth/approve-user/:id
  */
-router.post("/approve-user/:id", authenticate, authorize(["super_admin", "admin", "hr_director", "hr"]), async (req: express.Request, res: express.Response) => {
+router.post("/approve-user/:id", authenticate, authorize(["super_admin", "admin"]), async (req: express.Request, res: express.Response) => {
   try {
     const userId = parseInt(req.params.id, 10);
     
