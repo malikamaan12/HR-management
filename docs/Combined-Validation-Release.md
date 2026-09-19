@@ -1,6 +1,6 @@
 # Combined validation — 19 September 2026
 
-Scope: option 3 from the release plan, covering the current application plus the local payroll (`d0ae3ff`) and operational setup (`9e06370`) batches. This work is local. It does not change the deployed revision or publish real company configuration.
+Scope: option 3 from the release plan, covering the current application plus the payroll (`d0ae3ff`) and operational setup (`9e06370`) batches, followed by the authorized consolidated push/deployment. Application commit `e99c47e96cf8ae4855fe974627fbcff06cf7928a` is live on the existing Render Free service. No real company configuration was changed by validation.
 
 ## Changes
 
@@ -39,11 +39,19 @@ Used the actual built client and application routes against the disposable previ
 - Supervisor: team overview shows only the assigned team, upcoming coverage and approval queues; dashboard headcount is scoped to self/direct report. Unauthorized dashboard shortcuts and activity panel are absent after the fix.
 - HR: equipment registration saves the synthetic inventory item and history. Administrator security/activity controls are absent.
 
-## Remaining release and operational work
+## Deployment record
 
-1. Consolidated push/deploy is the next release step. These results describe the local revision only.
-2. Enter actual employees, compensation, work sites/radii, supervisors, leave approvers and required training choices. Activate geofencing only after valid coverage exists.
-3. Perform a real-device location and supervisor attendance check at a configured venue, and an owner-led payroll acceptance run using the approved business rules.
-4. Production storage connectivity, Resend delivery, backup restoration and EOS integration are separate checks. No external email, WhatsApp or EOS calls were made in this batch.
+- Repository: `malikamaan12/HR-management`, branch `main`; application commit `e99c47e96cf8ae4855fe974627fbcff06cf7928a` includes all three local commits in the consolidated batch.
+- Render Free service: `srv-dajuem0jo6nc73fb36r0`; [deployment `dep-dan28mh42hec73cumll0`](https://dashboard.render.com/web/srv-dajuem0jo6nc73fb36r0/deploys/dep-dan28mh42hec73cumll0).
+- Manually deployed the verified commit on 19 September 2026 at 08:57:46 GMT+3. Build passed, startup migrations completed at 08:58:55, and Render reported the service live at 08:59:19 (1m33s).
+- `/healthz` returned HTTP 200 (`ok`); `/readyz` returned HTTP 200 (`ready`); `/` returned HTTP 200 with the expected client asset `/assets/index-C2VxHwc5.js`. Signed-out `/api/operations-setup/readiness` returned HTTP 401.
+- Authenticated read-only acceptance: Operational setup loaded with 0 active employees, 0 linked employee accounts, 0 teams and 3 sites. The six safety courses were present at their existing published releases, all optional for onboarding. HR Rules exposed monthly, hourly, daily and assigned-event-shift pay plus configurable unpaid-leave deductions. No production rules, training requirements, employees or attendance were saved.
+- No new migrations, dependencies or hosting configuration changes were needed in this release. Hosting remains on the existing Free plan.
+
+## Remaining operational work
+
+1. Enter actual employees, compensation, work sites/radii, supervisors, leave approvers and required training choices. Activate geofencing only after valid coverage exists. The live readiness screen currently reports no active employees and GPS enforcement disabled.
+2. Perform a real-device location and supervisor attendance check at a configured venue, and an owner-led payroll acceptance run using the approved business rules.
+3. Production storage connectivity, Resend delivery, backup restoration and EOS integration are separate checks. No external email, WhatsApp or EOS calls were made in this batch.
 
 This is a regression and role-based browser validation pass, not exhaustive acceptance of every screen, browser, device, integration or operating policy. PGlite verifies PostgreSQL behavior locally but does not exercise the hosted Supabase network/driver connection. No paid dependency or service was added.

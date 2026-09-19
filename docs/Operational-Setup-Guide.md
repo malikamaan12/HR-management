@@ -1,6 +1,6 @@
 # Operational setup
 
-19 September 2026. Implemented locally after payroll revision `d0ae3ff`. This batch has not been pushed or deployed. The live application remains `b199199`. It uses existing application tables, permissions and storage; no migration, additional dependency or paid service is required.
+19 September 2026. Deployed in consolidated application revision `e99c47e` on the existing Render Free service at 08:59:19 GMT+3. It uses existing application tables, permissions and storage; no migration, additional dependency or paid service is required. The combined release passed 350 tests, and this workspace was verified in the authenticated live app. See [validation and deployment evidence](Combined-Validation-Release.md).
 
 ## Administrator workspace
 

@@ -1,6 +1,6 @@
 # Daily pay, assigned-event-shift pay and unpaid leave
 
-19 September 2026. Implemented locally after deployed application revision `b199199`. This batch is not pushed or deployed. It uses the existing stack, introduces no dependency or paid service, and needs no database migration: dated rules and payroll evidence use the existing JSON snapshots.
+19 September 2026. Deployed in consolidated application revision `e99c47e` on the existing Render Free service at 08:59:19 GMT+3. It uses the existing stack, introduces no dependency or paid service, and needs no database migration: dated rules and payroll evidence use the existing JSON snapshots. The combined release passed 350 tests; see [validation and deployment evidence](Combined-Validation-Release.md).
 
 ## Compensation and pay rules
 
