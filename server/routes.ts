@@ -43,8 +43,7 @@ import { leaves, employees, attendance, leaveTypes } from "@shared/schema";
 import { eq, and, gte, lte, isNotNull, desc, sql } from 'drizzle-orm';
 import notificationsRoutes from "./routes/notifications";
 import announcementsRoutes from "./routes/announcements";
-import slackRoutes from "./routes/slack";
-import anthropicRoutes from "./routes/anthropic";
+import communicationRoutes from './routes/communications';
 import { registerPerformanceRoutes } from "./routes/performance";
 import reportingRoutes from "./routes/reporting";
 import analyticsRoutes from "./routes/analytics";
@@ -1091,8 +1090,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Communication Hub Routes
   app.use('/api/notifications', notificationsRoutes);
   app.use('/api/announcements', announcementsRoutes);
-  app.use('/api/slack', slackRoutes);
-  app.use('/api/anthropic', anthropicRoutes);
+  app.use('/api/communications', communicationRoutes);
+  app.use(['/api/slack','/api/anthropic'], (_req,res) => res.status(410).json({message:'This external integration is retired. Use the internal Communication Hub.'}));
 
   // Performance Management Routes
   registerPerformanceRoutes(app);

@@ -3,6 +3,22 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomUUID } from 'node:crypto';
 
 export class StorageUnavailableError extends Error {}
+const communicationKey = /^communications\/\d+\/[a-f0-9-]+\.(pdf|png|jpg)$/;
+export async function uploadCommunicationFile(channelId:number,file:Express.Multer.File){
+  const extension=validateDocumentFile(file),{client,bucket}=configuration();
+  const key=`communications/${channelId}/${randomUUID()}.${extension}`;
+  try{await client.send(new PutObjectCommand({Bucket:bucket,Key:key,Body:file.buffer,ContentType:'application/octet-stream',ContentDisposition:'attachment'}),{abortSignal:AbortSignal.timeout(30000)});return key;}
+  catch(error){try{await client.send(new DeleteObjectCommand({Bucket:bucket,Key:key}),{abortSignal:AbortSignal.timeout(10000)});}catch{console.error('Communication upload cleanup needs operator attention for object',key);}throw error;}
+  finally{client.destroy();}
+}
+export async function deleteCommunicationFile(key:string){
+  if(!communicationKey.test(key))throw new Error('Invalid communication attachment');
+  const {client,bucket}=configuration();try{await client.send(new DeleteObjectCommand({Bucket:bucket,Key:key}),{abortSignal:AbortSignal.timeout(10000)});}finally{client.destroy();}
+}
+export async function communicationFileUrl(key:string){
+  if(!communicationKey.test(key))throw new Error('Invalid communication attachment');
+  const {client,bucket}=configuration();try{return await getSignedUrl(client,new GetObjectCommand({Bucket:bucket,Key:key,ResponseContentDisposition:'attachment',ResponseContentType:'application/octet-stream'}),{expiresIn:60});}finally{client.destroy();}
+}
 export function privateStorageConfigured(){try{const {client}=configuration();client.destroy();return true;}catch{return false;}}
 export function configuration(){
   const provider=process.env.STORAGE_PROVIDER || 'r2';

@@ -1,93 +1,26 @@
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { useToast } from "@/hooks/use-toast";
-import { MessageSquarePlus, Bell, Megaphone, BellPlus, AlarmClock, AlertCircle, Check, RefreshCw, Brain } from "lucide-react";
-import { SiSlack } from "@icons-pack/react-simple-icons";
-import AnnouncementsTab from "@/components/communications/AnnouncementsTab";
-import NotificationsTab from "@/components/communications/NotificationsTab";
-import SlackIntegrationTab from "@/components/communications/SlackIntegrationTab";
-import AnthropicTab from "@/components/communications/AnthropicTab";
-
-const Communications = () => {
-  const [activeTab, setActiveTab] = useState("announcements");
-  const { toast } = useToast();
-
-  const { data: slackStatus, isLoading: isSlackStatusLoading } = useQuery<{connected:boolean}>({
-    queryKey: ["/api/slack/status"],
-    enabled: true,
-  });
-
-  const handleTabChange = (value: string) => {
-    setActiveTab(value);
-  };
-
-  return (
-    <div className="container mx-auto py-6 space-y-8">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold">Communication Hub</h1>
-          <p className="text-muted-foreground mt-1">
-            Manage announcements, notifications, and communication settings
-          </p>
-        </div>
-        <div className="flex gap-4">
-          {slackStatus?.connected ? (
-            <div className="flex items-center gap-2 text-sm text-green-600 border border-green-200 bg-green-50 p-2 rounded-md">
-              <SiSlack size={16} />
-              <span>Slack Connected</span>
-              <Check size={16} />
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 text-sm text-orange-600 border border-orange-200 bg-orange-50 p-2 rounded-md">
-              <SiSlack size={16} />
-              <span>Slack Not Connected</span>
-              <AlertCircle size={16} />
-            </div>
-          )}
-        </div>
-      </div>
-
-      <Tabs defaultValue="announcements" value={activeTab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="grid w-full grid-cols-4 mb-8">
-          <TabsTrigger value="announcements" className="flex items-center gap-2">
-            <Megaphone size={16} />
-            Announcements
-          </TabsTrigger>
-          <TabsTrigger value="notifications" className="flex items-center gap-2">
-            <Bell size={16} />
-            Notifications
-          </TabsTrigger>
-          <TabsTrigger value="slack" className="flex items-center gap-2">
-            <SiSlack size={16} />
-            Slack Integration
-          </TabsTrigger>
-          <TabsTrigger value="anthropic" className="flex items-center gap-2">
-            <Brain size={16} />
-            AI Assistant
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="announcements" className="space-y-4">
-          <AnnouncementsTab />
-        </TabsContent>
-
-        <TabsContent value="notifications" className="space-y-4">
-          <NotificationsTab />
-        </TabsContent>
-
-        <TabsContent value="slack" className="space-y-4">
-          <SlackIntegrationTab />
-        </TabsContent>
-        
-        <TabsContent value="anthropic" className="space-y-4">
-          <AnthropicTab />
-        </TabsContent>
-      </Tabs>
-    </div>
-  );
-};
-
-export default Communications;
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Helmet } from 'react-helmet';
+import { Button } from '@/components/ui/button';
+import { Tabs,TabsList,TabsTrigger,TabsContent } from '@/components/ui/tabs';
+import { Field,Section,QueryError,fieldClass } from '@/components/hr/Operations';
+import HubAnnouncements from '@/components/communications/HubAnnouncements';
+import HubChannels from '@/components/communications/HubChannels';
+import { hub,useHubAction,Pager,dateLabel,type Page } from '@/components/communications/HubControls';
+import { communicationPolicy,type CommunicationPolicy } from '@shared/communications';
+export default function Communications(){
+  const [tab,setTab]=useState('announcements');
+  const context=useQuery<any>({queryKey:[hub+'/context']});
+  return <div className="space-y-6"><Helmet><title>Communication Hub | E3 HR</title></Helmet><header><h1 className="text-3xl font-bold">Communication Hub</h1><p className="mt-2 text-muted-foreground">Your company notices, team conversations and HR action inbox.</p></header><QueryError error={context.error}/>{!context.data&&!context.error&&<p>Loading your workspace…</p>}{context.data&&<Tabs value={tab} onValueChange={setTab}><TabsList className="flex h-auto w-fit max-w-full flex-wrap"><TabsTrigger value="announcements">Announcements & briefings</TabsTrigger><TabsTrigger value="channels">Conversations</TabsTrigger><TabsTrigger value="inbox">Action inbox</TabsTrigger>{context.data.canConfigure&&<TabsTrigger value="settings">Administration</TabsTrigger>}</TabsList><TabsContent value="announcements"><HubAnnouncements context={context.data}/></TabsContent><TabsContent value="channels"><HubChannels context={context.data}/></TabsContent><TabsContent value="inbox"><Inbox onAnnouncements={()=>setTab('announcements')}/></TabsContent>{context.data.canConfigure&&<TabsContent value="settings"><Policy key={context.data.policy.version} current={context.data.policy}/></TabsContent>}</Tabs>}</div>;
+}
+function Inbox({onAnnouncements}:{onAnnouncements:()=>void}){
+  const [q,setQ]=useState(''),[offset,setOffset]=useState(0),[unread,setUnread]=useState(true);
+  const items=useQuery<Page<any>>({queryKey:[`${hub}/inbox?q=${encodeURIComponent(q)}&offset=${offset}&unread=${unread}`],refetchInterval:30000,refetchIntervalInBackground:false});
+  const action=useHubAction();
+  return <div className="space-y-4"><Section title="Actions and reminders"><p className="text-sm">Open the original HR record to take action. Reading a reminder does not complete or approve its task.</p><div className="flex flex-wrap gap-4 text-sm"><a className="underline" href="/team-overview">Team approval queue</a><a className="underline" href="/helpdesk">My HR cases</a><a className="underline" href="/learning">My training</a><button className="underline" onClick={onAnnouncements}>Announcements to acknowledge</button></div></Section><div className="flex flex-wrap gap-3 items-center"><input className={fieldClass+' max-w-sm'} aria-label="Search action inbox" placeholder="Search your reminders" value={q} onChange={e=>{setQ(e.target.value);setOffset(0);}}/><label className="text-sm"><input type="checkbox" checked={unread} onChange={e=>{setUnread(e.target.checked);setOffset(0);}}/> Unread only</label><Button variant="outline" onClick={()=>items.refetch()}>Refresh</Button></div><QueryError error={items.error||action.error}/>{items.isLoading&&<p>Loading inbox…</p>}{items.data&&!items.data.items.length&&<p>No reminders to show.</p>}{items.data?.items.map(n=><article className="space-y-2 rounded-lg border bg-card p-4" key={n.id}><p className="whitespace-pre-wrap break-words">{n.message}</p><p className="text-xs text-muted-foreground">{dateLabel(n.timestamp)} · {n.read_at?'Read '+dateLabel(n.read_at):'Unread'}{n.channel!=='push'?' · Historical external notification':''}</p><div className="flex gap-3">{n.url&&<a className="text-sm underline" href={n.url}>Open related record</a>}{!n.read_at&&<Button size="sm" variant="outline" disabled={action.isPending} onClick={()=>action.mutate({path:`/inbox/${n.id}/read`,body:{}})}>Mark read</Button>}</div></article>)}<Pager offset={offset} hasMore={items.data?.hasMore} onChange={setOffset}/></div>;
+}
+function Policy({current}:{current:{version:number;definition:CommunicationPolicy}}){
+  const [definition,setDefinition]=useState(current.definition),[why,setWhy]=useState(''),[error,setError]=useState(''),[offset,setOffset]=useState(0);
+  const action=useHubAction();const history=useQuery<Page<any>>({queryKey:[`${hub}/policy/history?offset=${offset}`]});
+  return <Section title="Communication rules"><form className="space-y-4" onSubmit={e=>{e.preventDefault();const result=communicationPolicy.safeParse(definition);if(!result.success){setError(result.error.issues.map(i=>i.message).join('; '));return;}setError('');action.mutate({path:'/policy',method:'PUT',body:{version:current.version,definition:result.data,reason:why}});}}><p className="text-sm text-muted-foreground">Current policy version {current.version}. Administrators configure limits; private conversations remain restricted to their participants.</p><label className="block text-sm"><input type="checkbox" checked={definition.directMessages} onChange={e=>setDefinition({...definition,directMessages:e.target.checked})}/> Allow direct messaging</label><label className="block text-sm"><input type="checkbox" checked={definition.groupCreation} onChange={e=>setDefinition({...definition,groupCreation:e.target.checked})}/> Allow authorized managers to create private groups</label><div className="grid gap-3 md:grid-cols-3"><Field label="Message character limit (200–12,000)"><input required type="number" min={200} max={12000} className={fieldClass} value={definition.maxMessageLength} onChange={e=>setDefinition({...definition,maxMessageLength:Number(e.target.value)})}/></Field><Field label="Maximum attachment MB (1–10)"><input required type="number" min={1} max={10} className={fieldClass} value={definition.attachmentMegabytes} onChange={e=>setDefinition({...definition,attachmentMegabytes:Number(e.target.value)})}/></Field><Field label="Visible message history days (30–3,650)"><input required type="number" min={30} max={3650} className={fieldClass} value={definition.historyDays} onChange={e=>setDefinition({...definition,historyDays:Number(e.target.value)})}/></Field></div><p className="text-xs text-muted-foreground">History limits affect message search and attachment access. Older stored records are retained; this setting does not permanently delete them. Group membership and event access dates are enforced separately.</p><Field label="Reason for policy change"><input required minLength={5} className={fieldClass} value={why} onChange={e=>setWhy(e.target.value)}/></Field><QueryError error={action.error||error}/><Button disabled={action.isPending||why.trim().length<5}>Save communication policy</Button></form><details><summary className="cursor-pointer">Policy history</summary><QueryError error={history.error}/>{history.data?.items.map(h=><div key={h.version} className="my-3 rounded border p-3 text-sm"><p>Version {h.version} · {dateLabel(h.created_at)} · {h.reason}</p><p>{h.snapshot.definition.maxMessageLength} characters · {h.snapshot.definition.attachmentMegabytes} MB · {h.snapshot.definition.historyDays} days</p></div>)}<Pager offset={offset} hasMore={history.data?.hasMore} onChange={setOffset}/></details></Section>;
+}

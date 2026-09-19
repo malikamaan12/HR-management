@@ -1,131 +1,14 @@
-import express from "express";
-import { z } from "zod";
-import announcementService from "../services/announcements";
-import { insertAnnouncementSchema, announcements } from "@shared/schema";
-import { db } from "../db";
-import { sql, eq } from "drizzle-orm";
-import { authenticate, authorize } from "../middleware/auth";
-
-const router = express.Router();
-
-// Get all active announcements
-router.get("/", authenticate, async (req, res) => {
-  try {
-    const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
-    const announcements = await announcementService.getActiveAnnouncements(limit,req.user!);
-    
-    return res.json(announcements);
-  } catch (error) {
-    console.error("Error fetching announcements:", error);
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-// Get department announcements
-router.get("/department/:department", authenticate, async (req, res) => {
-  try {
-    const department = req.params.department;
-    if(department !== req.user!.department && !['admin','super_admin','hr'].includes(req.user!.role))return res.status(403).json({error:'Department access denied'});
-
-    if (!department) {
-      return res.status(400).json({ error: "Department is required" });
-    }
-
-    const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
-    const announcements = await announcementService.getDepartmentAnnouncements(department, limit);
-    
-    return res.json(announcements);
-  } catch (error) {
-    console.error("Error fetching department announcements:", error);
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-// Create a new announcement
-router.post("/", authenticate, authorize(["admin", "hr"]), async (req, res) => {
-  try {
-    const userId = req.user!.userId;
-    
-    // Set the author ID to the current user
-    const announcementData = {
-      ...req.body,
-      authorId: userId
-    };
-
-    const schema = insertAnnouncementSchema;
-    const validationResult = schema.safeParse(announcementData);
-
-    if (!validationResult.success) {
-      return res.status(400).json({ 
-        error: "Invalid announcement data", 
-        details: validationResult.error.format() 
-      });
-    }
-
-    const announcement = await announcementService.createAnnouncement(validationResult.data);
-    return res.status(201).json(announcement);
-  } catch (error) {
-    console.error("Error creating announcement:", error);
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-// Toggle pin status of an announcement
-router.patch("/:id/toggle-pin", authenticate, authorize(["admin", "hr"]), async (req, res) => {
-  try {
-    const announcementId = parseInt(req.params.id);
-
-    if (isNaN(announcementId)) {
-      return res.status(400).json({ error: "Invalid announcement ID" });
-    }
-
-    // Toggle pin status
-    const [updatedAnnouncement] = await db.update(announcements)
-      .set({
-        isPinned: sql`NOT ${announcements.isPinned}`,
-        updatedAt: new Date()
-      })
-      .where(eq(announcements.id, announcementId))
-      .returning();
-
-    if (!updatedAnnouncement) {
-      return res.status(404).json({ error: "Announcement not found" });
-    }
-
-    return res.json(updatedAnnouncement);
-  } catch (error) {
-    console.error("Error toggling announcement pin status:", error);
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-// Deactivate an announcement
-router.patch("/:id/deactivate", authenticate, authorize(["admin", "hr"]), async (req, res) => {
-  try {
-    const announcementId = parseInt(req.params.id);
-
-    if (isNaN(announcementId)) {
-      return res.status(400).json({ error: "Invalid announcement ID" });
-    }
-
-    // Deactivate the announcement
-    const [updatedAnnouncement] = await db.update(announcements)
-      .set({
-        isActive: false,
-        updatedAt: new Date()
-      })
-      .where(eq(announcements.id, announcementId))
-      .returning();
-
-    if (!updatedAnnouncement) {
-      return res.status(404).json({ error: "Announcement not found" });
-    }
-
-    return res.json(updatedAnnouncement);
-  } catch (error) {
-    console.error("Error deactivating announcement:", error);
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
-
+import { Router } from 'express';
+import { sql } from 'drizzle-orm';
+import { authenticate } from '../middleware/auth';
+import { requireCommunicationAccess } from '../middleware/communicationsAccess';
+import { db } from '../db';
+import { recordHandler } from '../services/workflowRecords';
+import { bulletinAudience, liveBulletin } from '../services/communications';
+const router = Router();
+router.use(authenticate);
+router.use(requireCommunicationAccess);
+// Legacy readers use the same audience and publication boundary as the new Hub.
+router.get('/', recordHandler(async(req,res)=>res.json((await db.execute(sql`SELECT b.id,b.title,b.body AS content,b.author_id AS "authorId",b.audience AS "targetAudience",b.pinned AS "isPinned",b.created_at AS "createdAt" FROM comm_bulletins b WHERE ${liveBulletin()} AND (${bulletinAudience(req.user)}) ORDER BY b.pinned DESC,b.publish_at DESC LIMIT 25`)).rows)));
+router.use((_req,res)=>res.status(410).json({message:'Manage announcements through the internal Communication Hub.'}));
 export default router;

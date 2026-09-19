@@ -15,5 +15,3 @@ export type ApiNotification = Jsonify<Schema.Notification>;
 export type ApiAnnouncement = Jsonify<Schema.Announcement>;
 export type ApiNotificationPreferences = Jsonify<Schema.NotificationPreference>;
 export interface PerformanceStats {avgRating:number;totalReviews:number;upcomingReviews:number;performanceTrends:{category:string;score:number;change:number|null}[];}
-export interface SlackStatus {connected:boolean;channelId?:string;}
-export interface SlackUserIntegration {integrated:boolean;slackUsername?:string;slackEmail?:string;isActive?:boolean;lastSynced?:string;}
