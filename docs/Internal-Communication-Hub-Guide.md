@@ -1,6 +1,6 @@
 # Internal Communication Hub
 
-Implementation date: 19 September 2026. Local batch; not pushed or deployed. The live application remains on `eb3fb5cc490c02a40020d4f45cb80a7614b03f76`.
+Implementation and deployment date: 19 September 2026. Application commit `d106f7b8e894b9404c54d3c44e4ee22c0b90e47e` is live on the existing Render Free service as of 11:55:26 GMT+3. Build, startup migrations, health/readiness and authenticated Hub screens passed. See [Communication-Hub-Deployment.md](Communication-Hub-Deployment.md).
 
 The `/communications` workspace replaces the old placeholder announcement/notification screens and Slack integration. It runs in the existing Express/React application, PostgreSQL database and configured private Supabase/R2 storage. No paid messaging service or new dependency is added; the Slack SDK is removed. Existing email workflows elsewhere in HR are unaffected.
 
@@ -48,10 +48,10 @@ Migration `0043_internal_communications.sql` is additive and registered in the d
 
 Slack sending, integration routes and UI are retired. `/api/slack` and the former Hub AI route return HTTP 410. Old announcement readers use the new publication/audience rules; old write endpoints return 410. Notification compatibility reads remain scoped, and the old mark-delivered action records a read receipt instead of changing delivery status. Historical Slack records and enums remain in the database to preserve history. Existing Slack credentials are not needed by this implementation; no provider settings were changed during development.
 
-Release uses the existing application deployment and startup migration process. No production migration or sample messages were created during this local batch. Private attachment behavior was verified using mocked storage; a production upload/download acceptance check remains for rollout.
+Release used the existing application deployment and startup migration process; production migration completed on deployment. No sample messages or business settings were created during live acceptance. Private attachment behavior was verified using mocked storage; an actual production upload/download acceptance check remains separate.
 
 ## Validation and operating boundaries
 
-The combined run passed **52 tests across six files**: communications, migrations, private storage, module workflows/reminders, deployment configuration and the API client. A final communications rerun covers the shared legacy-endpoint access check. TypeScript and production builds pass. The isolated browser preview confirmed draft/publication/read/acknowledgement receipts, direct message persistence/reply controls, administrator policy saving, employee-only controls, the recipient unread badge and the action inbox. Preview data was disposable and its server/tab were closed.
+The combined run passed **52 tests across six files**: communications, migrations, private storage, module workflows/reminders, deployment configuration and the API client. A final **17-test communications rerun passed**, covering the shared legacy-endpoint access check. TypeScript and production builds pass. The isolated browser preview confirmed draft/publication/read/acknowledgement receipts, direct message persistence/reply controls, administrator policy saving, employee-only controls, the recipient unread badge and the action inbox. Preview data was disposable and its server/tab were closed.
 
 The open conversation screen polls every 20 seconds; announcements and the inbox poll every 30 seconds. Background-tab polling is disabled. Existing free-host sleep and usage limits still apply. This release does not promise always-on real-time delivery, offline notifications, browser push, voice/video, message reactions, nested thread views or cross-channel global search. No email/WhatsApp/Slack delivery, paid AI feature or new EOS integration is part of this batch. EOS connections can later use explicit scoped service APIs once its interface is available.
