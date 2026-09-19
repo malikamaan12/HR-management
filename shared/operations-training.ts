@@ -7,6 +7,7 @@ export const publishedOperationsTrainingSettings = inductionSettings.pick({
   employeeTypes: true,
   departments: true,
   defaultDueDays: true,
+  dueDateBasis: true,
 }).strict();
 
 export const operationsTrainingSettings = publishedOperationsTrainingSettings.superRefine((settings, context) => {
@@ -49,6 +50,7 @@ export type OperationsTrainingCourse = {
 export function sameOperationsTrainingSettings(left: OperationsTrainingSettings, right: OperationsTrainingSettings) {
   return left.mandatoryForOnboarding === right.mandatoryForOnboarding
     && left.defaultDueDays === right.defaultDueDays
+    && left.dueDateBasis === right.dueDateBasis
     && JSON.stringify([...left.employeeTypes].sort()) === JSON.stringify([...right.employeeTypes].sort())
     && JSON.stringify([...left.departments].sort()) === JSON.stringify([...right.departments].sort());
 }

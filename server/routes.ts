@@ -1,3 +1,4 @@
+import orgChartsRouter from './routes/org-charts';
 import {documentExpiryStatus} from './services/documentGovernance';
 import {getCompanySettings} from './services/settings';
 import learningRoutes from './routes/learning';
@@ -130,6 +131,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/timesheets',timesheetRoutes);
   app.use('/api/assignment-reviews',assignmentReviewRoutes);
   app.use('/api/team-overview',teamOverviewRoutes);
+  app.use('/api/org-charts',orgChartsRouter);
   app.use('/api/team-tasks',teamTaskRoutes);
 
   // User Routes

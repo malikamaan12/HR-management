@@ -8,6 +8,8 @@ import ComplianceStatus from "@/components/dashboard/ComplianceStatus";
 import UpcomingEvents from "@/components/dashboard/UpcomingEvents";
 import { getAccessScope, hasPermission } from "@shared/permissions";
 import EmployeeDashboard from "./EmployeeDashboard";
+import {Link} from 'wouter';
+import {workforceAdmin} from '@shared/workforce';
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -27,6 +29,7 @@ export default function Dashboard() {
   return (
     <div className="space-y-6 pb-12 max-w-full overflow-hidden">
       <WelcomeBanner stats={dashboardStats as any} />
+      {user&&workforceAdmin(user.role)&&<section className="rounded-lg border bg-card p-5"><h2 className="text-lg font-semibold">Teams, venues & organization charts</h2><p className="mt-1 text-sm text-muted-foreground">Create and manage FECs, events, mall activations and head-office reporting teams.</p><div className="mt-4 flex flex-wrap gap-4"><Link className="rounded bg-primary px-4 py-2 text-sm text-primary-foreground" href="/org-charts">Manage teams & org charts</Link><Link className="rounded border px-4 py-2 text-sm" href="/workforce">Manage sites, rosters & team access</Link></div></section>}
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
         <div className="md:col-span-2">

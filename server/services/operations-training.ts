@@ -24,7 +24,8 @@ export async function operationsTrainingCatalogue(tx: any, user: TokenPayload, i
       d.version AS draft_version,r.id AS release_id,r.release_number,
       jsonb_build_object('mandatoryForOnboarding',r.content->'settings'->'mandatoryForOnboarding',
         'employeeTypes',r.content->'settings'->'employeeTypes','departments',r.content->'settings'->'departments',
-        'defaultDueDays',r.content->'settings'->'defaultDueDays') AS requirements,
+        'defaultDueDays',r.content->'settings'->'defaultDueDays',
+        'dueDateBasis',coalesce(r.content->'settings'->'dueDateBasis','"enrollment"'::jsonb)) AS requirements,
       (d.course_id IS NULL OR d.content IS DISTINCT FROM r.content OR
         (d.definition-'status') IS DISTINCT FROM (r.definition-'status') OR
         (c.definition-'status') IS DISTINCT FROM (r.definition-'status')) AS has_draft,
@@ -82,6 +83,7 @@ export async function publishOperationsTrainingRequirements(tx: any, user: Token
     employeeTypes: previousContent.settings.employeeTypes,
     departments: previousContent.settings.departments,
     defaultDueDays: previousContent.settings.defaultDueDays,
+    dueDateBasis: previousContent.settings.dueDateBasis,
   });
   if (sameOperationsTrainingSettings(previousSettings, input.settings)) {
     return { id, courseVersion: course.version, draftVersion: Number(draft.version), publishedReleaseId: Number(release.id), releaseNumber: Number(release.release_number), settings: previousSettings, changed: false };

@@ -33,11 +33,12 @@ async function employee(name: string, type: 'permanent' | 'temporary' | 'contrac
   const [row] = await context.db.insert(schema.employees).values({ employeeId: name, firstName: name, lastName: 'Synthetic', gender: 'female', dateOfBirth: '1990-01-01', nationality: 'Test', qidNumber: name + '-QID', primaryMobile: '00000000', residentialAddress: 'Synthetic', emergencyContactName: 'Synthetic', emergencyContactNumber: '00000000', department, position: 'Test', location: 'Test', type, joiningDate: '2026-01-01' }).returning();
   return row;
 }
-async function fixture(options: { status?: 'draft' | 'published' | 'archived'; capacity?: number | null; asset?: boolean } = {}) {
+async function fixture(options: { status?: 'draft' | 'published' | 'archived'; capacity?: number | null; asset?: boolean; legacy?: boolean } = {}) {
   const admin = await account('administrator', 'super_admin');
   const definition = courseDefinition.parse({ title: 'Synthetic safety induction', description: 'Synthetic internal training content', provider: 'Internal', format: 'self_paced', delivery: 'internal', url: '', durationMinutes: 20, capacity: options.capacity ?? null, passScore: 80, requiresEvidence: false, validMonths: 12, approverId: admin.id, status: options.status || 'published' });
   const optionId = randomUUID();
   const content = inductionContent.parse({ lessons: [{ id: randomUUID(), title: 'Synthetic lesson', kind: options.asset ? 'document' : 'text', body: 'Private lesson content', assetId: options.asset ? 9999 : null, required: true, estimatedMinutes: 10 }], questions: [{ id: randomUUID(), prompt: 'Synthetic private quiz prompt?', kind: 'single', options: [{ id: optionId, text: 'Synthetic correct answer' }, { id: randomUUID(), text: 'Synthetic incorrect answer' }], correctOptionIds: [optionId], points: 2, explanation: 'Private answer explanation' }], settings: { ...defaultInductionSettings, validMonths: 12, retryDelayMinutes: 60 } });
+  if(options.legacy) delete (content.settings as any).dueDateBasis;
   const [course] = await context.db.insert(schema.learningCourses).values({ definition, createdBy: admin.id }).returning();
   await context.db.execute(sql`INSERT INTO learning_induction_courses(course_id) VALUES (${course.id})`);
   const release = (await context.db.execute(sql`INSERT INTO learning_induction_releases(course_id,release_number,course_version,definition,content,created_by) VALUES (${course.id},1,1,${JSON.stringify({ ...definition, status: 'published' })}::jsonb,${JSON.stringify(content)}::jsonb,${admin.id}) RETURNING id`)).rows[0];
@@ -79,7 +80,7 @@ test('catalogue exposes only published requirement summaries, bounded search and
   const result = await request(f.admin.token, '/courses?q=safety&offset=0');
   expect(result.status).toBe(200); expect(result.cache).toBe('no-store'); expect(result.body.total).toBe(1);
   expect(result.body.items[0]).toMatchObject({ id: f.course.id, courseVersion: 1, draftVersion: 1, publishedReleaseId: f.releaseId, hasDraft: false, canPublish: true });
-  expect(Object.keys(result.body.items[0].settings).sort()).toEqual(['defaultDueDays', 'departments', 'employeeTypes', 'mandatoryForOnboarding']);
+  expect(Object.keys(result.body.items[0].settings).sort()).toEqual(['defaultDueDays', 'departments', 'dueDateBasis', 'employeeTypes', 'mandatoryForOnboarding']);
   const serialized = JSON.stringify(result.body);
   for (const value of ['correctOptionIds', 'Private lesson content', 'Synthetic private quiz prompt?', 'Private answer explanation']) expect(serialized).not.toContain(value);
   expect((await request(f.admin.token, '/courses?q=unmatched')).body.total).toBe(0);
@@ -126,7 +127,7 @@ test.each(['draft', 'archived'] as const)('%s courses cannot be configured or li
   expect((await request(f.admin.token, f.path, f.body)).status).toBe(409);
 });
 
-test('only the four approved settings are accepted with audience, due-day and reason limits', async () => {
+test('only the approved requirement settings are accepted with audience, due-day and reason limits', async () => {
   const f = await fixture();
   const invalid = [
     { ...f.body, settings: { ...f.body.settings, passScore: 0 } },
@@ -176,6 +177,28 @@ test('existing active enrollment capacity is checked before a requirement releas
   const result = await request(f.admin.token, f.path, f.body);
   expect(result.status).toBe(409); expect(result.body.message).toContain('Capacity');
   expect((await pg.query('SELECT id FROM learning_induction_releases')).rows).toHaveLength(1);
+});
+
+test.each([['2024-02-01','2024-03-02'],['2099-01-01','2099-01-31']])('joining-date deadline remains anchored to %s when assignment timing differs',async(joiningDate,expected)=>{
+ const f=await fixture(),person=await employee('DATE-TEST');
+ await context.db.update(schema.employees).set({joiningDate}).where(eq(schema.employees.id,person.id));
+ const updated=await request(f.admin.token,f.path,{...f.body,settings:{...f.body.settings,defaultDueDays:30,dueDateBasis:'joining_date'}});
+ expect(updated.status,updated.body.message).toBe(200);
+ expect((await request(f.admin.token)).body.items[0].settings).toMatchObject({defaultDueDays:30,dueDateBasis:'joining_date'});
+ const actor={userId:f.admin.id,username:f.admin.username,role:f.admin.role,department:f.admin.department};
+ await context.db.transaction((tx:any)=>assignOnboardingInduction(tx,actor,{...person,joiningDate}));
+ const [assignment]=await context.db.select().from(schema.learningEnrollments);
+ expect(assignment.dueDate).toBe(expected);
+ await context.db.transaction((tx:any)=>assignOnboardingInduction(tx,actor,{...person,joiningDate}));
+ expect(await context.db.select().from(schema.learningEnrollments)).toHaveLength(1);
+ expect((await context.db.select().from(schema.learningEnrollments))[0].dueDate).toBe(expected);
+});
+
+test('legacy published courses retain enrollment-based deadlines',async()=>{
+ const f=await fixture({legacy:true});const legacy=f.content;
+ const result=await request(f.admin.token);
+ expect(result.status).toBe(200);expect(result.body.items[0].settings.dueDateBasis).toBe('enrollment');
+ expect(inductionContent.parse(legacy).settings.dueDateBasis).toBe('enrollment');
 });
 
 test('new onboarding uses the matching current requirement release and no existing employees are auto-assigned', async () => {

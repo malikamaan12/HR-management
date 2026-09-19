@@ -48,6 +48,7 @@ const Helpdesk=lazy(()=>import('@/pages/Helpdesk'));
 const Timesheets=lazy(()=>import('@/pages/Timesheets'));
 const AssignmentReviews=lazy(()=>import('@/pages/AssignmentReviews'));
 const TeamOverview=lazy(()=>import('@/pages/TeamOverview'));
+const OrgCharts=lazy(()=>import('@/pages/OrgCharts'));
 const Settings=lazy(()=>import('@/pages/Settings'));
 const Reports=lazy(()=>import('@/pages/Reports'));
 const Recruitment=lazy(()=>import('@/pages/Hiring'));
@@ -117,6 +118,7 @@ function App() {
   // Get page title based on current location
   const getPageTitle = () => {
     if(location.startsWith('/assignment-reviews'))return 'Assignment reviews';
+    if(location.startsWith('/org-charts'))return 'Organization charts';
     if(location.startsWith('/team-overview'))return 'Team overview';
     if(location.startsWith('/timesheets'))return 'Timesheets';
     if(location==='/helpdesk'||location.startsWith('/helpdesk/'))return 'HR Helpdesk';
@@ -193,6 +195,7 @@ function App() {
           <Route path="/workforce" component={Workforce} />
           <Route path="/assignment-reviews" component={AssignmentReviews} />
           <Route path="/assignment-reviews/:id" component={AssignmentReviews} />
+          <Route path="/org-charts" component={OrgCharts} />
           <Route path="/team-overview" component={TeamOverview} />
           <Route path="/timesheets" component={Timesheets} />
           <Route path="/timesheets/:id" component={Timesheets} />

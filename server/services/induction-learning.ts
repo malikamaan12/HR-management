@@ -84,7 +84,8 @@ export async function assignInduction(tx:WorkforceTransaction,user:TokenPayload,
   if(course.definition.capacity!==null&&reserved>=course.definition.capacity)fail(409,'This course has no remaining active places');
   if(settings.enrollmentApprovalRequired||settings.reviewRequired){await approver(tx,course.definition.approverId,'training_development',employee);if(course.definition.approverId===user.userId)fail(409,'Choose an independent course approver before assigning this course');}
   const snapshot={...published.definition,delivery:'internal' as const,version:published.course_version,passScore:settings.passScore,validMonths:settings.validMonths,requiresEvidence:false};
-  const dueDate=input.dueDate||addDays(employee.joiningDate>businessToday()?employee.joiningDate:businessToday(),settings.defaultDueDays);
+  const deadlineStart=settings.dueDateBasis==='joining_date'?employee.joiningDate:employee.joiningDate>businessToday()?employee.joiningDate:businessToday();
+  const dueDate=input.dueDate||addDays(deadlineStart,settings.defaultDueDays);
   const required=input.required||mandatory.includes(employee.id);
   const [row]=await tx.insert(enrollments).values({courseId,employeeId:employee.id,courseSnapshot:snapshot,dueDate,requestedBy:user.userId,approverId:snapshot.approverId,status:settings.enrollmentApprovalRequired?'requested':'approved',history:event([],user,'Induction assigned',input.reason,1,{releaseId:published.id,releaseNumber:published.release_number,required})}).returning();
   await tx.execute(sql`INSERT INTO learning_induction_enrollments (enrollment_id,release_id,required) VALUES (${row.id},${published.id},${required})`);await audit(tx,user,'learning_enrollment',row.id,'Internal induction assigned');created.push(row);reserved++;

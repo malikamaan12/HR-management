@@ -5,7 +5,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 // Workforce operations keep employment type on the existing employee profile.
-export const workforceKind = pgEnum('workforce_kind', ['event', 'fec', 'mall_activation']);
+export const workforceKind = pgEnum('workforce_kind', ['event', 'fec', 'mall_activation', 'head_office']);
 export const workforcePermission = pgEnum('workforce_permission', ['view', 'schedule', 'review_time', 'review_performance']);
 export const workforceAssignmentStatus = pgEnum('workforce_assignment_status', ['offered', 'accepted', 'declined', 'cancelled']);
 export const workforceSites = pgTable('workforce_sites', {

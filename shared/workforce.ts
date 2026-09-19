@@ -2,8 +2,8 @@ import {z} from 'zod';
 import type {UserRole} from './schema';
 
 export const workforceAdmin = (role: UserRole) => ['admin', 'super_admin', 'hr', 'hr_director'].includes(role);
-export const workforceKinds = ['event', 'fec', 'mall_activation'] as const;
-export const kindLabels = {event: 'Event', fec: 'FEC', mall_activation: 'Mall activation'};
+export const workforceKinds = ['event', 'fec', 'mall_activation', 'head_office'] as const;
+export const kindLabels = {event: 'Event', fec: 'FEC', mall_activation: 'Mall activation', head_office:'Head office'};
 export const positiveId = z.coerce.number().int().positive();
 const instant = z.string().datetime({offset: true}).transform(value => new Date(value));
 export const period = z.object({startAt: instant, endAt: instant}).strict().refine(v => v.endAt > v.startAt, 'End must be after start');
