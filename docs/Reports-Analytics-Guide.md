@@ -1,6 +1,6 @@
 # Reports & Analytics workspace
 
-This batch expands `/reports` within the existing application. It adds no paid service, external BI platform, licensing fee or email dependency. It is a local release batch; deploying requires migration `0044_reports_analytics_workspace` and the normal application build.
+This batch expands `/reports` within the existing application. It adds no paid service, external BI platform, licensing fee or email dependency. Application commit `1436980` was deployed on 19 September 2026 with migration `0044_reports_analytics_workspace`. See [deployment evidence](Reports-Analytics-Deployment.md).
 
 ## Reports available
 
