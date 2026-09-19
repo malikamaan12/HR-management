@@ -1,6 +1,6 @@
 # Service readiness and recovery — 19 September 2026
 
-Status: implemented locally, not pushed or deployed. The live application remains `e99c47e`. This batch can be prepared while the owner supplies the actual employee import data.
+Status: deployed with the HR Letter Centre in application commit `eb3fb5c` on Render Free at 10:37:27 GMT+3 on 19 September 2026. The authenticated administrator panel reports a verified database connection. Actual storage verification, email configuration/delivery and a backup restore drill remain pending. See [the deployment record](HR-Letters-Deployment.md).
 
 ## Delivered
 
@@ -19,4 +19,4 @@ Status: implemented locally, not pushed or deployed. The live application remain
 
 ## Release and operating steps
 
-Include this batch in the next consolidated release. After deployment, an administrator can run the explicit storage probe against the configured private bucket. Run the documented encrypted database backup and restore drill on a trusted operator machine with PostgreSQL tools. Preserve the archive and passphrase separately, and verify private-file recovery separately. Employee import, venue configuration and actual operating policy choices remain with the ongoing setup work.
+An administrator can now run the explicit storage probe against the configured private bucket. Run the documented encrypted database backup and restore drill on a trusted operator machine with PostgreSQL tools. Preserve the archive and passphrase separately, and verify private-file recovery separately. Employee import, venue configuration and actual operating policy choices remain with the ongoing setup work.

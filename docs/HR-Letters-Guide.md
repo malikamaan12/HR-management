@@ -1,6 +1,6 @@
 # HR Letter Centre — 19 September 2026
 
-Status: implemented and validated locally; not pushed or deployed. The live application remains `e99c47e`. This batch follows local service-readiness commit `73bd0be` and can be included in the next consolidated release.
+Status: deployed in application commit `eb3fb5c` on Render Free at 10:37:27 GMT+3 on 19 September 2026, together with service-readiness commit `73bd0be`. Build, migrations, health/readiness and authenticated administrator screens passed. See [the deployment record](HR-Letters-Deployment.md).
 
 ## What is included
 
@@ -33,6 +33,6 @@ An independent reviewer can return a request for correction or reject it. The em
 - The template-placeholder case passed again after adding a generated-text size limit. This was a targeted rerun, not an additional full suite.
 - TypeScript and the client/server production build passed. The existing approximately 633 kB main-client chunk warning remains.
 - An isolated loopback preview using synthetic PGlite records verified navigation, draft creation, publication and the employee/published-template request selectors through the browser. The temporary tab and server were closed. Production data and configuration were not changed.
-- Additive migration `0042_hr_letters.sql` is registered in the migration journal. It creates template/request tables, indexes and immutable-content protections. It has not run in production. Earlier migrations are unchanged.
+- Additive migration `0042_hr_letters.sql` is registered in the migration journal. It creates template/request tables, indexes and immutable-content protections. Render startup completed migrations in production at 10:37:01 GMT+3 on 19 September 2026; the deployed letter/template queries subsequently succeeded. Earlier migrations are unchanged.
 
-After the next consolidated deployment, configure real company-approved templates and authorized HR reviewers. Actual employee import and the provider/backup acceptance work described in [Service-Readiness-Release.md](Service-Readiness-Release.md) remain separate setup tasks.
+Configure real company-approved templates and authorized HR reviewers before issuing letters. Actual employee import and the provider/backup acceptance work described in [Service-Readiness-Release.md](Service-Readiness-Release.md) remain separate setup tasks.
