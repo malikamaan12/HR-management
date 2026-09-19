@@ -44,7 +44,7 @@ test('setup requires an authenticated administrator and never marks an empty com
   const admin = await account('admin', 'super_admin'), hr = await account('hr', 'hr'), worker = await account('worker', 'permanent_employee');
   expect((await read()).status).toBe(401); expect((await read(hr.token)).status).toBe(403); expect((await read(worker.token)).status).toBe(403);
   const result = await read(admin.token); expect(result.status, result.body.message).toBe(200); expect(result.cache).toContain('no-store');
-  expect(result.body.counts).toEqual({ activeEmployees: 0, linkedEmployees: 0, teams: 0, sites: 0 });
+  expect(result.body.counts).toEqual({ activeEmployees: 0, linkedEmployees: 0, readyEmployees: 0, setupPendingEmployees: 0, teams: 0, sites: 0 });
   expect(section(result, 'people').status).toBe('not_started'); expect(section(result, 'leave').status).not.toBe('ready');
   expect(result.body.sections.every((item: any) => item.status === 'ready')).toBe(false);
 });
@@ -53,10 +53,10 @@ test('readiness detects inactive employee accounts without exposing private empl
   const admin = await account('admin', 'super_admin'), worker = await account('worker', 'permanent_employee'); await employee(1, worker.id);
   const first = await read(admin.token); expect(first.body.counts.activeEmployees).toBe(1); expect(first.body.counts.linkedEmployees).toBe(1); expect(section(first, 'people').status).toBe('ready');
   await ctx.db.update(s.users).set({ passwordSetupRequired: true }).where(eq(s.users.id, worker.id));
-  const pending = await read(admin.token); expect(pending.body.counts.linkedEmployees).toBe(0); expect(section(pending, 'people').status).toBe('action_required');
+  const pending = await read(admin.token); expect(pending.body.counts.linkedEmployees).toBe(1); expect(pending.body.counts.readyEmployees).toBe(0); expect(pending.body.counts.setupPendingEmployees).toBe(1); expect(section(pending, 'people').issues[0].message).toContain('has a linked account'); expect(section(pending, 'people').status).toBe('action_required');
   await ctx.db.update(s.users).set({ isActive: false, passwordSetupRequired: false }).where(eq(s.users.id, worker.id));
   const countBefore = (await ctx.db.select().from(s.activityLogs)).length, second = await read(admin.token);
-  expect(second.body.counts.linkedEmployees).toBe(0); expect(section(second, 'people').status).toBe('action_required');
+  expect(second.body.counts.linkedEmployees).toBe(1); expect(second.body.counts.readyEmployees).toBe(0); expect(second.body.counts.setupPendingEmployees).toBe(0); expect(section(second, 'people').status).toBe('action_required');
   const serialized = JSON.stringify(second.body); expect(serialized).not.toContain('PRIVATE-'); expect(serialized).not.toContain('password');
   expect((await ctx.db.select().from(s.activityLogs)).length).toBe(countBefore);
   expect(await ctx.db.select().from(s.hrRules)).toHaveLength(0);

@@ -12,7 +12,7 @@ export interface OperationsSetupSection {
 }
 export interface OperationsSetupResponse {
   asOf: string;
-  counts: { activeEmployees: number; linkedEmployees: number; teams: number; sites: number };
+  counts: { activeEmployees: number; linkedEmployees: number; readyEmployees: number; setupPendingEmployees: number; teams: number; sites: number };
   sections: OperationsSetupSection[];
   /** A data limit was reached; affected checks must not be treated as complete. */
   truncated: boolean;

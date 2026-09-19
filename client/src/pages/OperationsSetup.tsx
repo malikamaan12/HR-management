@@ -104,8 +104,8 @@ export default function OperationsSetup() {
       <p className="text-xs text-muted-foreground">This date checks location, supervisor and rule coverage for currently active employees. Accounts, roles and published course requirements use their current state. The editors below use their current saved versions and explicit effective dates when you save.</p>
       <QueryError error={readiness.error}/>
       {readiness.isLoading && <p role="status">Loading configuration readiness…</p>}
-      {data && <><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{[
-        ['Active employees', data.counts.activeEmployees], ['Employees with linked accounts', data.counts.linkedEmployees], ['Workforce teams', data.counts.teams], ['Workforce sites', data.counts.sites],
+      {data && <><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{[
+        ['Active employees', data.counts.activeEmployees], ['Employees with linked accounts', data.counts.linkedEmployees], ['Accounts ready to sign in', data.counts.readyEmployees], ['Password setup pending', data.counts.setupPendingEmployees], ['Workforce teams', data.counts.teams], ['Workforce sites', data.counts.sites],
       ].map(([label, count]) => <div key={label} className="rounded-lg border p-4"><p className="text-sm text-muted-foreground">{label}</p><p className="mt-1 text-2xl font-semibold">{count}</p></div>)}</div>
         {data.counts.activeEmployees === 0 && <p className="rounded-md border p-4 text-sm">No active employees are recorded yet. Add real employee records and link approved user accounts before confirming location coverage, supervisor access or individual onboarding requirements.</p>}
         {data.truncated && <p role="status" className="text-sm">Some readiness details are limited in this view. Review the linked modules for the remaining records.</p>}

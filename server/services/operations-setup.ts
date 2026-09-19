@@ -10,7 +10,7 @@ import type {OperationsSetupResponse,OperationsSetupSection,OperationsSetupSecti
 import {locationPolicy} from './attendance-location';
 
 type Person={id:number;code:string;userId:number|null;type:'permanent'|'temporary'|'contract';department:string;workSchedule:string;reportingManagerId:number|null};
-type Account={id:number;role:UserRole;department:string|null;isActive:boolean;approvalStatus:string;passwordSetupRequired?:boolean;employeeId:number|null;employeeStatus:string|null};
+type Account={id:number;role:UserRole;department:string|null;isActive:boolean;approvalStatus:string;passwordSetupRequired?:boolean;accountState?:string;employeeId:number|null;employeeStatus:string|null};
 type Team={id:number;siteId:number;name:string};
 type Membership={id:number;teamId:number;employeeId:number;startAt:Date|string;endAt:Date|string};
 type Grant={teamId:number;userId:number;startAt:Date|string;endAt:Date|string};
@@ -27,7 +27,7 @@ export interface OperationsSetupData {
 }
 const limits={people:5000,accounts:10000,teams:10000,memberships:20000,grants:20000,shifts:20000,locations:10000,rules:20000,leaveTypes:500,courses:1000,onboarding:5000,enrollments:50000};
 const stamp=(value:Date|string)=>new Date(value).getTime();
-const validAccount=(user:Account|undefined):user is Account=>!!user&&user.isActive&&user.approvalStatus==='approved'&&!user.passwordSetupRequired;
+const validAccount=(user:Account|undefined):user is Account=>!!user&&user.isActive&&user.approvalStatus==='approved'&&(!user.accountState||user.accountState==='active')&&!user.passwordSetupRequired;
 
 /** Mirrors employeeScope, with the authoritative shared role permissions and projected account links. */
 export function setupApproverCanAccess(user:Account|undefined,employee:Person,module:HRModule){
@@ -61,10 +61,13 @@ export function evaluateOperationsSetup(data:OperationsSetupData,asOf:string):Op
   const employeeHref=(_employee:Person)=>'/employees';
 
   for(const employee of data.people){
-    if(!validAccount(employee.userId===null?undefined:users.get(employee.userId)))add('people',`account-${employee.id}`,`${label(employee)} needs a linked, active, approved login account with sign-in setup completed.`,employeeHref(employee));
+    const account=employee.userId===null?undefined:users.get(employee.userId);
+    if(!account)add('people',`account-${employee.id}`,`${label(employee)} needs a linked login account.`, '/user-management');
+    else if(!account.isActive||account.approvalStatus!=='approved'||(account.accountState&&account.accountState!=='active'))add('people',`account-${employee.id}`,`${label(employee)} has a linked account whose access is inactive or awaiting approval.`, '/user-management');
+    else if(account.passwordSetupRequired)add('people',`account-${employee.id}`,`${label(employee)} has a linked account and needs to complete sign-in setup.`, '/user-management');
     if(employee.workSchedule==='unassigned')add('people',`schedule-${employee.id}`,`${label(employee)} needs an office or shift-based work schedule.`,employeeHref(employee));
   }
-  bySection.people.summary=`${data.counts.linkedEmployees} of ${data.counts.activeEmployees} active employees have an active approved account. Employee work schedules are also checked.`;
+  bySection.people.summary=`${data.counts.linkedEmployees} of ${data.counts.activeEmployees} active employees have linked accounts; ${data.counts.readyEmployees} can sign in and ${data.counts.setupPendingEmployees} need sign-in setup. Employee work schedules are also checked.`;
 
   const fences=data.locations.flatMap(row=>{const parsed=geofenceDefinition.safeParse(row.config);if(!parsed.success){add('locations',`invalid-location-${row.id}`,`Location #${row.id} needs valid location settings.`, '/operations-setup?tab=locations');return [];}return parsed.data.enabled&&(!parsed.data.startsOn||parsed.data.startsOn<=asOf)&&(!parsed.data.endsOn||parsed.data.endsOn>=asOf)?[parsed.data]:[];});
   const covered=(employeeId:number,siteId:number|null)=>fences.some(f=>f.siteId===siteId&&(!f.employeeIds.length||f.employeeIds.includes(employeeId)));
@@ -156,9 +159,13 @@ export async function operationsSetup(asOf:string):Promise<OperationsSetupRespon
   return db.transaction(async tx=>{
     const rows=<T>(result:{rows:unknown[]})=>result.rows as T[];
     const [countResult,peopleResult,accountsResult,teamsResult,membershipsResult,grantsResult,shiftsResult,locationsResult,rulesResult,typesResult,coursesResult,onboardingResult,enrollmentsResult,policy]=await Promise.all([
-      tx.execute(sql`SELECT (SELECT count(*)::int FROM employees WHERE status='active') AS "activeEmployees",(SELECT count(*)::int FROM employees e JOIN users u ON u.id=e.user_id WHERE e.status='active' AND u.is_active=true AND u.approval_status='approved' AND u.password_setup_required=false) AS "linkedEmployees",(SELECT count(*)::int FROM workforce_teams) AS teams,(SELECT count(*)::int FROM workforce_sites) AS sites`),
+      tx.execute(sql`SELECT count(*)::int AS "activeEmployees", count(u.id)::int AS "linkedEmployees",
+        count(u.id) FILTER (WHERE u.is_active=true AND u.approval_status='approved' AND u.account_state='active' AND u.password_setup_required=false)::int AS "readyEmployees",
+        count(u.id) FILTER (WHERE u.is_active=true AND u.approval_status='approved' AND u.account_state='active' AND u.password_setup_required=true)::int AS "setupPendingEmployees",
+        (SELECT count(*)::int FROM workforce_teams) AS teams,(SELECT count(*)::int FROM workforce_sites) AS sites
+        FROM employees e LEFT JOIN users u ON u.id=e.user_id WHERE e.status='active'`),
       tx.execute(sql`SELECT id,employee_id AS code,user_id AS "userId",type,department,work_schedule AS "workSchedule",reporting_manager_id AS "reportingManagerId" FROM employees WHERE status='active' ORDER BY id LIMIT ${limits.people+1}`),
-      tx.execute(sql`SELECT u.id,u.role,u.department,u.is_active AS "isActive",u.approval_status AS "approvalStatus",u.password_setup_required AS "passwordSetupRequired",e.id AS "employeeId",e.status AS "employeeStatus" FROM users u LEFT JOIN employees e ON e.user_id=u.id ORDER BY u.id LIMIT ${limits.accounts+1}`),
+      tx.execute(sql`SELECT u.id,u.role,u.department,u.is_active AS "isActive",u.approval_status AS "approvalStatus",u.password_setup_required AS "passwordSetupRequired",u.account_state AS "accountState",e.id AS "employeeId",e.status AS "employeeStatus" FROM users u LEFT JOIN employees e ON e.user_id=u.id ORDER BY u.id LIMIT ${limits.accounts+1}`),
       tx.execute(sql`SELECT id,site_id AS "siteId",name FROM workforce_teams ORDER BY id LIMIT ${limits.teams+1}`),
       tx.execute(sql`SELECT m.id,m.team_id AS "teamId",m.employee_id AS "employeeId",m.start_at AS "startAt",m.end_at AS "endAt" FROM workforce_members m JOIN employees e ON e.id=m.employee_id WHERE e.status='active' AND m.start_at<${window.end}::timestamptz AND m.end_at>${window.start}::timestamptz ORDER BY m.id LIMIT ${limits.memberships+1}`),
       tx.execute(sql`SELECT team_id AS "teamId",user_id AS "userId",start_at AS "startAt",end_at AS "endAt" FROM workforce_grants WHERE permission='review_time' AND revoked_at IS NULL AND start_at<${window.end}::timestamptz AND end_at>${window.start}::timestamptz ORDER BY id LIMIT ${limits.grants+1}`),

@@ -9,7 +9,7 @@ const day='2026-09-19';
 const policy=()=>leaveRule.parse({paid:true,balanceRequired:false,accrualMode:'none',annualDays:0,monthlyDays:0,carryoverLimit:0,minServiceDays:0,maxConsecutiveDays:30,approverId:20});
 function fixture():OperationsSetupData{
   return {
-    counts:{activeEmployees:1,linkedEmployees:1,teams:1,sites:1},
+    counts:{activeEmployees:1,linkedEmployees:1,readyEmployees:1,setupPendingEmployees:0,teams:1,sites:1},
     people:[{id:1,code:'SYNTHETIC-1',userId:10,type:'permanent',department:'Operations',workSchedule:'shift_based',reportingManagerId:2}],
     accounts:[
       {id:10,role:'permanent_employee',department:'Operations',isActive:true,approvalStatus:'approved',employeeId:1,employeeStatus:'active'},
@@ -32,7 +32,7 @@ const section=(data:OperationsSetupData,id:OperationsSetupSectionId)=>evaluateOp
 test('a fully configured synthetic employee has ready sections but an empty company never does',()=>{
   const configured=fixture();
   expect(evaluateOperationsSetup(configured,day).sections.every(s=>s.status==='ready')).toBe(true);
-  const empty={...fixture(),counts:{activeEmployees:0,linkedEmployees:0,teams:0,sites:0},people:[],accounts:[],teams:[],memberships:[],grants:[],shifts:[],locations:[],rules:[],leaveTypes:[],courses:[],onboarding:[],enrollments:[]};
+  const empty={...fixture(),counts:{activeEmployees:0,linkedEmployees:0,readyEmployees:0,setupPendingEmployees:0,teams:0,sites:0},people:[],accounts:[],teams:[],memberships:[],grants:[],shifts:[],locations:[],rules:[],leaveTypes:[],courses:[],onboarding:[],enrollments:[]};
   expect(evaluateOperationsSetup(empty,day).sections.map(s=>s.status)).toEqual(Array(5).fill('not_started'));
 });
 
