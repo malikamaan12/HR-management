@@ -1,3 +1,4 @@
+import {TitleIcon,StatusPill,EmptyState} from '@/components/ux/ModuleVisuals';
 import { cloneElement, isValidElement, useId, type ReactNode, type ReactElement } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiJson } from '@/lib/queryClient';
@@ -10,11 +11,11 @@ export function Field({ label, children }: {
 export function Section({ title, children }: {
     title: string;
     children: ReactNode;
-}) { return <section className="space-y-4 rounded-lg border bg-card p-5"><h2 className="text-lg font-semibold">{title}</h2>{children}</section>; }
+}) { return <section className="module-card space-y-4 rounded-2xl border bg-card p-5 sm:p-6"><h2 className="flex items-center gap-3 text-lg font-semibold"><TitleIcon title={title}/>{title}</h2>{children}</section>; }
 export function Table({ headers, rows }: {
     headers: string[];
     rows: ReactNode[][];
-}) { return <div className="overflow-auto"><table className="w-full text-sm"><thead><tr>{headers.map(h => <th className="p-3 text-left" key={h}>{h}</th>)}</tr></thead><tbody>{rows.map((row, i) => <tr className="border-t" key={i}>{row.map((cell, j) => <td className="p-3 align-top" key={j}>{cell}</td>)}</tr>)}</tbody></table>{!rows.length && <p className="p-3 text-sm text-muted-foreground">No records to show.</p>}</div>; }
+}) { return <div className="module-table-wrap overflow-auto rounded-xl border"><table className="module-table w-full text-sm"><thead><tr>{headers.map(h => <th scope="col" className="bg-muted/60 p-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground" key={h}>{h}</th>)}</tr></thead><tbody>{rows.map((row, i) => <tr className="border-t" key={i}>{row.map((cell, j) => <td className="p-3 align-top" key={j}>{typeof cell==='string'?<StatusPill value={cell}/>:cell}</td>)}</tr>)}</tbody></table>{!rows.length && <EmptyState title="No records yet" description="Records will appear here when they are available for your selection."/>}</div>; }
 export function useAction(onDone?: () => void) { const cache = useQueryClient(), { toast } = useToast(); return useMutation({ mutationFn: ({ url, body, method = 'POST' }: {
         url: string;
         body: unknown;

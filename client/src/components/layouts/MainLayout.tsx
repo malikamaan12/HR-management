@@ -1,4 +1,5 @@
-import { ReactNode } from "react";
+import {useLocation} from 'wouter';
+import { ReactNode, useEffect, useRef } from "react";
 import { Helmet } from 'react-helmet';
 import Sidebar from "./Sidebar";
 import Header from "./Header";
@@ -14,6 +15,9 @@ interface MainLayoutProps {
 
 export default function MainLayout({ children, pageTitle, className }: MainLayoutProps) {
   const { theme } = useTheme();
+  const [location]=useLocation();
+  const mainRef=useRef<HTMLElement>(null);
+  useEffect(()=>{mainRef.current?.scrollTo({top:0,behavior:'instant'});},[location]);
   
   return (
     <div className={cn(
@@ -32,8 +36,8 @@ export default function MainLayout({ children, pageTitle, className }: MainLayou
         
         <Header pageTitle={pageTitle} />
         
-        <main id="main-content" tabIndex={-1} className={cn(
-          "flex-1 min-w-0 overflow-y-auto px-4 py-6 sm:px-6 relative z-10",
+        <main ref={mainRef} id="main-content" tabIndex={-1} className={cn(
+          "module-workspace flex-1 min-w-0 overflow-y-auto px-4 py-6 sm:px-6 relative z-10",
           theme === 'dark' ? 'text-gray-100' : 'text-gray-900'
         )}>
           {children}

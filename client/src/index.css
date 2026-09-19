@@ -67,3 +67,76 @@
     box-shadow: 0 8px 32px rgba(106, 79, 179, 0.15);
   }
 }
+
+
+/* Shared workspace language: cards, table structure and readable actions. */
+@layer components {
+  .module-workspace { scroll-behavior: smooth; }
+  .module-card { box-shadow: 0 2px 8px rgb(15 23 42 / .035); }
+  .module-workspace h1 { @apply tracking-tight; }
+  .module-workspace p { line-height: 1.65; }
+  .section-icon { @apply inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary; }
+  .module-table-wrap { @apply bg-card; }
+  .module-workspace table { @apply w-full text-sm; border-collapse: separate; border-spacing: 0; }
+  .module-workspace thead th { @apply border-b bg-muted/60 text-xs font-semibold text-muted-foreground; white-space: nowrap; }
+  .module-workspace tbody tr:nth-child(even) { background: hsl(var(--muted) / .2); }
+  .module-workspace tbody tr:hover { background: hsl(var(--muted) / .5); }
+  .module-workspace td { @apply border-b border-border/50; }
+  .module-workspace table td:first-child { @apply font-medium; }
+  .module-workspace input:not([type=checkbox]):not([type=radio]), .module-workspace select, .module-workspace textarea { @apply rounded-lg; }
+  .module-workspace input:focus-visible, .module-workspace select:focus-visible, .module-workspace textarea:focus-visible { @apply outline-none ring-2 ring-primary/40 ring-offset-2 ring-offset-background; }
+  .status-pill { @apply inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-medium capitalize; }
+  .status-positive { @apply border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200; }
+  .status-attention { @apply border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200; }
+  .status-negative { @apply border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-200; }
+  .status-neutral { @apply border-border bg-muted text-muted-foreground; }
+  .metric-card { @apply rounded-2xl border bg-card p-4 sm:p-5; border-top-width: 3px; }
+  .metric-primary { @apply border-t-primary/60; }
+  .metric-positive { @apply border-t-emerald-500; }
+  .metric-attention { @apply border-t-amber-500; }
+  .empty-state { @apply flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed px-5 py-8 text-center; }
+  .action-link { @apply inline-flex min-h-10 items-center justify-between gap-3 rounded-lg border bg-background px-3 py-2 text-sm font-medium text-primary no-underline hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary; }
+  .workflow-steps { @apply grid gap-2 sm:grid-cols-3; counter-reset: step; }
+  .workflow-steps li { @apply flex items-center gap-3 rounded-xl border bg-muted/30 p-3 text-sm font-medium; }
+  .workflow-steps li > span { @apply flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary; }
+  .nav-icon { @apply flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted/70 text-muted-foreground; transition: color 180ms ease, background-color 180ms ease, transform 180ms ease; }
+  .module-nav-link[aria-current=page] .nav-icon { @apply bg-primary text-primary-foreground; }
+  .module-nav-link:hover .nav-icon, .module-nav-link:focus-visible .nav-icon { @apply bg-primary/15 text-primary; }
+  .module-nav-link:hover .nav-icon svg, .module-nav-link:focus-visible .nav-icon svg { animation: nav-icon-lift 420ms ease both; }
+  .module-nav-link[aria-current=page] .nav-icon svg { animation: nav-icon-arrive 300ms ease both; }
+}
+@keyframes nav-icon-lift { 0%,100% { transform: translateY(0) rotate(0); } 40% { transform: translateY(-3px) rotate(-7deg); } 75% { transform: translateY(-1px) rotate(3deg); } }
+@keyframes nav-icon-arrive { from { transform: scale(.85); } to { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) {
+  .module-workspace { scroll-behavior: auto; }
+  .module-nav-link .nav-icon, .module-nav-link .nav-icon svg { animation: none !important; transition: none !important; }
+}
+
+/* Section colors aid recognition without replacing labels. */
+[data-section="Workspace"] { --module-ink: #4963b0; --module-tint: #edf1ff; }
+[data-section="People"] { --module-ink: #087c78; --module-tint: #e4f5f2; }
+[data-section="Work & time"] { --module-ink: #2768b8; --module-tint: #eaf2ff; }
+[data-section="Pay & benefits"] { --module-ink: #188052; --module-tint: #e7f6ed; }
+[data-section="HR services"] { --module-ink: #936116; --module-tint: #fff5df; }
+[data-section="Development"] { --module-ink: #7951ae; --module-tint: #f3ecff; }
+[data-section="Insights"] { --module-ink: #8a4d96; --module-tint: #f8edfa; }
+[data-section="Administration"] { --module-ink: #52617b; --module-tint: #edf1f7; }
+.module-card-link .section-icon, .module-nav-link .nav-icon { color: var(--module-ink); background: var(--module-tint); }
+.module-nav-link[aria-current=page] .nav-icon { color: white; background: var(--module-ink); }
+.dark .module-card-link .section-icon, .dark .module-nav-link .nav-icon { color: var(--module-tint); background: color-mix(in srgb, var(--module-ink) 35%, #142033); }
+.dark .module-nav-link[aria-current=page] .nav-icon { color: white; background: var(--module-ink); }
+.metric-positive { border-top-color: #20a477; }
+.metric-attention { border-top-color: #dfa12b; }
+.metric-primary { border-top-color: #7284c8; }
+
+/* Explicit dark tokens keep every shared control readable against slate surfaces. */
+html.dark {
+  color-scheme: dark;
+  --background: 222 47% 11%; --foreground: 210 40% 98%;
+  --card: 222 36% 14%; --card-foreground: 210 40% 98%;
+  --popover: 222 36% 14%; --popover-foreground: 210 40% 98%;
+  --primary: 174 59% 70%; --primary-foreground: 222 47% 11%;
+  --muted: 219 28% 21%; --muted-foreground: 215 20% 72%;
+  --accent: 219 28% 24%; --accent-foreground: 210 40% 98%;
+  --border: 217 26% 28%; --input: 217 26% 28%; --ring: 174 59% 70%;
+}

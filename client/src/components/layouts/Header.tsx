@@ -1,3 +1,4 @@
+import ModuleLauncher from '@/components/ux/ModuleLauncher';
 import {canOpenPage,pageForPath,roleLabel} from '@shared/navigation';
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -50,14 +51,15 @@ export default function Header({ pageTitle }: HeaderProps) {
     <header className={cn("shadow-sm z-20", 
       theme === 'dark' ? 'bg-gray-800 text-white' : 'bg-white text-neutral-800'
     )}>
-      <div className="px-4 sm:px-6 py-3 flex items-center justify-between">
+      <div className="px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
         <div className="flex items-center">
-          <h2 className={cn("text-xl font-poppins font-semibold", 
+          <h2 className={cn("text-base sm:text-xl font-poppins font-semibold",
             theme === 'dark' ? 'text-white' : 'text-neutral-800'
           )}>{pageTitle}</h2>
         </div>
-        <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-3">
+        <div className="flex shrink-0 items-center gap-2">
+          <div className="flex items-center gap-2">
+            <ModuleLauncher/>
             {/* Theme Toggle Button */}
             <Button
               variant="ghost"

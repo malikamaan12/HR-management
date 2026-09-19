@@ -1,0 +1,5 @@
+import {ArrowLeft,ArrowRight,Check,Download,Edit3,Eye,Filter,FolderOpen,Plus,RefreshCw,Save,Search,Send,Trash2,Upload,X} from 'lucide-react';
+export function ActionIcon({label}:{label:string}){
+ const Icon=/^(add|new|create|prepare|start|generate)\b/i.test(label)?Plus:/^(save|apply)\b/i.test(label)?Save:/^(edit|modify|update|configure)\b/i.test(label)?Edit3:/^(approve|confirm|complete|verify|publish|mark as)\b/i.test(label)?Check:/^(refresh|reload|retry)\b/i.test(label)?RefreshCw:/^(download|export)\b/i.test(label)?Download:/^(upload|import)\b/i.test(label)?Upload:/^(view|preview)\b/i.test(label)?Eye:/^(open|manage)\b/i.test(label)?FolderOpen:/^(send|submit)\b/i.test(label)?Send:/^(delete|remove)\b/i.test(label)?Trash2:/^(cancel|close|reject|revoke)\b/i.test(label)?X:/^(search|find)\b/i.test(label)?Search:/^filter\b/i.test(label)?Filter:/^(next|continue)\b/i.test(label)?ArrowRight:/^(back|previous)\b/i.test(label)?ArrowLeft:null;
+ return Icon?<Icon aria-hidden="true" className="h-4 w-4 shrink-0"/>:null;
+}

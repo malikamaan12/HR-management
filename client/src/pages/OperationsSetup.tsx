@@ -1,3 +1,4 @@
+import {MetricCard} from '@/components/ux/ModuleVisuals';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Helmet } from 'react-helmet';
@@ -106,7 +107,7 @@ export default function OperationsSetup() {
       {readiness.isLoading && <p role="status">Loading configuration readiness…</p>}
       {data && <><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{[
         ['Active employees', data.counts.activeEmployees], ['Employees with linked accounts', data.counts.linkedEmployees], ['Accounts ready to sign in', data.counts.readyEmployees], ['Password setup pending', data.counts.setupPendingEmployees], ['Workforce teams', data.counts.teams], ['Workforce sites', data.counts.sites],
-      ].map(([label, count]) => <div key={label} className="rounded-lg border p-4"><p className="text-sm text-muted-foreground">{label}</p><p className="mt-1 text-2xl font-semibold">{count}</p></div>)}</div>
+      ].map(([label, count]) => <MetricCard key={label} label={String(label)} value={count}/>)}</div>
         {data.counts.activeEmployees === 0 && <p className="rounded-md border p-4 text-sm">No active employees are recorded yet. Add real employee records and link approved user accounts before confirming location coverage, supervisor access or individual onboarding requirements.</p>}
         {data.truncated && <p role="status" className="text-sm">Some readiness details are limited in this view. Review the linked modules for the remaining records.</p>}
       </>}
