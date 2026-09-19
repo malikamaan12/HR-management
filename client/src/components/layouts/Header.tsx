@@ -1,3 +1,4 @@
+import HubIndicator from '@/components/communications/HubIndicator';
 import ModuleLauncher from '@/components/ux/ModuleLauncher';
 import {canOpenPage,pageForPath,roleLabel} from '@shared/navigation';
 import { Input } from "@/components/ui/input";
@@ -77,7 +78,7 @@ export default function Header({ pageTitle }: HeaderProps) {
               )}
             </Button>
             
-            {canOpenPage(user?.role,pageForPath('/communications')!)&&<Button variant="ghost" size="icon" aria-label="Open communication hub" onClick={()=>setLocation('/communications')}><i aria-hidden="true" className="fas fa-envelope"/></Button>}
+            {canOpenPage(user?.role,pageForPath('/communications')!)&&<HubIndicator onOpen={()=>setLocation('/communications')}/>}
             {/* User Dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

@@ -157,9 +157,16 @@ test('attachments validate size, keep keys private, reject outsiders and disappe
   expect((await request(admin,`/channels/${c.id}/messages`,oversized)).status).toBe(400);expect(ctx.upload).toHaveBeenCalledTimes(1);
   expect((await request(outsider,`/channels/${c.id}/messages/${sent.body.id}/file`)).status).toBe(404);expect(ctx.download).not.toHaveBeenCalled();
   expect((await request(worker,`/channels/${c.id}/messages/${sent.body.id}/file`)).status).toBe(302);
+  const files=(await request(worker,'/search?mode=files&q=briefing')).body.items;
+  expect(files).toHaveLength(1);expect(files[0]).toMatchObject({id:sent.body.id,attachment_name:'briefing.pdf'});expect(files[0]).not.toHaveProperty('attachment_key');expect(files[0]).not.toHaveProperty('content_hash');expect(files[0]).not.toHaveProperty('request_key');
+  expect((await request(outsider,'/search?mode=files&q=briefing')).body.items).toHaveLength(0);
+  expect((await request(worker,`/channels/${c.id}/messages?view=files`)).body.items[0].id).toBe(sent.body.id);
+
   expect((await request(worker,`/channels/${c.id}/messages/${sent.body.id}/retract`,{reason:why})).status).toBe(404);
   expect((await request(admin,`/channels/${c.id}/messages/${sent.body.id}/retract`,{reason:why})).status).toBe(200);
   expect((await request(worker,`/channels/${c.id}/messages`)).body.items[0]).toMatchObject({body:'Message withdrawn',attachment_name:null});
+  expect((await request(worker,'/search?mode=files&q=briefing')).body.items).toHaveLength(0);
+  expect((await request(worker,`/channels/${c.id}/messages?view=files`)).body.items).toHaveLength(0);
   expect((await request(worker,`/channels/${c.id}/messages/${sent.body.id}/file`)).status).toBe(404);
 });
 test('policy limits constrain message length and history; saves are versioned',async()=>{
@@ -215,4 +222,90 @@ test('legacy announcement migration preserves content and safely retains unmappe
     await legacy.exec(readFileSync(new URL('../migrations/0043_internal_communications.sql',import.meta.url),'utf8'));
     expect((await legacy.query('SELECT body,audience,status FROM comm_bulletins ORDER BY id')).rows).toEqual([{body:'Keep exact text',audience:'all',status:'published'},{body:'Private old content',audience:'legacy_custom',status:'archived'}]);expect((await legacy.query('SELECT count(*)::int n FROM announcements')).rows[0].n).toBe(2);
   }finally{await legacy.close();}
+});
+
+test('conversation previews, favorites and mentions are scoped and summary respects mute without hiding mentions',async()=>{
+ const c=await add(await group()),m=(await send(c,admin,'Meet at the entrance',{mentions:[worker.id]})).body;
+ expect((await request(worker,'/channels?filter=unread')).body.items[0]).toMatchObject({last_message:'Meet at the entrance',unread:1,mentions:1,favorite:false});
+ expect((await request(outsider,'/summary')).body).toMatchObject({unreadConversations:0,mentions:0});
+ expect((await request(worker,'/summary')).body).toMatchObject({unreadConversations:1,mentions:1});
+ expect((await request(worker,`/channels/${c.id}/state`,{favorite:true,muted:true})).status).toBe(200);
+ expect((await request(worker,'/channels?filter=favorites')).body.items).toHaveLength(1);expect((await request(admin,'/channels?filter=favorites')).body.items).toHaveLength(0);
+ expect((await request(worker,'/channels?filter=unread')).body.items).toHaveLength(0);expect((await request(worker,'/channels?filter=mentions')).body.items).toHaveLength(1);
+ expect((await request(worker,'/summary')).body).toMatchObject({unreadConversations:0,mentions:1});
+ await request(worker,`/channels/${c.id}/state`,{lastReadId:m.id});expect((await request(worker,`/channels/${c.id}`)).body).toMatchObject({favorite:true,muted:true});expect((await request(worker,'/summary')).body.mentions).toBe(0);
+});
+
+test('message reactions are idempotent, belong to their actor, and cannot bypass read-only channels',async()=>{
+ const c=await add(await group()),m=(await send(c)).body,path=`/channels/${c.id}/messages/${m.id}/reaction`;
+ expect((await request(outsider,path,{active:true,emoji:'👍'})).status).toBe(404);
+ expect((await request(worker,path,{active:true,emoji:'bad'})).status).toBe(400);
+ for(let i=0;i<2;i++)expect((await request(worker,path,{active:true,emoji:'👍'})).status).toBe(200);
+ await request(admin,path,{active:true,emoji:'👍'});
+ expect((await request(worker,`/channels/${c.id}/messages`)).body.items[0].reactions).toEqual([{emoji:'👍',count:2,mine:true}]);
+ await request(worker,path,{active:false,emoji:'👍'});expect((await request(worker,`/channels/${c.id}/messages`)).body.items[0].reactions).toEqual([{emoji:'👍',count:1,mine:false}]);
+ await request(admin,`/channels/${c.id}/settings`,{version:c.version,managersOnly:true,archived:false,reason:why});expect((await request(worker,path,{active:true,emoji:'✅'})).status).toBe(403);
+});
+
+test('saved messages are personal, search is scoped, and expired membership removes all discovery surfaces',async()=>{
+ let c=await add(await group());const m=(await send(c,admin,'Coordinate the entrance queue')).body;
+ await request(worker,`/channels/${c.id}/messages/${m.id}/save`,{active:true});
+ expect((await request(worker,'/search?mode=saved')).body.items[0].id).toBe(m.id);expect((await request(admin,'/search?mode=saved')).body.items).toHaveLength(0);
+ expect((await request(worker,'/search?q=entrance')).body.items).toHaveLength(1);expect((await request(outsider,'/search?q=entrance')).body.items).toHaveLength(0);
+ expect((await request(worker,'/search?q=%25')).status).toBe(400);expect((await request(worker,'/search?q=%25_')).body.items).toHaveLength(0);
+ await request(admin,`/channels/${c.id}/members/${worker.id}/remove`,{version:c.version,reason:why});
+ expect((await request(worker,'/search?mode=saved')).body.items).toHaveLength(0);expect((await request(worker,'/search?q=entrance')).body.items).toHaveLength(0);expect((await request(worker,`/channels/${c.id}/messages/${m.id}/replies`)).status).toBe(404);
+ expect((await request(worker,'/summary')).body).toMatchObject({unreadConversations:0,mentions:0});
+});
+
+test('pins require current manager access; withdrawals hide text, pins, reactions and saved discovery',async()=>{
+ const c=await add(await group()),m=(await send(c,admin,'Sensitive coordination instruction')).body,path=`/channels/${c.id}/messages/${m.id}`;
+ expect((await request(worker,path+'/pin',{active:true})).status).toBe(403);expect((await request(admin,path+'/pin',{active:true})).status).toBe(200);
+ expect((await request(worker,`/channels/${c.id}/messages?view=pinned`)).body.items[0].pinned).toBe(true);
+ await request(worker,path+'/save',{active:true});await request(worker,path+'/reaction',{active:true,emoji:'👀'});
+ await request(admin,path+'/retract',{reason:why});
+ expect((await request(worker,`/channels/${c.id}/messages`)).body.items[0]).toMatchObject({body:'Message withdrawn',pinned:false,saved:false,reactions:[]});
+ expect((await request(worker,'/search?mode=saved')).body.items).toHaveLength(0);expect((await request(worker,`/channels/${c.id}/messages?view=pinned`)).body.items).toHaveLength(0);expect((await request(worker,path+'/reaction',{active:true,emoji:'👍'})).status).toBe(404);
+ expect((await request(worker,'/channels')).body.items[0].last_message).toBe(null);
+});
+
+test('reply context and paginated thread results never disclose foreign or withdrawn parent text',async()=>{
+ const c=await add(await group()),m=(await send(c,admin,'Original instructions')).body,r=(await send(c,worker,'I can cover the desk',{replyTo:m.id})).body;
+ const thread=await request(worker,`/channels/${c.id}/messages/${m.id}/replies`);expect(thread.body.root.id).toBe(m.id);expect(thread.body.items[0]).toMatchObject({id:r.id,reply_preview:{id:m.id,body:'Original instructions'}});
+ const other=await group(outsider);expect((await request(admin,`/channels/${other.id}/messages/${m.id}/replies`)).status).toBe(404);expect((await request(worker,`/channels/${c.id}/messages/${m.id}/replies?offset=25`)).body.items).toHaveLength(0);
+ await request(admin,`/channels/${c.id}/messages/${m.id}/retract`,{reason:why});const after=(await request(worker,`/channels/${c.id}/messages/${m.id}/replies`)).body;expect(after.root.body).toBe('Message withdrawn');expect(after.items[0].reply_preview.body).toBe('Message withdrawn');expect(JSON.stringify(after)).not.toContain('Original instructions');
+});
+
+test('history windows apply to pins, saved messages, reply previews and file search',async()=>{
+ const c=await add(await group()),m=(await send(c)).body;
+ await request(worker,`/channels/${c.id}/messages/${m.id}/save`,{active:true});await request(admin,`/channels/${c.id}/messages/${m.id}/pin`,{active:true});
+ await pg.exec('ALTER TABLE comm_messages DISABLE TRIGGER comm_message_immutable');await pg.exec("UPDATE comm_messages SET created_at=now()-interval '400 days'");await pg.exec('ALTER TABLE comm_messages ENABLE TRIGGER comm_message_immutable');
+ expect((await request(worker,'/search?mode=saved')).body.items).toHaveLength(0);expect((await request(worker,`/channels/${c.id}/messages?view=pinned`)).body.items).toHaveLength(0);expect((await request(worker,`/channels/${c.id}/messages/${m.id}/replies`)).status).toBe(404);expect((await request(admin,`/channels/${c.id}/messages/${m.id}/pin`,{active:false})).status).toBe(404);
+});
+
+test('summary includes only live required notices and the current user’s unread action reminders',async()=>{
+ const b=await publish(await draft());await publish(await draft(admin,{publishAt:instant(1),expiresAt:instant(3)}));
+ await ctx.db.insert(s.notifications).values({userId:worker.id,message:'Private reminder',channel:'push',status:'pending'});
+ expect((await request(worker,'/summary')).body).toMatchObject({pendingAcknowledgements:1,unreadActions:1});expect((await request(outsider,'/summary')).body.unreadActions).toBe(0);
+ await request(worker,`/bulletins/${b.id}/read`,{});await request(worker,`/bulletins/${b.id}/acknowledge`,{});expect((await request(worker,'/summary')).body.pendingAcknowledgements).toBe(0);
+});
+
+test('failed pin auditing rolls back the pin while unrelated administrators cannot access it',async()=>{
+ const c=await group(),m=(await send(c)).body;
+ await pg.exec("CREATE FUNCTION reject_pin_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.entity_type='comm_message_pin' THEN RAISE EXCEPTION 'Synthetic pin audit failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_pin_audit BEFORE INSERT ON activity_logs FOR EACH ROW EXECUTE FUNCTION reject_pin_audit()");
+ try{expect((await request(admin,`/channels/${c.id}/messages/${m.id}/pin`,{active:true})).status).toBe(500);expect((await request(admin,`/channels/${c.id}/messages?view=pinned`)).body.items).toHaveLength(0);}finally{await pg.exec('DROP TRIGGER reject_pin_audit ON activity_logs; DROP FUNCTION reject_pin_audit()');}
+});
+
+
+test('reply and discovery pagination show newest messages first without losing the older page',async()=>{
+ const c=await add(await group()),parent=(await send(c)).body;
+ const inserted=await pg.query(`INSERT INTO comm_messages(channel_id,author_id,body,reply_to,request_key,content_hash) SELECT $1,$2,'Shift note '||n,$3,gen_random_uuid(),'synthetic' FROM generate_series(1,27) n RETURNING id`,[c.id,admin.id,parent.id]);
+ const ids=inserted.rows.map((r:any)=>r.id).reverse();
+ const first=(await request(worker,`/channels/${c.id}/messages/${parent.id}/replies`)).body;
+ const second=(await request(worker,`/channels/${c.id}/messages/${parent.id}/replies?offset=25`)).body;
+ expect(first.hasMore).toBe(true);expect(second.hasMore).toBe(false);expect(first.root.reply_count).toBe(27);
+ expect([...first.items,...second.items].map((m:any)=>m.id)).toEqual(ids);
+ const results=(await request(worker,'/search?q=Shift%20note')).body;
+ expect(results.hasMore).toBe(true);expect(results.items).toHaveLength(25);expect(results.items[0].id).toBe(ids[0]);
+ expect((await request(worker,'/search?q=Shift%20note&offset=25')).body.items.map((m:any)=>m.id)).toEqual(ids.slice(25));
 });

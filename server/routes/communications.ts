@@ -1,3 +1,5 @@
+import chatRouter from './chat';
+import {chatColumns,safeChatMessage} from '../services/chat';
 import { Router } from 'express';
 import { sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -17,6 +19,7 @@ import { uploadCommunicationFile, deleteCommunicationFile, communicationFileUrl,
 const router = Router();
 router.use(authenticate);
 router.use(requireCommunicationAccess);
+router.use(chatRouter);
 const sameVersion = (row: any, version: number) => { if (Number(row.version) !== version) throw new WorkflowError(409, 'This record changed; reload before continuing'); };
 const page = (rows: any[]) => ({ items: rows.slice(0, 25), hasMore: rows.length > 25 });
 const sendLimit = rateLimit({ windowMs: 60000, limit: 30, keyGenerator: req => String(req.user!.userId), standardHeaders: 'draft-8', legacyHeaders: false, message: { message: 'Wait a moment before sending more messages' } });
@@ -48,12 +51,17 @@ router.get('/policy/history', recordHandler(async (req, res) => {
 }));
 
 router.get('/channels', recordHandler(async (req, res) => {
-  const q = pageQuery.parse(req.query), p = await policy(db);
-  const rows = (await db.execute(sql`SELECT c.*,(${channelManage(req.user.userId, req.user.role)}) AS can_manage,${directWritable(req.user)} AS can_contact,coalesce(st.muted,false) AS muted,
+  const q = pageQuery.extend({filter:z.enum(['all','unread','mentions','favorites']).default('all')}).parse(req.query), p = await policy(db);
+  const rows = (await db.execute(sql`SELECT listed.* FROM (SELECT c.*,(${channelManage(req.user.userId, req.user.role)}) AS can_manage,${directWritable(req.user)} AS can_contact,coalesce(st.muted,false) AS muted,coalesce(st.favorite,false) AS favorite,
+    CASE WHEN c.kind='direct' THEN coalesce((SELECT u.first_name||' '||u.last_name FROM comm_members cm JOIN users u ON u.id=cm.user_id WHERE cm.channel_id=c.id AND cm.user_id<>${req.user.userId} LIMIT 1),c.name) ELSE c.name END AS display_name,
+    latest.body AS last_message,latest.author_name AS last_author,latest.created_at AS last_activity,
     (SELECT count(*)::int FROM comm_messages m WHERE m.channel_id=c.id AND m.author_id<>${req.user.userId} AND m.id>coalesce(st.last_read_id,0) AND m.retracted_at IS NULL AND m.created_at>=now()-${p.definition.historyDays}*interval '1 day') AS unread,
     (SELECT count(*)::int FROM comm_messages m WHERE m.channel_id=c.id AND m.author_id<>${req.user.userId} AND m.id>coalesce(st.last_read_id,0) AND m.retracted_at IS NULL AND m.mentions @> ${JSON.stringify([req.user.userId])}::jsonb AND m.created_at>=now()-${p.definition.historyDays}*interval '1 day') AS mentions
     FROM comm_channels c LEFT JOIN comm_channel_state st ON st.channel_id=c.id AND st.user_id=${req.user.userId}
-    WHERE ${channelScope(sql`${req.user.userId}`, req.user.role)} AND c.name ILIKE ${searchTerm(q.q)} ORDER BY c.archived_at NULLS FIRST,c.id DESC LIMIT 26 OFFSET ${q.offset}`)).rows;
+    LEFT JOIN LATERAL (SELECT left(m.body,160) AS body,m.created_at,u.first_name AS author_name FROM comm_messages m JOIN users u ON u.id=m.author_id WHERE m.channel_id=c.id AND m.retracted_at IS NULL AND m.created_at>=now()-${p.definition.historyDays}*interval '1 day' ORDER BY m.id DESC LIMIT 1) latest ON true
+    WHERE ${channelScope(sql`${req.user.userId}`, req.user.role)} AND c.name ILIKE ${searchTerm(q.q)}) listed
+    WHERE (${q.filter!=='favorites'} OR favorite) AND (${q.filter!=='unread'} OR unread>0 AND NOT muted AND archived_at IS NULL) AND (${q.filter!=='mentions'} OR mentions>0)
+    ORDER BY archived_at NULLS FIRST,favorite DESC,coalesce(last_activity,created_at) DESC,id DESC LIMIT 26 OFFSET ${q.offset}`)).rows;
   res.json(page(rows.map((r: any) => ({ ...r, can_post: r.can_contact && new Date(r.starts_at)<=new Date() && (!r.ends_at || new Date(r.ends_at)>new Date()) && !r.archived_at && (!r.managers_only || r.can_manage) && (r.kind !== 'direct' || p.definition.directMessages) }))));
 }));
 router.post('/channels', recordHandler(async (req, res) => {
@@ -127,9 +135,10 @@ router.get('/channels/:id/history', recordHandler(async (req, res) => {
 
 router.get('/channels/:id/messages', recordHandler(async (req, res) => {
   const c = await channel(db, req.user, positiveId.parse(req.params.id));
-  const q = pageQuery.extend({ before: z.coerce.number().int().positive().optional() }).strict().parse(req.query);
-  const rows = (await db.execute(sql`SELECT m.*,u.first_name || ' ' || u.last_name AS author_name FROM comm_messages m JOIN users u ON u.id=m.author_id WHERE m.channel_id=${c.id} AND m.created_at>=now()-${c.policy.historyDays}*interval '1 day' AND (${!q.before} OR m.id<${q.before || 2147483647}) AND (${q.q === ''} OR (m.retracted_at IS NULL AND m.body ILIKE ${searchTerm(q.q)})) ORDER BY m.id DESC LIMIT 26`)).rows;
-  res.json(page(rows.map(safeMessage)));
+  const q = pageQuery.extend({ before: z.coerce.number().int().positive().optional(),view:z.enum(['all','pinned','files']).default('all') }).strict().parse(req.query);
+  const rows = (await db.execute(sql`SELECT m.*,u.first_name || ' ' || u.last_name AS author_name,${chatColumns(req.user.userId,c.policy.historyDays)} FROM comm_messages m JOIN users u ON u.id=m.author_id WHERE m.channel_id=${c.id} AND m.created_at>=now()-${c.policy.historyDays}*interval '1 day' AND (${!q.before} OR m.id<${q.before || 2147483647}) AND (${q.q === ''} OR (m.retracted_at IS NULL AND m.body ILIKE ${searchTerm(q.q)}))
+    AND (${q.view!=='pinned'} OR m.retracted_at IS NULL AND EXISTS(SELECT 1 FROM comm_pinned_messages p WHERE p.message_id=m.id)) AND (${q.view!=='files'} OR m.retracted_at IS NULL AND m.attachment_key IS NOT NULL) ORDER BY m.id DESC LIMIT 26`)).rows;
+  res.json(page(rows.map(safeChatMessage)));
 }));
 router.post('/channels/:id/messages', sendLimit, (req, res, next) => upload(req, res, error => error ? res.status(400).json({ message: 'Attach one PDF, PNG or JPEG within the configured size limit' }) : next()), recordHandler(async (req, res) => {
   let raw = req.body;
@@ -181,11 +190,11 @@ router.get('/channels/:id/messages/:messageId/file', recordHandler(async (req, r
   res.redirect(await communicationFileUrl(String(row.attachment_key)));
 }));
 router.post('/channels/:id/state', recordHandler(async (req, res) => {
-  const input = z.object({ lastReadId: z.number().int().nonnegative().optional(), muted: z.boolean().optional() }).strict().parse(req.body);
+  const input = z.object({ lastReadId: z.number().int().nonnegative().optional(), muted: z.boolean().optional(),favorite:z.boolean().optional() }).strict().parse(req.body);
   res.json(await db.transaction(async tx => {
     const c = await channel(tx, req.user, positiveId.parse(req.params.id), true);
     if (input.lastReadId && !(await tx.execute(sql`SELECT id FROM comm_messages WHERE channel_id=${c.id} AND id=${input.lastReadId}`)).rows.length) throw new WorkflowError(400, 'Read cursor must refer to this conversation');
-    await tx.execute(sql`INSERT INTO comm_channel_state(channel_id,user_id,last_read_id,muted) VALUES(${c.id},${req.user.userId},${input.lastReadId || 0},${input.muted ?? false}) ON CONFLICT(channel_id,user_id) DO UPDATE SET last_read_id=greatest(comm_channel_state.last_read_id,excluded.last_read_id),muted=coalesce(${input.muted ?? null},comm_channel_state.muted)`);
+    await tx.execute(sql`INSERT INTO comm_channel_state(channel_id,user_id,last_read_id,muted,favorite) VALUES(${c.id},${req.user.userId},${input.lastReadId || 0},${input.muted ?? false},${input.favorite ?? false}) ON CONFLICT(channel_id,user_id) DO UPDATE SET last_read_id=greatest(comm_channel_state.last_read_id,excluded.last_read_id),muted=coalesce(${input.muted ?? null},comm_channel_state.muted),favorite=coalesce(${input.favorite ?? null},comm_channel_state.favorite)`);
     return { ok: true };
   }));
 }));

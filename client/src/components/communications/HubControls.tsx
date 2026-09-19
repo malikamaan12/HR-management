@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState,useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Field, QueryError, fieldClass } from '@/components/hr/Operations';
 import { apiJson } from '@/lib/queryClient';
 export const hub = '/api/communications';
+export function useDebounced(value:string){const [current,setCurrent]=useState(value);useEffect(()=>{const timer=setTimeout(()=>setCurrent(value),300);return()=>clearTimeout(timer);},[value]);return current;}
 export type Page<T> = { items: T[]; hasMore: boolean };
 export type Person = { id: number; name: string; department?: string; kind?: string; current?: boolean; starts_at?: string; ends_at?: string; removed_at?: string };
 export const dateLabel = (value?: string | null) => value ? new Date(value).toLocaleString() : '—';

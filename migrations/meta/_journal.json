@@ -330,6 +330,13 @@
       "when": 1789800000004,
       "tag": "0046_team_org_charts",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1789800000005,
+      "tag": "0047_team_chat_coordination",
+      "breakpoints": true
     }
   ]
 }

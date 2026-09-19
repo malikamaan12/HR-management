@@ -28,7 +28,7 @@ export async function policy(tx: any) {
   return { version: row ? Number(row.version) : 0, definition: row ? communicationPolicy.parse(row.definition) : defaultCommunicationPolicy };
 }
 export async function channel(tx: any, user: TokenPayload, id: number, lock = false) {
-  const row = (await tx.execute(sql`SELECT c.*,(${channelManage(user.userId, user.role)}) AS can_manage,${directWritable(user)} AS can_contact FROM comm_channels c WHERE c.id=${id} AND ${channelScope(sql`${user.userId}`, user.role)} ${lock ? sql`FOR UPDATE OF c` : sql``}`)).rows[0];
+  const row = (await tx.execute(sql`SELECT c.*,coalesce(st.favorite,false) AS favorite,coalesce(st.muted,false) AS muted,(${channelManage(user.userId, user.role)}) AS can_manage,${directWritable(user)} AS can_contact FROM comm_channels c LEFT JOIN comm_channel_state st ON st.channel_id=c.id AND st.user_id=${user.userId} WHERE c.id=${id} AND ${channelScope(sql`${user.userId}`, user.role)} ${lock ? sql`FOR UPDATE OF c` : sql``}`)).rows[0];
   if (!row) throw new WorkflowError(404, 'Conversation not found or access has ended');
   const p = await policy(tx);
   return { ...row, can_post: row.can_contact && new Date(row.starts_at)<=new Date() && (!row.ends_at || new Date(row.ends_at)>new Date()) && !row.archived_at && (!row.managers_only || !!row.can_manage) && (row.kind !== 'direct' || p.definition.directMessages), policy: p.definition };
