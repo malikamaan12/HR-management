@@ -1,0 +1,15 @@
+.org-canvas { background-image: radial-gradient(hsl(var(--muted-foreground) / .18) 1px, transparent 1px); background-size: 22px 22px; }
+.org-tree, .org-tree ul { display: flex; justify-content: center; width: max-content; margin: 0; padding: 0; list-style: none; }
+.org-tree ul { position: relative; padding-top: 30px; }
+.org-tree li { position: relative; display: flex; flex-direction: column; align-items: center; padding: 30px 12px 0; }
+.org-tree > li { padding-top: 0; }
+.org-tree ul::before { content: ''; position: absolute; left: 50%; top: 0; height: 30px; border-left: 2px solid hsl(var(--primary) / .3); }
+.org-tree li::before, .org-tree li::after { content: ''; position: absolute; top: 0; width: 50%; height: 30px; border-top: 2px solid hsl(var(--primary) / .3); }
+.org-tree li::before { right: 50%; }
+.org-tree li::after { left: 50%; border-left: 2px solid hsl(var(--primary) / .3); }
+.org-tree li:first-child::before, .org-tree li:last-child::after, .org-tree > li::before, .org-tree > li::after { display: none; }
+.org-tree li:last-child::before { border-right: 2px solid hsl(var(--primary) / .3); border-radius: 0 10px 0 0; }
+.org-tree li:first-child::after { border-radius: 10px 0 0 0; }
+.org-tree li:only-child::before { display: none; }
+.org-tree li:only-child::after { display: block; width: 0; border-radius: 0; border-top: 0; }
+.org-tree > li:only-child::after { display: none; }
