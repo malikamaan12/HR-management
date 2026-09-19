@@ -70,7 +70,8 @@ export default function EmployeeProfile({ employeeId, onClose }: { employeeId: n
           ['Work schedule', e.workSchedule==='management_office' ? 'Management office' : e.workSchedule==='shift_based' ? 'Assigned shifts' : 'Not assigned'],
           ['Department', e.department], ['Position', e.position], ['Location', e.location], ['Work location', e.workLocation],
           ['Joining date', formatDate(e.joiningDate)], ['Work email', e.workEmail], ['Work phone', e.workPhone],
-          ['Primary manager', e.reportingManagerId ? `Employee record #${e.reportingManagerId}` : null], ['Secondary manager', e.secondaryManagerId ? `Employee record #${e.secondaryManagerId}` : null],
+          ['Primary manager', e.managers?.primary ? `${e.managers.primary.firstName} ${e.managers.primary.lastName} (${e.managers.primary.employeeId})` : e.reportingManagerId ? 'Manager details outside your directory access' : null],
+          ['Secondary manager', e.managers?.secondary ? `${e.managers.secondary.firstName} ${e.managers.secondary.lastName} (${e.managers.secondary.employeeId})` : e.secondaryManagerId ? 'Manager details outside your directory access' : null],
           ...(e.access.personal ? [['Contract end', e.contractEndDate ? formatDate(e.contractEndDate) : null], ['Category', e.employeeCategory], ['Cost center', e.costCenter], ['Job grade', e.jobGrade], ['Probation (months)', e.probationPeriod], ['Notice (days)', e.noticePeriod]] as [string, unknown][] : []),
         ]} />
         {e.workSchedule==='management_office' && policy && <p className="rounded-md bg-muted p-3 text-sm">Office schedule: {officeScheduleSummary(policy.managementOfficeSchedule)}</p>}

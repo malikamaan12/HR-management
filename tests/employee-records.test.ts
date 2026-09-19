@@ -63,6 +63,20 @@ test('employee endpoints require a valid session', async () => {
   for (const path of ['/employees', '/employees/directory', '/employees/1', '/employees/1/activity']) expect((await request('', path)).status).toBe(401);
 });
 
+test('profile resolves both managers by employee reference without exposing managers outside directory scope', async () => {
+  const admin = await account();
+  const self = await account('permanent_employee');
+  const primary = await create(1, { firstName: 'Primary', employeeId: 'LEAD-101' });
+  const secondary = await create(2, { firstName: 'Secondary', employeeId: 'LEAD-202' });
+  const employee = await create(3, { userId: self.id, reportingManagerId: primary.id, secondaryManagerId: secondary.id });
+  const visible = (await request(admin.token, `/employees/${employee.id}`)).body;
+  expect(visible.managers).toEqual({ primary: { id: primary.id, employeeId: 'LEAD-101', firstName: primary.firstName, lastName: primary.lastName }, secondary: { id: secondary.id, employeeId: 'LEAD-202', firstName: secondary.firstName, lastName: secondary.lastName } });
+  expect(JSON.stringify(visible.managers)).not.toMatch(/private-|qidNumber|personalEmail/);
+  const restricted = await request(self.token, `/employees/${employee.id}`);
+  expect(restricted.status).toBe(200);
+  expect(restricted.body.managers).toEqual({ primary: null, secondary: null });
+});
+
 test('lifecycle form payload records history without an employee ID and protects private notes', async () => {
   const admin = await account();
   const manager = await account('manager'); const lead = await create(1, { userId: manager.id });

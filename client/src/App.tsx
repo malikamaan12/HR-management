@@ -127,6 +127,8 @@ function App() {
       case '/attendance': return 'Attendance Tracking';
       case '/leave': return 'Leave Management';
       case '/documents': return 'Document Management';
+      case '/hr-letters': return 'HR Letter Centre';
+      case '/event-staff/archive': return 'Event Archive';
       case '/event-staff': return 'Event Staff Management';
       case '/workforce': return 'Workforce';
       case '/recruitment': return 'Recruitment Management';

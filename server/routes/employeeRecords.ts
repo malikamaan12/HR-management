@@ -1,5 +1,5 @@
 import { Router, type Response } from 'express';
-import { and, count, desc, eq, ilike, or, sql } from 'drizzle-orm';
+import { and, count, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db';
 import { employees, activityLogs, users, employeeLifecycleEvents, insertEmployeeLifecycleEventSchema, type Employee } from '@shared/schema';
@@ -96,6 +96,10 @@ router.get('/:id', async (req, res) => {
     const [row] = await db.select().from(employees).where(and(eq(employees.id, id), employeeScope(req.user!, 'employee_database')));
     if (!row) throw new RecordError(404, 'Employee not found');
     const record = project(row, req.user!);
+    const managerIds = [row.reportingManagerId, row.secondaryManagerId].filter((id): id is number => id !== null);
+    const managers = managerIds.length ? await db.select({ id: employees.id, employeeId: employees.employeeId, firstName: employees.firstName, lastName: employees.lastName })
+      .from(employees).where(and(inArray(employees.id, managerIds), employeeScope(req.user!, 'employee_database'))) : [];
+    record.managers = { primary: managers.find(manager => manager.id === row.reportingManagerId) || null, secondary: managers.find(manager => manager.id === row.secondaryManagerId) || null };
     const [read] = await db.select({ id: employees.id }).from(employees).where(and(eq(employees.id, id), employeeScope(req.user!, 'compliance_documents')));
     const [upload] = await db.select({ id: employees.id }).from(employees).where(and(eq(employees.id, id), employeeScope(req.user!, 'compliance_documents', 'create')));
     record.access.documents = !!read;

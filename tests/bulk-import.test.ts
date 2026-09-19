@@ -33,6 +33,26 @@ async function draft(u:any,data:any[]=[sample()]){const r=await upload(u,csv(dat
 const path=(j:any,suffix='')=>'/job/'+j.id+suffix;
 const commit=(u:any,j:any)=>req(u.token,path(j,'/commit'),{version:j.version,reason,confirmedRows:j.includedRows});
 const records=async(u:any,j:any)=>(await req(u.token,path(j,'/rows'))).body.items;
+
+test.skipIf(!process.env.EMPLOYEE_IMPORT_ACCEPTANCE_CSV)('operator-supplied CSV imports completely and preserves all reporting links',async()=>{
+ const content=readFileSync(process.env.EMPLOYEE_IMPORT_ACCEPTANCE_CSV!,'utf8');
+ const source=parseEmployeeCsv(Buffer.from(content)),admin=await user();
+ const uploaded=await upload(admin,content);expect(uploaded.status).toBe(201);
+ const j=uploaded.body.job;
+ expect(j.failedRows).toBe(0);expect(j.validRows).toBe(source.length);
+ expect((await commit(admin,j)).status).toBe(200);
+ const saved=await ctx.db.select().from(s.employees);
+ expect(saved).toHaveLength(source.length);
+ const ids=new Map(saved.map((e:any)=>[e.employeeId,e.id]));
+ for(const row of source){
+  const e=saved.find((e:any)=>e.employeeId===row.payload.employeeId);
+  expect(e.reportingManagerId).toBe(row.payload.managerEmployeeId?ids.get(row.payload.managerEmployeeId):null);
+  expect(e.secondaryManagerId).toBe(row.payload.secondaryManagerEmployeeId?ids.get(row.payload.secondaryManagerEmployeeId):null);
+  expect(e.workEmail).toBe(row.payload.workEmail||null);
+  expect(e.contractEndDate).toBe(row.payload.contractEndDate||null);
+ }
+ expect(await ctx.db.select().from(s.users)).toHaveLength(1);
+});
 const edit=(u:any,j:any,row:any,extra:any)=>req(u.token,path(j,'/rows/'+row.id),{version:j.version,reason,...extra},'PATCH');
 async function existing(n=1,extra:any={}){const [e]=await ctx.db.insert(s.employees).values({...sample(n),...extra}).returning();return e;}
 beforeAll(async()=>{process.env.JWT_SECRET='bulk-import-access-secret-32-characters';process.env.JWT_REFRESH_SECRET='bulk-import-refresh-secret-32-characters';pg=new PGlite();for(const f of readdirSync(new URL('../migrations',import.meta.url)).filter(n=>n.endsWith('.sql')).sort())await pg.exec(readFileSync(new URL('../migrations/'+f,import.meta.url),'utf8'));ctx.db=drizzle(pg);const app=express();app.use(express.json());app.use(authenticate,moduleAccess);app.use(router);server=app.listen(0,'127.0.0.1');await new Promise<void>(r=>server.once('listening',r));base='http://127.0.0.1:'+(server.address() as any).port;});

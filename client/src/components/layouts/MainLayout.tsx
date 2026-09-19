@@ -1,4 +1,5 @@
 import { ReactNode } from "react";
+import { Helmet } from 'react-helmet';
 import Sidebar from "./Sidebar";
 import Header from "./Header";
 import { cn } from "@/lib/utils";
@@ -20,6 +21,7 @@ export default function MainLayout({ children, pageTitle, className }: MainLayou
       theme === 'dark' ? 'bg-[#0F172A]' : 'bg-[#F8F9FA]',
       className
     )}>
+      <Helmet><title>{pageTitle} | E3 HR System</title></Helmet>
       <Sidebar />
       
       <div className="flex-1 flex flex-col overflow-hidden relative">

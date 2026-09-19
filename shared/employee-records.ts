@@ -32,6 +32,7 @@ export const directoryFields = ['id', 'employeeId', 'firstName', 'lastName', 'fu
   'reportingManagerId', 'secondaryManagerId', 'joiningDate', 'status'] as const;
 export type EmployeeDirectoryEntry = Pick<Employee, typeof directoryFields[number]>;
 export type EmployeeRecord = EmployeeDirectoryEntry & Partial<Employee> & {
+  managers?: { primary: Pick<Employee, 'id' | 'employeeId' | 'firstName' | 'lastName'> | null; secondary: Pick<Employee, 'id' | 'employeeId' | 'firstName' | 'lastName'> | null };
   access: { canEdit: boolean; personal: boolean; banking: boolean; documents: boolean; uploadDocuments: boolean; history: boolean };
 };
 export type EmployeeDirectory = { employees: EmployeeDirectoryEntry[]; total: number; page: number; limit: number; canCreate: boolean };
