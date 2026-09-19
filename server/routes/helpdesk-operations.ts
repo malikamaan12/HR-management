@@ -1,9 +1,11 @@
+import { requireCategory } from '../services/helpdesk-workspace';
+import { categoryIdInput } from '@shared/helpdesk-workspace';
 import { Router } from 'express';
 import { and, desc, eq, ilike, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db';
 import { helpdeskPolicies as policies, helpdeskArticles as articles, helpdeskArticleHistory as revisions, helpdeskCases as cases, employees, users } from '@shared/schema';
-import { helpdeskResponder, helpdeskTriage, caseCategories, idInput } from '@shared/helpdesk';
+import { helpdeskResponder, helpdeskTriage, idInput } from '@shared/helpdesk';
 import { helpdeskPolicyAdmin, helpdeskPolicyInput, articleInput, articleRevisionInput } from '@shared/helpdesk-operations';
 import { capabilities, readCase, checkVersion, caseEvent, reject, HelpdeskError } from '../services/helpdesk';
 import { requireHandler, validHandler } from '../services/helpdesk-operations';
@@ -24,8 +26,9 @@ router.get('/policies',handle(async(req,res)=>{
 }));
 router.post('/policies',handle(async(req,res)=>{
   const input=helpdeskPolicyInput.parse(req.body);admin(req,input.confidential);
-  if(input.category==='employee_relations'&&!input.confidential)reject(400,'Employee relations rules must be confidential');
   const result=await db.transaction(async tx=>{
+    const category=await requireCategory(tx,input.category,true);
+    if(category.confidential&&!input.confidential)reject(400,'This category requires confidential routing');
     if(input.employeeId){const [employee]=await tx.select({id:employees.id}).from(employees).where(eq(employees.id,input.employeeId));if(!employee)reject(400,'Employee not found');}
     await requireHandler(tx,input.defaultAssigneeId,input.confidential);await requireHandler(tx,input.escalationAssigneeId,input.confidential);
     const [row]=await tx.insert(policies).values({...input,effectiveAt:new Date(input.effectiveAt),createdBy:req.user!.userId}).returning();return row;
@@ -46,7 +49,7 @@ router.post('/cases/:id/escalate',handle(async(req,res)=>{
 }));
 router.get('/articles',handle(async(req,res)=>{
   const page=z.coerce.number().int().min(1).max(10000).default(1).parse(req.query.page),q=z.string().trim().max(100).parse(req.query.q||'');
-  const category=req.query.category?z.enum(caseCategories).parse(req.query.category):null,term='%'+q.replace(/[\\%_]/g,'\\$&')+'%';
+  const category=req.query.category?categoryIdInput.parse(req.query.category):null,term='%'+q.replace(/[\\%_]/g,'\\$&')+'%';
   const condition=and(articleScope(req),category?eq(articles.category,category):undefined,q?or(ilike(articles.title,term),ilike(articles.body,term)):undefined);
   const items=await db.select({id:articles.id,title:articles.title,category:articles.category,audience:articles.audience,status:articles.status,version:articles.version,updatedAt:articles.updatedAt}).from(articles).where(condition).orderBy(desc(articles.updatedAt),desc(articles.id)).limit(20).offset((page-1)*20);
   const [total]=await db.select({count:sql<number>`count(*)::int`}).from(articles).where(condition);res.json({items,total:total.count,page});
@@ -58,13 +61,14 @@ router.get('/articles/:id',handle(async(req,res)=>{
 }));
 router.post('/articles',handle(async(req,res)=>{
   admin(req);const input=articleInput.parse(req.body);
-  const row=await db.transaction(async tx=>{const [saved]=await tx.insert(articles).values({...input,createdBy:req.user!.userId,publishedAt:input.status==='published'?new Date():null}).returning();
+  const row=await db.transaction(async tx=>{await requireCategory(tx,input.category);const [saved]=await tx.insert(articles).values({...input,createdBy:req.user!.userId,publishedAt:input.status==='published'?new Date():null}).returning();
     await tx.insert(revisions).values({articleId:saved.id,version:saved.version,actorId:req.user!.userId,reason:'Article created',snapshot:saved});return saved;});res.status(201).json(row);
 }));
 router.patch('/articles/:id',handle(async(req,res)=>{
   admin(req);const input=articleRevisionInput.parse(req.body);
   await db.transaction(async tx=>{
     const [row]=await tx.select().from(articles).where(eq(articles.id,idInput.parse(req.params.id))).for('update');if(!row)reject(404,'Article not found');if(row.version!==input.version)reject(409,'This article has changed. Refresh before saving.');
+    await requireCategory(tx,input.category,input.category===row.category);
     const {version,reason,...content}=input;
     const [saved]=await tx.update(articles).set({...content,version:version+1,updatedAt:new Date(),publishedAt:input.status==='published'?new Date():row.publishedAt}).where(eq(articles.id,row.id)).returning();
     await tx.insert(revisions).values({articleId:saved.id,version:saved.version,actorId:req.user!.userId,reason,snapshot:saved});

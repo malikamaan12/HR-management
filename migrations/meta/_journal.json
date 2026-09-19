@@ -337,6 +337,13 @@
       "when": 1789800000005,
       "tag": "0047_team_chat_coordination",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1789800000006,
+      "tag": "0048_helpdesk_workspace",
+      "breakpoints": true
     }
   ]
 }

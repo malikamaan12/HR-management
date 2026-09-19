@@ -1,3 +1,7 @@
+import { helpdeskWorkspace, requireCategory, workspaceKey } from '../services/helpdesk-workspace';
+import { categoryIdInput, workspaceSaveInput } from '@shared/helpdesk-workspace';
+import { appSettings } from '@shared/schema';
+import { recordHistory } from '../services/workflowRecords';
 import operationsRouter from './helpdesk-operations';
 import automationRouter from './helpdesk-automation';
 import { helpdeskAutomationPolicy, pinCaseAutomation, caseAutomationSnapshot, helpdeskDeadline, restartCaseAutomation } from '../services/helpdesk-automation';
@@ -11,10 +15,9 @@ import {alias} from 'drizzle-orm/pg-core';
 import {db} from '../db';
 import {authenticate} from '../middleware/auth';
 import {helpdeskCases as cases,helpdeskMessages as messages,helpdeskEvents as events,helpdeskAttachments as attachments,users} from '@shared/schema';
-import {caseCategories,caseStatuses,statusLabels,helpdeskResponder,helpdeskTriage,idInput,newCaseInput,replyInput,caseActionInput} from '@shared/helpdesk';
+import {caseStatuses,statusLabels,helpdeskResponder,helpdeskTriage,idInput,newCaseInput,replyInput,caseActionInput} from '@shared/helpdesk';
 import {HelpdeskError,reject,caseScope,capabilities,readCase,checkVersion,caseEvent,type HelpdeskTransaction} from '../services/helpdesk';
 import {privateStorageConfigured,StorageUnavailableError,validateDocumentFile,uploadCaseAttachment,deleteCaseAttachment,caseAttachmentUrl} from '../services/r2';
-
 const router=Router();router.use(authenticate);router.use((_req,res,next)=>{res.set('Cache-Control','no-store');next();});
 router.use(operationsRouter);
 router.use('/automation',automationRouter);
@@ -38,6 +41,8 @@ const upload=(req:Request,res:Response,next:NextFunction)=>uploader(req,res,erro
 });
 async function saveAttachment(tx:HelpdeskTransaction,req:Request,caseId:number,messageId:number,uploaded:string[]){
   if(!req.file)return;
+  const {workspace}=await helpdeskWorkspace(tx);
+  if(req.file.size>workspace.attachmentMegabytes*1024*1024)reject(413,`The configured attachment limit is ${workspace.attachmentMegabytes} MB`);
   const key=await uploadCaseAttachment(caseId,req.file);uploaded.push(key);
   const filename=(req.file.originalname.split(/[\\/]/).pop()||'attachment').replace(/[\x00-\x1f\x7f]/g,'').slice(0,180)||'attachment';
   await tx.insert(attachments).values({messageId,objectKey:key,filename,size:req.file.size});
@@ -46,14 +51,53 @@ async function withUploads<T>(fn:(uploaded:string[])=>Promise<T>){
   const uploaded:string[]=[];
   try{return await fn(uploaded);}catch(error){for(const key of uploaded)try{await deleteCaseAttachment(key);}catch{console.error('Helpdesk attachment cleanup failed');}throw error;}
 }
-router.get('/config',handle(async(req,res)=>{res.json({canManagePolicies:helpdeskPolicyAdmin(req.user!.role),canWorkQueue:helpdeskResponder(req.user!.role),confidentialTriage:helpdeskTriage(req.user!.role,true),attachmentsAvailable:privateStorageConfigured()});}));
+router.get('/config',handle(async(req,res)=>{res.json({...await helpdeskWorkspace(db),canManagePolicies:helpdeskPolicyAdmin(req.user!.role),canWorkQueue:helpdeskResponder(req.user!.role),confidentialTriage:helpdeskTriage(req.user!.role,true),attachmentsAvailable:privateStorageConfigured()});}));
+router.post('/workspace',handle(async(req,res)=>{
+  if(!helpdeskPolicyAdmin(req.user!.role))reject(403,'Helpdesk administration access is required');
+  const input=workspaceSaveInput.parse(req.body);
+  const saved=await db.transaction(async tx=>{
+    const current=await helpdeskWorkspace(tx,true);
+    if(current.version!==input.version)reject(409,'Helpdesk settings changed. Reload the saved settings before trying again.');
+    for(const previous of current.workspace.categories){
+      const next=input.workspace.categories.find(c=>c.id===previous.id);
+      if(!next)reject(400,'Existing category keys must be retained. Disable a category to retire it.');
+      if(previous.confidential&&!next.confidential)reject(400,'A confidential category cannot be made non-confidential. Create a separate category instead.');
+    }
+    const value={version:current.version+1,workspace:input.workspace};
+    await tx.update(appSettings).set({value,updatedAt:new Date()}).where(eq(appSettings.key,workspaceKey));
+    await recordHistory(tx,req,'helpdesk_workspace',{id:1,...value},input.reason);
+    return value;
+  });res.json(saved);
+}));
+router.get('/workspace/history',handle(async(req,res)=>{
+  if(!helpdeskPolicyAdmin(req.user!.role))reject(403,'Helpdesk administration access is required');
+  const page=z.coerce.number().int().min(1).max(10000).default(1).parse(req.query.page);
+  res.json((await db.execute(sql`SELECT version,reason,created_at FROM hr_workflow_history WHERE kind='helpdesk_workspace' AND record_id=1 ORDER BY version DESC LIMIT 25 OFFSET ${(page-1)*25}`)).rows);
+}));
+router.get('/overview',handle(async(req,res)=>{
+  const view=z.enum(['mine','queue']).default('mine').parse(req.query.view);
+  if(view==='queue'&&!helpdeskResponder(req.user!.role))reject(403,'HR queue access is required');
+  const scope=and(caseScope(req.user!),view==='mine'?eq(cases.requesterId,req.user!.userId):ne(cases.requesterId,req.user!.userId));
+  const active=sql`${cases.status} not in ('resolved','closed')`;
+  const [totals]=await db.select({
+    total:sql<number>`count(*)::int`,active:sql<number>`count(*) filter(where ${active})::int`,
+    waiting:sql<number>`count(*) filter(where ${cases.status}='waiting_employee')::int`,
+    completed:sql<number>`count(*) filter(where ${cases.status} in ('resolved','closed'))::int`,
+    unassigned:sql<number>`count(*) filter(where ${active} and ${cases.assigneeId} is null)::int`,
+    overdue:sql<number>`count(*) filter(where ${active} and ((${cases.firstRespondedAt} is null and ${cases.firstResponseDueAt}<now()) or ${cases.resolutionDueAt}<now()))::int`,
+  }).from(cases).where(scope);
+  const statuses=await db.select({status:cases.status,count:sql<number>`count(*)::int`}).from(cases).where(scope).groupBy(cases.status);
+  res.json({...totals,statuses});
+}));
 router.get('/cases',handle(async(req,res)=>{
   const view=z.enum(['mine','queue']).default('mine').parse(req.query.view),page=z.coerce.number().int().min(1).max(10000).default(1).parse(req.query.page),limit=z.coerce.number().int().min(1).max(100).default(25).parse(req.query.limit);
-  const status=req.query.status?z.enum(caseStatuses).parse(req.query.status):undefined,category=req.query.category?z.enum(caseCategories).parse(req.query.category):undefined;
+  const status=req.query.status?z.enum(caseStatuses).parse(req.query.status):undefined,category=req.query.category?categoryIdInput.parse(req.query.category):undefined;
   const search=req.query.q?z.string().trim().max(100).parse(req.query.q):'';
   if(view==='queue'&&!helpdeskResponder(req.user!.role))reject(403,'HR queue access is required');
   const overdue=req.query.overdue==='true';
-  const condition=and(overdue?and(sql`${cases.status} not in ('resolved','closed')`,or(and(sql`${cases.firstRespondedAt} is null`,sql`${cases.firstResponseDueAt}<now()`),sql`${cases.resolutionDueAt}<now()`)):undefined,caseScope(req.user!),view==='mine'?eq(cases.requesterId,req.user!.userId):ne(cases.requesterId,req.user!.userId),status?eq(cases.status,status):undefined,
+  const assignment=z.enum(['all','mine','unassigned']).default('all').parse(req.query.assignment);
+  if(assignment!=='all'&&view!=='queue')reject(400,'Assignment filters require the HR queue');
+  const condition=and(assignment==='mine'?eq(cases.assigneeId,req.user!.userId):assignment==='unassigned'?sql`${cases.assigneeId} is null`:undefined,overdue?and(sql`${cases.status} not in ('resolved','closed')`,or(and(sql`${cases.firstRespondedAt} is null`,sql`${cases.firstResponseDueAt}<now()`),sql`${cases.resolutionDueAt}<now()`)):undefined,caseScope(req.user!),view==='mine'?eq(cases.requesterId,req.user!.userId):ne(cases.requesterId,req.user!.userId),status?eq(cases.status,status):undefined,
     category?eq(cases.category,category):undefined,search?ilike(cases.title,'%'+search.replace(/[\\%_]/g,'\\$&')+'%'):undefined);
   const items=await db.select(fields).from(cases).innerJoin(requesters,eq(cases.requesterId,requesters.id)).leftJoin(assignees,eq(cases.assigneeId,assignees.id))
     .where(condition).orderBy(desc(cases.updatedAt),desc(cases.id)).limit(limit).offset((page-1)*limit);
@@ -63,7 +107,8 @@ router.get('/cases',handle(async(req,res)=>{
 router.post('/cases',upload,handle(async(req,res)=>{
   const input=newCaseInput.parse(req.body);
   const result=await withUploads(uploaded=>db.transaction(async tx=>{
-    const confidential=input.confidential||input.category==='employee_relations';
+    const category=await requireCategory(tx,input.category);
+    const confidential=input.confidential||category.confidential;
     const automation=await helpdeskAutomationPolicy(tx);
     const policy=await casePolicy(tx,req.user!.userId,input.category,confidential,new Date(),automation);
     const [row]=await tx.insert(cases).values({title:input.title,category:input.category,confidential,requesterId:req.user!.userId,...policy}).returning();
