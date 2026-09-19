@@ -8,6 +8,7 @@ import { createReadinessHandler } from './services/readiness';
 import { pool } from './db';
 import {runOperationalReminders} from './services/operational-reminders';
 import {runHelpdeskAutomation} from './services/helpdesk-automation';
+import {runReportSchedules} from './services/reportWorkspace';
 import {ensureInductionSafetyCourses} from './services/induction-course-library';
 validateAuthConfiguration();
 validateAppConfiguration();
@@ -74,5 +75,7 @@ app.use((req, res, next) => {
     setInterval(() => void runHelpdeskAutomation().catch(() => console.error('Helpdesk automation failed')), 5 * 60 * 1000).unref();
     setTimeout(() => void runOperationalReminders().catch(() => console.error('Operational reminders failed')), 30000).unref();
     setInterval(() => void runOperationalReminders().catch(() => console.error('Operational reminders failed')), 15 * 60 * 1000).unref();
+    setTimeout(() => void runReportSchedules().catch(() => console.error('Scheduled reports failed')), 45000).unref();
+    setInterval(() => void runReportSchedules().catch(() => console.error('Scheduled reports failed')), 15 * 60 * 1000).unref();
   });
 })();

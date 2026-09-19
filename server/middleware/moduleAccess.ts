@@ -21,13 +21,14 @@ export async function moduleAccess(req:Request,res:Response,next:NextFunction){
   else if(/^\/(role-management|activity-logs)/.test(path))module='system_configuration';
   else if(/^\/(leave-types|leave-balances|leave-approvals|leave-supporting-documents)/.test(path) && !read)module='leave_absence_management';
   if(module){
-    const permission=(read||(req.method==='POST'&&/^\/reporting\/snapshots\/(runs|policy)\/?$/.test(path)))?'read':req.method==='DELETE'?'delete':req.method==='POST'?'create':'update';
+    const snapshotRoute=/^\/reporting\/snapshots(?:\/|$)/.test(path);
+    const permission=(read||snapshotRoute)?'read':req.method==='DELETE'?'delete':req.method==='POST'?'create':'update';
     const scope=getAccessScope(req.user.role,module);
     // Performance and training handlers apply the employee row scope
     // themselves, so self/team/department users may reach them. Legacy
     // organization-wide endpoints remain fail-closed unless their scope is
     // all (or the event-staff scope explicitly supported by the route).
-    const handlerScoped = module === 'performance_management' || module === 'training_development';
+    const handlerScoped = snapshotRoute || module === 'performance_management' || module === 'training_development';
     if(!hasPermission(req.user.role,module,permission)||(!handlerScoped && !(scope==='all'||(module==='event_staff_management'&&scope==='event_staff'))))
       return res.status(403).json({message:'Organization-wide management access is required for this endpoint'});
   }

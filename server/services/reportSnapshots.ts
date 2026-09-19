@@ -1,33 +1,35 @@
 import {sql} from 'drizzle-orm';
-import {getAccessScope,hasPermission,type HRModule} from '@shared/permissions';
+import {getAccessScope} from '@shared/permissions';
 import type {UserRole} from '@shared/schema';
-import {reportLabels,type ReportInput,type ReportKind,type ReportSnapshot} from '@shared/reporting';
+import {reportLabels,analyticsPolicyInput,defaultAnalyticsPolicy,previousPeriod,type ReportInput,type ReportKind,type ReportSnapshot} from '@shared/reporting';
 import {companySettingsSchema,defaultCompanySettings} from '@shared/settings';
-import {workforceAdmin} from '@shared/workforce';
 import {WorkforceError as OnboardingError} from './workforce';
 import {qatarToday} from './reportRecords';
+import type {TokenPayload} from './auth';
+import {reportAllowed,reportEmployeeScope,reportTeamScope} from './reportAccess';
+import {buildCatalogueReport} from './reportCatalogue';
 
-const sources:Record<ReportKind,HRModule>={headcount:'employee_database',turnover:'employee_database',leave:'leave_absence_management',compliance:'compliance_documents',workforce:'event_staff_management'};
 export function availableReports(role:UserRole){
- const all=(module:HRModule)=>hasPermission(role,module,'read')&&getAccessScope(role,module)==='all';
- return (Object.keys(reportLabels) as ReportKind[]).filter(kind=>all('reports_analytics')&&all(sources[kind])&&(kind!=='workforce'||workforceAdmin(role)));
+ return (Object.keys(reportLabels) as ReportKind[]).filter(kind=>reportAllowed(role,kind));
 }
-export async function reportingPolicy(tx:any){const r=await tx.execute(sql`SELECT version,turnover_denominator FROM reporting_policies ORDER BY version DESC LIMIT 1`);return r.rows[0]||{version:0,turnover_denominator:'average_endpoints'};}
+export async function reportingPolicy(tx:any){const r=await tx.execute(sql`SELECT version,turnover_denominator,config FROM reporting_policies ORDER BY version DESC LIMIT 1`);const row=r.rows[0]||{version:0,turnover_denominator:'average_endpoints'};return {...row,config:analyticsPolicyInput.parse(row.config||defaultAnalyticsPolicy)};}
 const columns=(...keys:string[])=>keys.map(key=>({key,label:key.replaceAll('_',' ')}));
 const sum=(rows:any[],key:string)=>rows.reduce((n,r)=>n+Number(r[key]||0),0);
 
 // Each run executes in a repeatable-read transaction; displayed values and CSV
 // exports subsequently come exclusively from this saved, owner-private snapshot.
-export async function buildReport(tx:any,input:ReportInput):Promise<ReportSnapshot>{
+export async function buildReport(tx:any,input:ReportInput,user:TokenPayload):Promise<ReportSnapshot>{
  const {kind,filters:f}=input,asOf=qatarToday();
  const result:ReportSnapshot={kind,title:reportLabels[kind],generatedAt:new Date().toISOString(),asOf,definition:'',filters:f,policy:{},summary:{},columns:[],rows:[],notes:[]};
- const department=f.department?sql`e.department=${f.department}`:sql`true`;
+ const policy=await reportingPolicy(tx);
+ result.scopeLabel=getAccessScope(user.role,'reports_analytics')==='all'?'Your authorized source records':'Your current '+getAccessScope(user.role,'reports_analytics')+' access';
+ const department=sql`(${reportEmployeeScope(user,kind)}) AND (${!f.department} OR e.department=${f.department}) AND (${!f.employeeType} OR e.type::text=${f.employeeType||''}) AND (${!f.location} OR e.location=${f.location||''})`;
  if(kind==='headcount'){
   const r=await tx.execute(sql`SELECT e.department,e.type::text AS employee_type,e.status::text AS status,count(*)::int AS employees FROM employees e WHERE ${department} GROUP BY e.department,e.type,e.status ORDER BY e.department,e.type,e.status LIMIT 5001`);
   result.rows=r.rows;result.columns=columns('department','employee_type','status','employees');result.summary={registered_employees:sum(r.rows,'employees')};
   result.definition='Current employee records grouped by department, employment type and recorded status. Includes inactive employees as separate groups; this is not historical headcount.';
  }else if(kind==='turnover'){
-  const policy=await reportingPolicy(tx);result.policy=policy;
+  const policy=await reportingPolicy(tx);result.policy={version:policy.version,turnover_denominator:policy.turnover_denominator};
   const r=await tx.execute(sql`SELECT e.department,
    count(*) FILTER(WHERE e.joining_date<${f.from}::date AND (e.termination_date IS NULL OR e.termination_date>=${f.from}::date))::int AS opening,
    count(*) FILTER(WHERE e.joining_date<=${f.to}::date AND (e.termination_date IS NULL OR e.termination_date>${f.to}::date))::int AS closing,
@@ -51,25 +53,28 @@ export async function buildReport(tx:any,input:ReportInput):Promise<ReportSnapsh
   result.rows=r.rows;result.columns=columns('department','document_type','status','documents');result.summary={documents:sum(r.rows,'documents')};
   result.definition='Current registered documents classified from issue and expiry dates as of the Qatar calendar date. The company expiry warning window is pinned to this run.';
   result.notes=['Includes documents belonging to inactive employees, excluding archived documents. Counts documents, not employees; missing required documents are not inferred.'];
- }else{
+ }else if(kind==='workforce'){
   // Aggregate assignments per shift before summing capacity to avoid multiplying
   // headcount by the number of people assigned to the same shift.
   const r=await tx.execute(sql`SELECT site.name AS site,t.name AS team,t.kind::text AS team_kind,site.timezone,count(*)::int AS shifts,sum(s.headcount)::int AS capacity,
    sum(a.offered)::int AS offered,sum(a.accepted)::int AS accepted,sum(a.declined)::int AS declined,sum(a.cancelled)::int AS cancelled,sum(a.payable_minutes)::int AS approved_payable_minutes
    FROM workforce_shifts s JOIN workforce_teams t ON t.id=s.team_id JOIN workforce_sites site ON site.id=t.site_id
    CROSS JOIN LATERAL(SELECT count(*) FILTER(WHERE wa.status='offered') AS offered,count(*) FILTER(WHERE wa.status='accepted') AS accepted,count(*) FILTER(WHERE wa.status='declined') AS declined,count(*) FILTER(WHERE wa.status='cancelled') AS cancelled,COALESCE(sum(wt.payable_minutes) FILTER(WHERE wt.status IN ('approved','payroll_locked')),0) AS payable_minutes FROM workforce_assignments wa LEFT JOIN workforce_timesheets wt ON wt.assignment_id=wa.id WHERE wa.shift_id=s.id) a
-   WHERE s.status='scheduled' AND (s.start_at AT TIME ZONE site.timezone)::date BETWEEN ${f.from}::date AND ${f.to}::date AND (${!f.siteId} OR site.id=${f.siteId||0}) AND (${!f.teamId} OR t.id=${f.teamId||0})
+   WHERE ${reportTeamScope(user)} AND s.status='scheduled' AND (s.start_at AT TIME ZONE site.timezone)::date BETWEEN ${f.from}::date AND ${f.to}::date AND (${!f.siteId} OR site.id=${f.siteId||0}) AND (${!f.teamId} OR t.id=${f.teamId||0})
    GROUP BY site.id,t.id ORDER BY site.name,t.name,t.id LIMIT 5001`);
   result.rows=r.rows;result.columns=columns('site','team','team_kind','timezone','shifts','capacity','offered','accepted','declined','cancelled','approved_payable_minutes');result.summary=Object.fromEntries(['shifts','capacity','offered','accepted','declined','cancelled','approved_payable_minutes'].map(key=>[key,sum(r.rows,key)]));
   result.definition='Non-cancelled Workforce shifts starting in the inclusive date range in each site’s timezone. Assignment statuses are current; payable minutes include only approved or payroll-locked timesheets.';
   result.notes=['Earlier Event Staff assignments are excluded and remain in the archive. No payroll cost is estimated. Cancelled assignment counts belong to non-cancelled shifts.'];
- }
- if(result.rows.length>5000)throw new OnboardingError(400,'Report exceeds 5,000 groups; narrow the filters');
+ }else await buildCatalogueReport(tx,input,user,result,policy.config);
+ result.policy={...result.policy,reportingVersion:policy.version,reporting:policy.config};
+ if(result.rows.length>policy.config.maxRows)throw new OnboardingError(400,`Report exceeds ${policy.config.maxRows} rows; narrow the filters`);
+ if(input.comparePrevious&&f.from&&f.to){result.comparison=await buildReport(tx,{...input,comparePrevious:false,filters:{...f,...previousPeriod(f.from,f.to)}},user);result.notes.push('Comparison uses the immediately preceding period with the same number of calendar days. Both cohorts use current recorded statuses; this is not a historical state reconstruction.');}
  return result;
 }
 
-export function snapshotCsv(snapshot:ReportSnapshot){
+export function snapshotCsv(snapshot:ReportSnapshot):string{
  const cell=(value:unknown)=>{let text=value==null?'':String(value);if(typeof value==='string'&&/^\s*[=+@\-\t\r]/.test(text))text="'"+text;return '"'+text.replaceAll('"','""')+'"';};
  const rows:unknown[][]=[['Report',snapshot.title],['Generated at',snapshot.generatedAt],['As of (Qatar)',snapshot.asOf],['Definition',snapshot.definition],['Filters',JSON.stringify(snapshot.filters)],['Policy',JSON.stringify(snapshot.policy)],...Object.entries(snapshot.summary),...snapshot.notes.map(note=>['Note',note]),[],snapshot.columns.map(c=>c.label),...snapshot.rows.map(r=>snapshot.columns.map(c=>r[c.key]))];
- return '\ufeff'+rows.map(row=>row.map(cell).join(',')).join('\r\n');
+ const csv='\ufeff'+rows.map(row=>row.map(cell).join(',')).join('\r\n');
+ return snapshot.comparison?csv+'\r\n\r\n'+snapshotCsv(snapshot.comparison).replace(/^\ufeff/,''):csv;
 }

@@ -11,7 +11,7 @@ import * as s from '../shared/schema';
 import {defaultCompanySettings} from '../shared/settings';
 import {qatarToday} from '../server/services/reportRecords';
 const ctx=vi.hoisted(()=>({db:null as any}));vi.mock('../server/db',()=>({get db(){return ctx.db;},pool:{}}));
-import reports from '../server/routes/reportSnapshots';
+import reports,{reportRunLimiter} from '../server/routes/reportSnapshots';
 import teamTasks from '../server/routes/teamTasks';
 import corrections from '../server/routes/candidateCorrections';
 import {authenticate} from '../server/middleware/auth';
@@ -28,7 +28,7 @@ const run=(u:any,kind='headcount',filters:any={},requestKey=randomUUID())=>req(u
 async function candidate(){const [c]=await ctx.db.insert(s.candidates).values({fullNameEn:'Initial Candidate',email:'candidate@example.test',phone:'private',source:'other'}).returning();return c;}
 const correction=(u:any,c:any,fields:any,expectedVersion=c.recordVersion)=>req(u,`/hiring/candidates/${c.id}/corrections`,{fields,expectedVersion,reason});
 beforeAll(async()=>{process.env.JWT_SECRET='report-corrections-access-secret-32-characters';process.env.JWT_REFRESH_SECRET='report-corrections-refresh-secret-32-characters';pg=new PGlite();for(const f of readdirSync(new URL('../migrations',import.meta.url)).filter(n=>n.endsWith('.sql')).sort())await pg.exec(readFileSync(new URL('../migrations/'+f,import.meta.url),'utf8'));ctx.db=drizzle(pg);const app=express();app.use(express.json());app.use(authenticate,moduleAccess);app.use('/reporting/snapshots',reports);app.use('/team-tasks',teamTasks);app.use('/hiring',corrections);server=app.listen(0,'127.0.0.1');await new Promise<void>(r=>server.once('listening',r));base='http://127.0.0.1:'+(server.address() as any).port;});
-beforeEach(async()=>{await pg.exec('TRUNCATE employees,users,candidates,workforce_sites,report_correction_history,app_settings RESTART IDENTITY CASCADE');});
+beforeEach(async()=>{for(let id=1;id<=10;id++)reportRunLimiter.resetKey(String(id));await pg.exec('TRUNCATE employees,users,candidates,workforce_sites,report_correction_history,app_settings RESTART IDENTITY CASCADE');});
 afterAll(async()=>{await new Promise<void>(r=>server.close(()=>r()));await pg.close();});
 
 test('report snapshots require both report and underlying module access and remain owner-private',async()=>{
