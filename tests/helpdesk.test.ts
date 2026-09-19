@@ -18,6 +18,8 @@ vi.mock('../server/services/r2',()=>{
 });
 import router from '../server/routes/helpdesk';
 import {authService} from '../server/services/auth';
+import {businessDeadline} from '../server/services/helpdesk-automation';
+import {defaultHelpdeskAutomation} from '../shared/helpdesk-automation';
 let pg:PGlite,server:Server,base:string;
 const password='HelpdeskTestPass8!';
 async function account(name:string,role:UserRole='employee'){
@@ -169,7 +171,9 @@ test('configured routing snapshots deadlines; internal notes do not satisfy resp
   await action(director.token,id,{action:'status',status:'resolved',reason:'Investigation complete and query resolved'});
   expect((await request(hr.token,'/cases?view=queue&overdue=true')).body.total).toBe(0);
   const before=Date.now();await action(employee.token,id,{action:'status',status:'in_progress',reason:'Need another clarification on this issue'});
-  row=await detail(employee.token,id);expect(row.case.escalatedAt).toBeNull();expect(Date.parse(row.case.resolutionDueAt)-before).toBeGreaterThan(23.9*3600000);expect(Date.parse(row.case.resolutionDueAt)-before).toBeLessThan(24.1*3600000);
+  row=await detail(employee.token,id);expect(row.case.escalatedAt).toBeNull();
+  const expected=businessDeadline(new Date(before),24,defaultHelpdeskAutomation.calendar).getTime();
+  expect(Math.abs(Date.parse(row.case.resolutionDueAt)-expected)).toBeLessThan(60000);
 });
 test('confidential policy administration and automatic handlers are restricted',async()=>{
   const employee=await account('employee'),hr=await account('hr','hr'),director=await account('director','hr_director');

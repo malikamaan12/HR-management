@@ -374,7 +374,8 @@ test('management calendar counts Sunday and excludes Friday/Saturday only for as
   const admin=await account();const office=await create(1,{workSchedule:'management_office'});const shift=await create(2,{workSchedule:'shift_based'});
   await context.db.insert(hrRules).values({kind:'leave',name:'annual',effectiveFrom:'2026-01-01',createdBy:admin.id,reason:'Confirmed test rule',config:{paid:true,balanceRequired:false,accrualMode:'none',annualDays:0,monthlyDays:0,carryoverLimit:0,minServiceDays:0,maxConsecutiveDays:30,approverId:null}});
   expect((await request(admin.token,`/employees/${office.id}`)).body.workSchedule).toBe('management_office');
-  const leave={leaveType:'annual',startDate:'2026-09-13',endDate:'2026-09-13',reason:'Test leave',totalDays:999,workSchedule:'management_office'};
+  const leave={leaveType:'annual',startDate:'2026-09-13',endDate:'2026-09-13',reason:'Test leave'};
+  expect((await request(admin.token,'/leaves','POST',{...leave,employeeId:office.id,totalDays:999,workSchedule:'management_office'})).status).toBe(400);
   const sunday=await request(admin.token,'/leaves','POST',{...leave,employeeId:office.id});
   expect(sunday.status).toBe(201);expect(sunday.body.totalDays).toBe(1);
   expect((await request(admin.token,'/leaves','POST',{...leave,employeeId:office.id,startDate:'2026-09-18',endDate:'2026-09-19'})).status).toBe(400);

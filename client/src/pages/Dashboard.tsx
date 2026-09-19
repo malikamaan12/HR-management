@@ -6,12 +6,7 @@ import RecentActivity from "@/components/dashboard/RecentActivity";
 import AttendanceOverview from "@/components/dashboard/AttendanceOverview";
 import ComplianceStatus from "@/components/dashboard/ComplianceStatus";
 import UpcomingEvents from "@/components/dashboard/UpcomingEvents";
-import PerformanceOverview from "@/components/dashboard/PerformanceOverview";
-import TrainingOverview from "@/components/dashboard/TrainingOverview";
-import AnalyticsOverview from "@/components/dashboard/AnalyticsOverview";
-import RolePermissionOverview from "@/components/dashboard/RolePermissionOverview";
-import SkillGapOverview from "@/components/dashboard/SkillGapOverview";
-import MobileIntegrationOverview from "@/components/dashboard/MobileIntegrationOverview";
+import { getAccessScope, hasPermission } from "@shared/permissions";
 import EmployeeDashboard from "./EmployeeDashboard";
 
 export default function Dashboard() {
@@ -26,6 +21,8 @@ export default function Dashboard() {
   if(isLoading)return <p>Loading dashboard…</p>;
   if(error || !stats)return <p role="alert">Unable to load dashboard data.</p>;
   const dashboardStats=stats;
+  const canReadActivity = !!user && hasPermission(user.role, 'system_configuration', 'read') && getAccessScope(user.role, 'system_configuration') === 'all';
+  const canReadEvents = !!user && hasPermission(user.role, 'event_staff_management', 'read') && ['all', 'event_staff'].includes(getAccessScope(user.role, 'event_staff_management'));
 
   return (
     <div className="space-y-6 pb-12 max-w-full overflow-hidden">
@@ -35,17 +32,17 @@ export default function Dashboard() {
         <div className="md:col-span-2">
           <QuickActions />
         </div>
-        <div className="md:col-span-1">
+        {user && hasPermission(user.role, 'compliance_documents', 'read') && <div className="md:col-span-1">
           <ComplianceStatus />
-        </div>
-        <div className="md:col-span-1">
+        </div>}
+        {canReadEvents && <div className="md:col-span-1">
           <UpcomingEvents />
-        </div>
+        </div>}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <AttendanceOverview />
-        <RecentActivity />
+        {user && hasPermission(user.role, 'attendance_time_tracking', 'read') && <AttendanceOverview />}
+        {canReadActivity && <RecentActivity />}
       </div>
 
     </div>

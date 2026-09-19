@@ -2,23 +2,27 @@
 import {build} from 'esbuild';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
-import {mkdir,writeFile} from 'node:fs/promises';
+import {mkdir} from 'node:fs/promises';
+import {existsSync} from 'node:fs';
 import {randomBytes} from 'node:crypto';
 const root=process.cwd();
-if(!root.endsWith('E3HrSystem'))throw new Error('Run from the application root');
-for(const key of Object.keys(process.env))if(/DATABASE_URL|RESEND|EMAIL_FROM|SLACK|TWILIO|SENDGRID|SUPABASE|R2_|BOOTSTRAP/.test(key))delete process.env[key];
+if(!existsSync(path.join(root,'server','routes.ts'))||!existsSync(path.join(root,'migrations','meta','_journal.json')))throw new Error('Run from the application root');
+for(const key of Object.keys(process.env))if(/DATABASE_URL|RESEND|EMAIL_FROM|SLACK|TWILIO|SENDGRID|SUPABASE|R2_|BOOTSTRAP|ANTHROPIC|GOOGLE.*SECRET/.test(key))delete process.env[key];
 process.env.NODE_ENV='test';process.env.APP_TIMEZONE='Asia/Qatar';process.env.APP_URL='http://127.0.0.1:5190';process.env.JWT_SECRET=randomBytes(40).toString('hex');process.env.JWT_REFRESH_SECRET=randomBytes(40).toString('hex');
 const password=randomBytes(16).toString('hex');process.env.LOCAL_QA_PASSWORD=password;
 await mkdir(path.join(root,'dist'),{recursive:true});
-await build({stdin:{contents:`import express from 'express';import bcrypt from 'bcryptjs';import {db} from './server/db';import * as s from './shared/schema';import {registerRoutes} from './server/routes';
+await build({stdin:{contents:`import express from 'express';import bcrypt from 'bcryptjs';import {eq} from 'drizzle-orm';import {db} from './server/db';import * as s from './shared/schema';import {registerRoutes} from './server/routes';import {ensureInductionSafetyCourses} from './server/services/induction-course-library';
 const app=express();app.use(express.json());const server=await registerRoutes(app);
-const people=[];for(const [i,role] of ['super_admin','super_admin','permanent_employee'].entries()){const [u]=await db.insert(s.users).values({username:['qa_admin','qa_reviewer','qa_employee'][i],password:await bcrypt.hash(process.env.LOCAL_QA_PASSWORD,4),firstName:['QA Admin','QA Reviewer','QA Employee'][i],lastName:'Synthetic',email:'qa'+i+'@example.test',role,department:'Operations',isActive:true,approvalStatus:'approved'}).returning();people.push(u);await db.insert(s.employees).values({userId:u.id,employeeId:'QA-'+i,firstName:u.firstName,lastName:'Synthetic',gender:'other',dateOfBirth:'1990-01-01',nationality:'Test',qidNumber:'QA-ID-'+i,primaryMobile:'00000000',residentialAddress:'Synthetic address',emergencyContactName:'Test contact',emergencyContactNumber:'00000000',type:'permanent',department:'Operations',position:'Host',location:'Doha',joiningDate:'2025-01-01',workSchedule:'management_office'});}
+const people=[];for(const [i,role] of ['super_admin','super_admin','permanent_employee','hr','department_head'].entries()){const [u]=await db.insert(s.users).values({username:['qa_admin','qa_reviewer','qa_employee','qa_hr','qa_lead'][i],password:await bcrypt.hash(process.env.LOCAL_QA_PASSWORD,4),firstName:['QA Admin','QA Reviewer','QA Employee','QA HR','QA Lead'][i],lastName:'Synthetic',email:'qa'+i+'@example.test',role,department:'Operations',isActive:true,approvalStatus:'approved'}).returning();people.push(u);await db.insert(s.employees).values({userId:u.id,employeeId:'QA-'+i,firstName:u.firstName,lastName:'Synthetic',gender:'other',dateOfBirth:'1990-01-01',nationality:'Test',qidNumber:'QA-ID-'+i,primaryMobile:'00000000',residentialAddress:'Synthetic address',emergencyContactName:'Test contact',emergencyContactNumber:'00000000',type:'permanent',department:'Operations',position:'Host',location:'Doha',joiningDate:'2025-01-01',workSchedule:'management_office'});}
 await db.insert(s.hrRules).values([{kind:'attendance',name:'Work calendar',effectiveFrom:'2026-01-01',createdBy:people[0].id,reason:'Synthetic QA calendar',config:{timezone:'Asia/Qatar',workingDays:[0,1,2,3,4],startTime:'09:00',endTime:'17:00',breakMinutes:30,graceMinutes:10,holidays:[]}},{kind:'leave',name:'Annual',effectiveFrom:'2026-01-01',createdBy:people[0].id,reason:'Synthetic QA entitlement',config:{paid:true,balanceRequired:true,accrualMode:'annual',annualDays:21,monthlyDays:0,carryoverLimit:5,minServiceDays:0,maxConsecutiveDays:30,approverId:people[1].id}},{kind:'payroll',name:'Pay policy',effectiveFrom:'2026-01-01',createdBy:people[0].id,reason:'Synthetic QA pay policy',config:{currency:'QAR',cycleStartDay:1,payDay:5,basis:'salary',basicSalary:'1000.00',hourlyRate:'10.00',regularMinutesPerDay:480,overtimeMultiplier:1.5,allowances:{housing:'200.00'},deductions:{},approverId:people[1].id}}]);
 await db.insert(s.lifecycleTemplates).values({name:'QA Onboarding',kind:'onboarding',createdBy:people[0].id,tasks:[{title:'Orientation',kind:'general',required:true,offsetDays:0}]});
 const [site]=await db.insert(s.workforceSites).values({name:'QA Venue',timezone:'Asia/Qatar'}).returning();
 const [team]=await db.insert(s.workforceTeams).values({name:'QA Guest Services',kind:'fec',siteId:site.id}).returning();
 const allEmployees=await db.select().from(s.employees).orderBy(s.employees.id);
+await db.update(s.employees).set({reportingManagerId:allEmployees[4].id}).where(eq(s.employees.id,allEmployees[2].id));
 await db.insert(s.workforceMembers).values(allEmployees.map(employee=>({teamId:team.id,employeeId:employee.id,startAt:new Date(Date.now()-86400000),endAt:new Date(Date.now()+120*86400000)})));
+await db.insert(s.workforceGrants).values(['view','schedule','review_time','review_performance'].map(permission=>({teamId:team.id,userId:people[4].id,permission,startAt:new Date(Date.now()-86400000),endAt:new Date(Date.now()+120*86400000)})));
+await ensureInductionSafetyCourses();
 const [qualification]=await db.insert(s.workforceQualifications).values({name:'QA Safety training',createdBy:people[0].id}).returning();
 await db.insert(s.employeeQualifications).values({employeeId:allEmployees[1].id,qualificationId:qualification.id,validFrom:'2025-01-01',verificationReference:'Synthetic verification for preview',verifiedBy:people[0].id});
 await db.insert(s.employeeQualifications).values({employeeId:allEmployees[2].id,qualificationId:qualification.id,validFrom:'2025-01-01',validThrough:new Date(Date.now()+7*86400000).toISOString().slice(0,10),verificationReference:'Synthetic expiring employee certificate',verifiedBy:people[0].id});

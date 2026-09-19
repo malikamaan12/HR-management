@@ -584,6 +584,8 @@ test('leads close and review visits with history, stale guards and exact grant c
   const f=await setup(),a=await liveAssignment(f),arrived=await request(f.alice.token,`/workforce/assignments/${a.id}/arrival`,{}),path=`/workforce/presence/${arrived.body.id}/review`;
   const input={version:1,action:'close',reason:'Employee forgot to record departure'};
   expect((await request(f.bob.token,path,input)).status).toBe(404);
+  expect((await request(f.lead.token,path,{...input,action:'review'})).status).toBe(404);
+  const reviewGrant=await request(f.admin.token,`/workforce/teams/${f.teamId}/grants`,{userId:f.lead.id,permission:'review_time',startAt:instant(-1),endAt:instant(10)});expect(reviewGrant.status).toBe(201);
   expect((await request(f.lead.token,path,{...input,action:'review'})).status).toBe(409);
   const closed=await request(f.lead.token,path,input);expect(closed.status).toBe(200);expect(closed.body.flags).toContain('Visit closed by lead');
   expect((await request(f.lead.token,path,input)).status).toBe(409);
@@ -591,6 +593,8 @@ test('leads close and review visits with history, stale guards and exact grant c
   const log=await request(f.lead.token,`/workforce/shifts/${f.shiftId}/operations`);expect(log.status).toBe(200);expect(log.body.presence[0].reviewNote).toBe('Verified with site supervisor');
   expect(JSON.stringify(log.body)).not.toMatch(/private-|iban|qid|password|email/i);
   await context.db.update(schema.workforceGrants).set({endAt:new Date(Date.now()+30*60000)}).where(eq(schema.workforceGrants.id,f.grantId));
+  expect((await request(f.lead.token,`/workforce/shifts/${f.shiftId}/operations`)).status).toBe(200);
+  await context.db.update(schema.workforceGrants).set({endAt:new Date(Date.now()+30*60000)}).where(eq(schema.workforceGrants.id,reviewGrant.body.id));
   expect((await request(f.lead.token,`/workforce/shifts/${f.shiftId}/operations`)).status).toBe(404);
 });
 test('a privileged employee cannot review their own arrival even after account relinking',async()=>{

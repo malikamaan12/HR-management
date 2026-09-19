@@ -1,5 +1,7 @@
 import { cn } from "@/lib/utils";
 import { useLocation } from "wouter";
+import { useAuth } from "@/contexts/AuthContext";
+import { hasPermission, type HRModule, type Permission } from "@shared/permissions";
 
 interface QuickActionItemProps {
   icon: string;
@@ -9,7 +11,7 @@ interface QuickActionItemProps {
 
 function QuickActionItem({ icon, label, onClick }: QuickActionItemProps) {
   return (
-    <button 
+    <button
       className="flex flex-col items-center justify-center p-3 sm:p-4 bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-500 hover:shadow-lg hover:shadow-indigo-500/10 transition-all group min-w-0"
       onClick={onClick}
     >
@@ -23,37 +25,39 @@ function QuickActionItem({ icon, label, onClick }: QuickActionItemProps) {
 
 export default function QuickActions() {
   const [, navigate] = useLocation();
+  const { user } = useAuth();
+  const allowed = (module: HRModule, permission: Permission) => !!user && hasPermission(user.role, module, permission);
 
   return (
     <div className="glass-bento-card p-5 sm:p-6 h-full">
       <h3 className="text-lg sm:text-xl font-bold mb-4 sm:mb-6 text-e3-aurora">Command Center</h3>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
-        <QuickActionItem 
-          icon="fas fa-user-plus" 
+        {allowed('employee_database', 'create') && <QuickActionItem
+          icon="fas fa-user-plus"
           label="Add Staff"
           onClick={() => navigate("/employees")}
-        />
-        <QuickActionItem 
-          icon="fas fa-clock" 
+        />}
+        {allowed('attendance_time_tracking', 'read') && <QuickActionItem
+          icon="fas fa-clock"
           label="Attendance"
           onClick={() => navigate("/attendance")}
-        />
-        <QuickActionItem 
-          icon="fas fa-file-invoice-dollar" 
+        />}
+        {allowed('payroll_management', 'read') && <QuickActionItem
+          icon="fas fa-file-invoice-dollar"
           label="Payroll"
           onClick={() => navigate("/payroll")}
-        />
-        <QuickActionItem 
-          icon="fas fa-cloud-upload-alt" 
+        />}
+        {allowed('compliance_documents', 'create') && <QuickActionItem
+          icon="fas fa-cloud-upload-alt"
           label="Upload Docs"
           onClick={() => navigate("/documents")}
-        />
-        <QuickActionItem 
-          icon="fas fa-shield-alt" 
+        />}
+        {allowed('system_configuration', 'admin') && <QuickActionItem
+          icon="fas fa-shield-alt"
           label="Security"
           onClick={() => navigate("/user-management")}
-        />
-        <button 
+        />}
+        {allowed('recruitment_onboarding', 'create') && <button
           className="flex flex-col items-center justify-center p-3 sm:p-4 bg-e3-aurora rounded-2xl text-white shadow-lg hover:shadow-indigo-500/30 transition-all hover:scale-[1.02] active:scale-[0.98] min-w-0"
           onClick={() => navigate("/recruitment")}
         >
@@ -61,7 +65,7 @@ export default function QuickActions() {
             <i className="fas fa-plus text-lg sm:text-xl"></i>
           </div>
           <span className="text-xs sm:text-sm font-bold truncate w-full text-center">New Requisition</span>
-        </button>
+        </button>}
       </div>
     </div>
   );

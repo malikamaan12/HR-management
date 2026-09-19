@@ -224,7 +224,8 @@ test('HTTP workflows enforce ownership, payroll calculations, leave decisions an
     expect((await call('reviewer',`/payroll/${created.data.id}/action`,'POST',{version:2,action:'approve',reason:'Checked pay figures'})).status).toBe(200);
     expect((await call('reviewer',`/payroll/${created.data.id}/mark-paid`,'POST',{version:3,reference:'BANK-TEST',confirmed:true})).status).toBe(200);
     expect((await call('admin',`/payroll/${created.data.id}`,'PATCH',input)).status).toBe(400);
-    const request={employeeId:employee.id,leaveType:'annual',startDate:'2026-09-14',endDate:'2026-09-15',reason:'Test leave',totalDays:999,status:'approved',approvedBy:alice.id};
+    const request={employeeId:employee.id,leaveType:'annual',startDate:'2026-09-14',endDate:'2026-09-15',reason:'Test leave'};
+    expect((await call('alice','/leaves','POST',{...request,totalDays:999,status:'approved',approvedBy:alice.id})).status).toBe(400);
     const leave=await call('alice','/leaves','POST',request);expect(leave.status).toBe(201);expect(leave.data.status).toBe('pending');expect(leave.data.totalDays).toBe(2);expect(leave.data.approvedBy).toBeNull();
     expect((await call('bob',`/leaves/${leave.data.id}`)).status).toBe(404);
     expect((await call('alice',`/leaves/${leave.data.id}/status`,'PATCH',{status:'approved'})).status).toBe(404);

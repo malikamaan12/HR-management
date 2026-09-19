@@ -13,6 +13,7 @@ import {authenticate} from '../server/middleware/auth';
 import {moduleAccess} from '../server/middleware/moduleAccess';
 import {authService} from '../server/services/auth';
 import {businessToday} from '../server/services/hr-rules';
+import {seedCompensation} from './helpers/compensation';
 let pg:PGlite,server:Server,base:string;const note='Verified checklist evidence';
 async function req(token:string,path:string,body?:unknown,method=body===undefined?'GET':'POST'){const r=await fetch(base+path,{method,headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});return {status:r.status,body:await r.json()};}
 async function account(name:string,role:s.UserRole='employee',department='Operations'){
@@ -60,6 +61,8 @@ test('assigned owner submits, independent scoped HR returns and approves, and co
   expect((await review(f,c,{decision:'return'})).body.reviewState).toBe('returned');
   expect((await patch(f,c,{version:3,evidence:'Corrected orientation evidence'})).body.reviewState).toBe('pending');
   const approved=await review(f,c,{version:4},f.dept);expect(approved.status,approved.body.message).toBe(200);expect(approved.body.status).toBe('completed');
+  expect((await req(f.admin.token,`/${c.record.id}/complete`,{version:5,reason:note,confirmed:true})).status).toBe(409);
+  await seedCompensation(ctx.db,f.alice.employee.id,f.admin.id);
   expect((await req(f.admin.token,`/${c.record.id}/complete`,{version:5,reason:note,confirmed:true})).status).toBe(200);
   expect((await patch(f,c,{version:6,status:'pending'},f.admin)).status).toBe(409);
 });
@@ -112,5 +115,5 @@ test('competing submissions change the checklist once and failed audit rolls bac
 });
 test('optional pending reviews cannot be silently discarded by final completion',async()=>{
   const f=await fixture(),c=await start(f,[definition({required:false,reviewRequired:true})]);await patch(f,c,{});expect((await req(f.admin.token,`/${c.record.id}/complete`,{version:2,reason:note,confirmed:true})).status).toBe(409);
-  await patch(f,c,{version:2,status:'pending'});expect((await req(f.admin.token,`/${c.record.id}/complete`,{version:3,reason:note,confirmed:true})).status).toBe(200);
+  await patch(f,c,{version:2,status:'pending'});await seedCompensation(ctx.db,f.alice.employee.id,f.admin.id);expect((await req(f.admin.token,`/${c.record.id}/complete`,{version:3,reason:note,confirmed:true})).status).toBe(200);
 });
