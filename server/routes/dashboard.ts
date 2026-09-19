@@ -8,8 +8,17 @@ import { authenticate } from "../middleware/auth";
 import { db } from "../db";
 import { eq, and } from "drizzle-orm";
 import { users, employees } from "@shared/schema";
+import { z } from 'zod';
+import { dashboardOverview } from '../services/dashboardOverview';
 
 const router = express.Router();
+router.get('/overview', authenticate, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const parsed = z.object({ days: z.enum(['7', '30', '90']).default('30') }).strict().safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ message: 'Choose a 7, 30 or 90 day dashboard period' });
+  try { return res.json(await dashboardOverview(req.user!, Number(parsed.data.days))); }
+  catch { return res.status(500).json({ message: 'Unable to load the dashboard. Please refresh.' }); }
+});
 router.get('/stats',authenticate,async(req,res)=>{
  try{const today=new Date().toISOString().slice(0,10),policy=await getCompanySettings(),until=new Date(Date.now()+policy.documentExpiryDays*86400000).toISOString().slice(0,10);
  const [head]=await db.select({count:sql<number>`count(*)`}).from(employees).where(employeeScope(req.user!,'employee_database'));
