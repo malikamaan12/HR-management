@@ -12,7 +12,10 @@
     "test": "vitest run",
     "db:migrate": "node scripts/migrate.mjs",
     "admin:bootstrap": "node scripts/bootstrap-admin.mjs",
-    "storage:verify": "node scripts/verify-supabase-storage.mjs"
+    "storage:verify": "node scripts/verify-supabase-storage.mjs",
+    "db:backup": "node scripts/database-recovery.mjs backup",
+    "db:backup:verify": "node scripts/database-recovery.mjs verify",
+    "db:restore:local": "node scripts/database-recovery.mjs restore"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.37.0",

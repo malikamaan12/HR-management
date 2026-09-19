@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 
 export class StorageUnavailableError extends Error {}
 export function privateStorageConfigured(){try{const {client}=configuration();client.destroy();return true;}catch{return false;}}
-function configuration(){
+export function configuration(){
   const provider=process.env.STORAGE_PROVIDER || 'r2';
   if(provider==='supabase'){
     const {SUPABASE_S3_ENDPOINT,SUPABASE_S3_REGION,SUPABASE_S3_ACCESS_KEY_ID,SUPABASE_S3_SECRET_ACCESS_KEY,SUPABASE_STORAGE_BUCKET}=process.env;

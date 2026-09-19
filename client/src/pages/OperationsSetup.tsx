@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Field, Section, QueryError, fieldClass, useAction } from '@/components/hr/Operations';
 import { AttendanceLocationManagement } from '@/components/hr/AttendanceLocations';
 import HrRules from '@/pages/HrRules';
+import SystemReadiness from '@/components/hr/SystemReadiness';
 import type { OperationsSetupResponse } from '@shared/operations-setup';
 import { operationsTrainingUpdate, type OperationsTrainingSettings as TrainingSettings, type OperationsTrainingCourse as TrainingCourse } from '@shared/operations-training';
 
@@ -20,7 +21,7 @@ const localToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Qata
 const safeIssueHref = (href: string) => href.startsWith('/') && !href.startsWith('//') ? href : '/operations-setup';
 const initialTab = () => {
   const requested = new URLSearchParams(window.location.search).get('tab');
-  return requested && ['overview', 'locations', 'supervisors', 'leave', 'induction'].includes(requested) ? requested : 'overview';
+  return requested && ['overview', 'locations', 'supervisors', 'leave', 'induction', 'services'].includes(requested) ? requested : 'overview';
 };
 
 function ReadinessIssues({ section }: { section?: ReadinessSection }) {
@@ -111,7 +112,7 @@ export default function OperationsSetup() {
       </>}
     </Section>
     <Tabs value={tab} onValueChange={setTab}>
-      <TabsList className="flex h-auto flex-wrap justify-start"><TabsTrigger value="overview">Overview</TabsTrigger><TabsTrigger value="locations">Locations & geofencing</TabsTrigger><TabsTrigger value="supervisors">People & supervisors</TabsTrigger><TabsTrigger value="leave">Leave approvals</TabsTrigger><TabsTrigger value="induction">Required training</TabsTrigger></TabsList>
+      <TabsList className="flex h-auto flex-wrap justify-start"><TabsTrigger value="overview">Overview</TabsTrigger><TabsTrigger value="locations">Locations & geofencing</TabsTrigger><TabsTrigger value="supervisors">People & supervisors</TabsTrigger><TabsTrigger value="leave">Leave approvals</TabsTrigger><TabsTrigger value="induction">Required training</TabsTrigger><TabsTrigger value="services">Services & recovery</TabsTrigger></TabsList>
       <TabsContent value="overview" className="space-y-4 pt-3">
         {data?.sections.map(item => <Section key={item.id} title={item.title}><ReadinessIssues section={item}/><Button variant="outline" onClick={() => setTab(item.id === 'people' ? 'supervisors' : item.id)}>Open {item.id === 'people' ? 'people setup' : item.title.toLowerCase()}</Button></Section>)}
         {!data && !readiness.isLoading && <p className="text-sm text-muted-foreground">Refresh readiness to load the configuration checklist. The setup tabs remain available.</p>}
@@ -120,6 +121,7 @@ export default function OperationsSetup() {
       <TabsContent value="supervisors" className="space-y-4 pt-3"><Section title="Employee records and account access"><ReadinessIssues section={section('people')}/><p className="text-sm">Create the employee record, link the approved account and keep their department and employment type accurate.</p><div className="flex flex-wrap gap-4 text-sm"><a href="/employees" className="text-primary underline">Employee database</a><a href="/user-management" className="text-primary underline">User accounts and roles</a></div></Section><Section title="Supervisor assignments"><ReadinessIssues section={section('supervisors')}/><p className="text-sm">In Workforce, choose the site and team, add dated employee membership and grant the supervisor the required access for those dates. Attendance and timesheet approval need independent review access; scheduling access alone does not approve time.</p><p className="text-sm text-muted-foreground">Temporary, contract and workforce attendance requires supervisor approval. For office employees, maintain the reporting relationship in their employee profile and review the attendance enforcement rules.</p><div className="flex flex-wrap gap-4 text-sm"><a href="/workforce" className="text-primary underline">Manage teams and lead access</a><a href="/employees" className="text-primary underline">Manage reporting relationships</a><a href="/attendance" className="text-primary underline">Attendance approval queue</a></div></Section></TabsContent>
       <TabsContent value="leave" className="space-y-4 pt-3"><Section title="Leave approval readiness"><ReadinessIssues section={section('leave')}/><p className="text-sm">Choose a company leave rule or employee override, specify the first approver and add further approval stages when needed. Revisions take effect on the date you select and retain previous request snapshots.</p></Section><HrRules initialKind="leave"/></TabsContent>
       <TabsContent value="induction" className="space-y-4 pt-3"><Section title="Induction readiness"><ReadinessIssues section={section('induction')}/><p className="text-sm">Configure required courses for permanent, temporary, event and contract staff. When updating existing onboarding cases, use the explicit requirements refresh in <a href="/onboarding" className="text-primary underline">Onboarding</a>.</p></Section><TrainingRequirements/></TabsContent>
+      <TabsContent value="services" className="space-y-4 pt-3"><SystemReadiness/></TabsContent>
     </Tabs>
   </div>;
 }

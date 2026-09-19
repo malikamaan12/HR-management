@@ -8,6 +8,8 @@ vite.config.ts.*
 .env.*
 !.env.example
 coverage
+*.e3hrbackup
+*.dump
 
 # Local development screenshots (may contain personal data)
 attached_assets/**/*.png

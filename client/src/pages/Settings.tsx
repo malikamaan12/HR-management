@@ -8,11 +8,11 @@ import {Input} from '@/components/ui/input';
 import {Button} from '@/components/ui/button';
 import {useToast} from '@/hooks/use-toast';
 import CalculationRules from '@/components/CalculationRules';
+import SystemReadiness from '@/components/hr/SystemReadiness';
 export default function Settings(){
  const {user,logout}=useAuth(),{toast}=useToast(),cache=useQueryClient();
  const admin=user?.role==='admin'||user?.role==='super_admin';
  const {data,error}=useQuery<CompanySettings>({queryKey:['/api/settings/company']});
- const {data:integrations}=useQuery<{email:boolean;documents:boolean;timezone:string}>({queryKey:['/api/settings/integrations'],enabled:admin});
  const [form,setForm]=useState(defaultCompanySettings),[password,setPassword]=useState({currentPassword:'',newPassword:'',confirmPassword:''});
  useEffect(()=>{if(data)setForm(data);},[data]);
  const save=useMutation({mutationFn:()=>apiJson('/api/settings/company',{method:'PUT',body:form}),onSuccess:()=>{cache.invalidateQueries({queryKey:['/api/settings/company']});toast({title:'Settings saved'});},onError:error=>toast({title:'Unable to save',description:error.message,variant:'destructive'})});
@@ -34,7 +34,7 @@ export default function Settings(){
   </form>
  </CardContent></Card>
  {admin&&<CalculationRules/>}
- {admin&&<Card><CardHeader><CardTitle>Service configuration</CardTitle></CardHeader><CardContent className="space-y-2"><p>Resend email: {integrations?.email?'Configured':'Not configured'}</p><p>Private document storage: {integrations?.documents?'Configured':'Not configured'}</p><p>Attendance timezone: {integrations?.timezone || 'Loading…'}</p><p className="text-sm text-muted-foreground">Credentials and APP_TIMEZONE are configured on the server. WhatsApp and bank submission integrations are pending.</p></CardContent></Card>}
+ {admin&&<SystemReadiness/>}
  <Card><CardHeader><CardTitle>Change password</CardTitle></CardHeader><CardContent><form className="max-w-md space-y-3" onSubmit={e=>{e.preventDefault();if(password.newPassword!==password.confirmPassword){toast({title:'Passwords do not match',variant:'destructive'});return;}changePassword.mutate();}}>{(['currentPassword','newPassword','confirmPassword'] as const).map(key=><label className="block" key={key}>{({currentPassword:'Current password',newPassword:'New password',confirmPassword:'Confirm new password'})[key]}<Input required type="password" minLength={key==='currentPassword'?1:12} autoComplete={key==='currentPassword'?'current-password':'new-password'} value={password[key]} onChange={e=>setPassword({...password,[key]:e.target.value})}/></label>)}<Button type="submit" disabled={changePassword.isPending}>Change password</Button></form></CardContent></Card>
  </div>;
 }

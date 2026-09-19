@@ -40,4 +40,8 @@ New matching onboarding cases use the published requirements. Existing open case
 - One combined focused pass passed **25 tests across three files**: six authenticated readiness integration cases, seven supervisor/leave/date/limit evaluator cases and twelve training publication integration cases.
 - Integration used isolated synthetic PGlite databases and the existing migrations. Checks covered RBAC, response privacy, empty-company status, dated geofence coverage, independent full-shift reviewers, leave stages, published audiences, version conflicts, unpublished draft protection and immutable completion/quiz history.
 - Real employee imports, venue coordinates, supervisor choices, leave policies and mandatory-course choices still need operational input. GPS has not been enabled in production.
-- Full application regression and browser role acceptance remain the next combined validation phase. This workspace and the preceding payroll batch remain local until a consolidated push/deployment.
+- The combined application regression, browser role checks and deployment completed on 19 September 2026; see [Combined-Validation-Release.md](Combined-Validation-Release.md). The later Services & recovery addition described below remains local pending a future release.
+
+## Local Services & recovery addition
+
+The next batch adds an administrator-only Services & recovery tab, also available in Settings. It reports database connectivity and application/email configuration, and supports an explicit Supabase private-storage probe with saved stages, configuration-change detection and temporary-file cleanup retry. It does not send email or change operating policies. Encrypted application database backup, archive verification and empty-local-database restore tools are documented in [Backup-Recovery-Guide.md](Backup-Recovery-Guide.md). No new migration, dependency or paid service is required. This addition is not deployed.

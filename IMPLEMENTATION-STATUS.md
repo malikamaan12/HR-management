@@ -1,5 +1,7 @@
 # E3 HR module status — 19 September 2026
 
+Latest local addition: administrator service readiness, an explicit private-storage verification/cleanup workflow, and encrypted database backup plus isolated restore tools are implemented. The focused 19 tests, TypeScript and production build passed. This batch is not pushed or deployed, and no actual provider probe or PostgreSQL restore drill has been completed. It adds no migration, dependency or paid service. See [Service-Readiness-Release.md](docs/Service-Readiness-Release.md).
+
 Latest release: application commit `e99c47e96cf8ae4855fe974627fbcff06cf7928a` is deployed on Render Free as of 19 September 2026 at 08:59:19 GMT+3. Daily/per-assigned-event-shift pay, configurable unpaid-leave deductions, administrator operational setup and the dashboard permission fix are live. The combined run passed all 350 tests across 28 files, TypeScript and production builds; local browser checks covered administrator, HR, supervisor and employee roles. Live health/readiness, the expected client asset and authenticated setup/payroll screens passed. See [the validation and deployment record](docs/Combined-Validation-Release.md). Actual staff, boundaries, supervisors and company policies still need configuration; live readiness shows 0 active employees and 3 sites.
 
 The following entries describe the earlier deployment baseline and its original verification scope; the latest record above supersedes their test-deferral and release status.
