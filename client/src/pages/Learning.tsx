@@ -1,6 +1,5 @@
 import {useState} from 'react';
 import {useQuery} from '@tanstack/react-query';
-import {Helmet} from 'react-helmet';
 import {Button} from '@/components/ui/button';
 import {Field,Section,Table,QueryError,fieldClass} from '@/components/hr/Operations';
 import {ActionForm,ApproverPicker,EmployeePicker,Files,History,Input,Note,Pager,Reassign,Toggle,number,text,today,useSave,type FileInfo} from '@/components/hr/EmployeeServiceUI';
@@ -13,12 +12,12 @@ type Enrollment=typeof learningEnrollments.$inferSelect;
 const base='/api/learning';
 export default function Learning(){
   const [section,setSection]=useState<'induction'|'records'>('induction');
-  return <div className="space-y-6"><Helmet><title>Learning & Training | E3 HR</title></Helmet><nav aria-label="Learning areas" className="flex flex-wrap gap-2"><Button variant={section==='induction'?'default':'outline'} onClick={()=>setSection('induction')}>Induction & training</Button><Button variant={section==='records'?'default':'outline'} onClick={()=>setSection('records')}>Other training & approvals</Button></nav>{section==='induction'?<InductionAcademy/>:<RecordedLearning onInduction={()=>setSection('induction')}/>}</div>;
+  return <div className="space-y-6"><nav aria-label="Learning areas" className="flex flex-wrap gap-2"><Button variant={section==='induction'?'default':'outline'} onClick={()=>setSection('induction')}>Induction & training</Button><Button variant={section==='records'?'default':'outline'} onClick={()=>setSection('records')}>Other training & approvals</Button></nav>{section==='induction'?<InductionAcademy/>:<RecordedLearning onInduction={()=>setSection('induction')}/>}</div>;
 }
 function RecordedLearning({onInduction}:{onInduction:()=>void}){
   const [tab,setTab]=useState('catalogue'),[page,setPage]=useState(1),[q,setQ]=useState(''),[edit,setEdit]=useState<Course|null|undefined>(),[enroll,setEnroll]=useState<Course|null>(null),[selected,setSelected]=useState<number|null>(null),[status,setStatus]=useState('');
   const courses=useQuery<{items:Course[];total:number;canManage:boolean;canOverride:boolean}>({queryKey:[base+'/courses',{page,q}]}),requests=useQuery<{items:{id:number;employeeName:string;title:string;status:string;progress:number;dueDate:string|null;expiresOn:string|null}[];total:number}>({queryKey:[base+'/enrollments',{page,status}],enabled:tab==='records'});
-  return <div className="space-y-6"><Helmet><title>Learning & Training | E3 HR</title></Helmet><header className="flex flex-wrap justify-between gap-4"><div><h1 className="text-2xl font-semibold">Learning & training</h1><p className="text-muted-foreground mt-1">Build skills, track progress and retain verified completion records.</p></div>{courses.data?.canManage&&<Button onClick={()=>setEdit(null)}>Create course</Button>}</header>
+  return <div className="space-y-6"><header className="flex flex-wrap justify-between gap-4"><div><h1 className="text-2xl font-semibold">Learning & training</h1><p className="text-muted-foreground mt-1">Build skills, track progress and retain verified completion records.</p></div>{courses.data?.canManage&&<Button onClick={()=>setEdit(null)}>Create course</Button>}</header>
     {selected?<><Button variant="outline" onClick={()=>setSelected(null)}>Back to learning</Button><EnrollmentDetail id={selected}/></>:<><div className="flex gap-2"><Button variant={tab==='catalogue'?'default':'outline'} onClick={()=>{setTab('catalogue');setPage(1);}}>Course catalogue</Button><Button variant={tab==='records'?'default':'outline'} onClick={()=>{setTab('records');setPage(1);}}>Enrollments & approvals</Button></div>
     {edit!==undefined&&<Section title={edit?'Revise course':'New course'}><CourseForm course={edit||undefined} done={()=>setEdit(undefined)}/><Button variant="ghost" onClick={()=>setEdit(undefined)}>Close editor</Button></Section>}
     {enroll&&<Section title={'Request enrollment · '+enroll.definition.title}><EnrollmentForm course={enroll} canOverride={!!courses.data?.canOverride} done={id=>{setEnroll(null);setSelected(id);}}/><Button variant="ghost" onClick={()=>setEnroll(null)}>Cancel</Button></Section>}

@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Helmet } from 'react-helmet';
 import { Link } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Field, Section, Table, QueryError, fieldClass } from '@/components/hr/Operations';
@@ -23,7 +22,7 @@ const show = (value: unknown) => value == null || value === '' ? '—' : typeof 
 export default function Employment() {
   const [tab, setTab] = useState('changes'), [selected, setSelected] = useState<number | null>(null), [creating, setCreating] = useState(false), [employeeId, setEmployeeId] = useState('');
   const context = useQuery<Context>({ queryKey: [base + '/context'] });
-  return <div className="space-y-6"><Helmet><title>Employment & service | E3 HR</title></Helmet>
+  return <div className="space-y-6">
     <header className="flex flex-wrap justify-between gap-4"><div><h1 className="text-2xl font-semibold">Employment & service</h1><p className="mt-1 text-muted-foreground">Manage transfers, promotions, renewals and reviewed service history.</p></div>
       {context.data?.canManage && <Button onClick={() => { setTab('changes'); setSelected(null); setCreating(true); }}>Prepare employment change</Button>}</header>
     <QueryError error={context.error}/><div className="flex flex-wrap gap-2">

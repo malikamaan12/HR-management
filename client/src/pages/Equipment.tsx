@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Helmet } from 'react-helmet';
 import { Button } from '@/components/ui/button';
 import { Field, Section, Table, QueryError, fieldClass } from '@/components/hr/Operations';
 import { EmployeePicker, Input, Note, Pager, Toggle, text, number, today, useSave } from '@/components/hr/EmployeeServiceUI';
@@ -15,7 +14,7 @@ export default function Equipment(){
   const context=useQuery<Context>({queryKey:[base+'/context']});
   const [tab,setTab]=useState('assignments'),[selected,setSelected]=useState<{kind:'asset'|'assignment';id:number}|null>(null),[creating,setCreating]=useState(false);
   const c=context.data;
-  return <div className="space-y-6"><Helmet><title>Equipment & custody | E3 HR</title></Helmet>
+  return <div className="space-y-6">
     <header className="flex flex-wrap items-start justify-between gap-3"><div><h1 className="text-2xl font-semibold">Equipment & custody</h1><p className="text-muted-foreground mt-1">Track company equipment from issue and employee receipt through return inspection.</p></div>{c?.canManage&&<Button onClick={()=>{setCreating(true);setSelected(null);setTab('inventory');}}>Register equipment</Button>}</header>
     <QueryError error={context.error}/>{context.isLoading&&<p>Loading equipment workspace…</p>}
     {c&&<><nav className="flex flex-wrap gap-2" aria-label="Equipment views"><Button variant={tab==='assignments'?'default':'outline'} onClick={()=>{setTab('assignments');setSelected(null);setCreating(false);}}>Employee custody</Button>{c.canManage&&<Button variant={tab==='inventory'?'default':'outline'} onClick={()=>{setTab('inventory');setSelected(null);setCreating(false);}}>Inventory register</Button>}{c.canPolicy&&<Button variant={tab==='policy'?'default':'outline'} onClick={()=>{setTab('policy');setSelected(null);setCreating(false);}}>Equipment rules</Button>}</nav>

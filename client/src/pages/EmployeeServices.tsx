@@ -1,6 +1,5 @@
 import {useState} from 'react';
 import {useQuery} from '@tanstack/react-query';
-import {Helmet} from 'react-helmet';
 import {Button} from '@/components/ui/button';
 import {Field,Section,Table,QueryError,fieldClass,downloadCsv} from '@/components/hr/Operations';
 import {ActionForm,ApproverPicker,EmployeePicker,Files,History,Input,Note,Pager,Reassign,Toggle,number,text,today,useSave,type Directory,type FileInfo} from '@/components/hr/EmployeeServiceUI';
@@ -19,7 +18,7 @@ function EmployeeServices({kind}:{kind:ServiceKind}){
   const directory=useQuery<Directory>({queryKey:[base+'/directory']});
   const query=useQuery<{items:{id:number;employeeName:string;title:string;policyKey:string;requestDate:string;amount:string;unit:string|null;status:string}[];total:number}>({queryKey:[base+'/requests',{page,status}],enabled:tab==='requests'});
   const policies=useQuery<{items:{policy:Policy;employeeName:string|null}[];total:number}>({queryKey:[base+'/policies',{page}],enabled:tab==='rules'&&!!directory.data?.canConfigure});
-  return <div className="space-y-6"><Helmet><title>{title} | E3 HR</title></Helmet><header className="flex flex-wrap justify-between gap-3"><div><h1 className="text-2xl font-semibold">{title}</h1><p className="text-muted-foreground mt-1">{kind==='benefit'?'Understand your eligibility, request benefits and track activation.':'Prepare a claim, attach receipts and track approval and reimbursement.'}</p></div><Button onClick={()=>{setCreate(true);setSelected(null);}}>New {kind==='benefit'?'benefit request':'expense claim'}</Button></header><QueryError error={directory.error}/>
+  return <div className="space-y-6"><header className="flex flex-wrap justify-between gap-3"><div><h1 className="text-2xl font-semibold">{title}</h1><p className="text-muted-foreground mt-1">{kind==='benefit'?'Understand your eligibility, request benefits and track activation.':'Prepare a claim, attach receipts and track approval and reimbursement.'}</p></div><Button onClick={()=>{setCreate(true);setSelected(null);}}>New {kind==='benefit'?'benefit request':'expense claim'}</Button></header><QueryError error={directory.error}/>
   {selected?<><Button variant="outline" onClick={()=>setSelected(null)}>Back to requests</Button><RequestDetail kind={kind} id={selected}/></>:<>
     <div className="flex flex-wrap gap-2">{[['requests','Requests & approvals'],['entitlements','Eligibility & balances'],...(directory.data?.canConfigure?[['rules','Admin rules']]:[])].map(([key,label])=><Button key={key} variant={tab===key?'default':'outline'} onClick={()=>{setTab(key);setPage(1);}}>{label}</Button>)}</div>
     {create&&<Section title={kind==='benefit'?'Prepare benefit request':'Prepare expense claim'}><RequestForm kind={kind} done={id=>{setCreate(false);setSelected(id);}}/><Button variant="ghost" onClick={()=>setCreate(false)}>Cancel</Button></Section>}

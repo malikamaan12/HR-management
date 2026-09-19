@@ -1,7 +1,6 @@
 import {MetricCard} from '@/components/ux/ModuleVisuals';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Helmet } from 'react-helmet';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -98,7 +97,7 @@ export default function OperationsSetup() {
   if (!allowed) return <p>Only administrators can configure operational setup.</p>;
   const data = readiness.data, section = (id: ReadinessSection['id']) => data?.sections.find(item => item.id === id);
   return <div className="space-y-6">
-    <Helmet><title>Operational setup | E3 HR</title></Helmet>
+
     <header className="space-y-2"><h1 className="text-2xl font-semibold">Operational setup</h1><p className="text-muted-foreground">Prepare employee access, work locations, supervisors, leave approvals and required induction courses.</p></header>
     <Section title="Configuration readiness">
       <div className="flex flex-wrap items-end gap-3"><Field label="Readiness date (Qatar)"><input className={fieldClass} type="date" required value={asOf} onChange={event => { if (event.target.value) setAsOf(event.target.value); }}/></Field><Button variant="outline" disabled={readiness.isFetching} onClick={() => void readiness.refetch()}>{readiness.isFetching ? 'Refreshing…' : 'Refresh readiness'}</Button></div>

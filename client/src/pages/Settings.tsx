@@ -1,3 +1,5 @@
+import BrandingSettings from '@/components/BrandingSettings';
+import {Tabs,TabsList,TabsTrigger,TabsContent} from '@/components/ui/tabs';
 import {useEffect,useState} from 'react';
 import {useQuery,useMutation,useQueryClient} from '@tanstack/react-query';
 import {defaultCompanySettings,officeScheduleSummary,type CompanySettings} from '@shared/settings';
@@ -17,7 +19,7 @@ export default function Settings(){
  useEffect(()=>{if(data)setForm(data);},[data]);
  const save=useMutation({mutationFn:()=>apiJson('/api/settings/company',{method:'PUT',body:form}),onSuccess:()=>{cache.invalidateQueries({queryKey:['/api/settings/company']});toast({title:'Settings saved'});},onError:error=>toast({title:'Unable to save',description:error.message,variant:'destructive'})});
  const changePassword=useMutation({mutationFn:()=>apiJson('/api/auth/change-password',{method:'POST',body:password}),onSuccess:async()=>{toast({title:'Password changed',description:'Sign in again with your new password.'});await logout();},onError:error=>toast({title:'Unable to change password',description:error.message,variant:'destructive'})});
- return <div className="space-y-6"><Card><CardHeader><CardTitle>Company settings</CardTitle></CardHeader><CardContent>
+ return <Tabs defaultValue="company" className="space-y-6"><TabsList><TabsTrigger value="company">Company</TabsTrigger>{admin&&<><TabsTrigger value="branding">Branding</TabsTrigger><TabsTrigger value="rules">Calculation rules</TabsTrigger><TabsTrigger value="services">System readiness</TabsTrigger></>}<TabsTrigger value="password">Password</TabsTrigger></TabsList><TabsContent value="company"><Card><CardHeader><CardTitle>Company settings</CardTitle></CardHeader><CardContent>
   {admin&&<p className="mb-4"><a className="text-primary underline" href="/hr-rules">Configure attendance, leave and payroll rules by employee and effective date</a></p>}
   {error&&<p role="alert">Unable to load company settings.</p>}
   <form className="grid gap-4 sm:grid-cols-2" onSubmit={e=>{e.preventDefault();save.mutate();}}>
@@ -32,9 +34,8 @@ export default function Settings(){
    </fieldset>
    {admin&&<Button type="submit" disabled={save.isPending||!!error}>Save settings</Button>}
   </form>
- </CardContent></Card>
- {admin&&<CalculationRules/>}
- {admin&&<SystemReadiness/>}
- <Card><CardHeader><CardTitle>Change password</CardTitle></CardHeader><CardContent><form className="max-w-md space-y-3" onSubmit={e=>{e.preventDefault();if(password.newPassword!==password.confirmPassword){toast({title:'Passwords do not match',variant:'destructive'});return;}changePassword.mutate();}}>{(['currentPassword','newPassword','confirmPassword'] as const).map(key=><label className="block" key={key}>{({currentPassword:'Current password',newPassword:'New password',confirmPassword:'Confirm new password'})[key]}<Input required type="password" minLength={key==='currentPassword'?1:12} autoComplete={key==='currentPassword'?'current-password':'new-password'} value={password[key]} onChange={e=>setPassword({...password,[key]:e.target.value})}/></label>)}<Button type="submit" disabled={changePassword.isPending}>Change password</Button></form></CardContent></Card>
- </div>;
+ </CardContent></Card></TabsContent>
+ {admin&&<><TabsContent value="branding"><BrandingSettings/></TabsContent><TabsContent value="rules"><CalculationRules/></TabsContent><TabsContent value="services"><SystemReadiness/></TabsContent></>}
+ <TabsContent value="password"><Card><CardHeader><CardTitle>Change password</CardTitle></CardHeader><CardContent><form className="max-w-md space-y-3" onSubmit={e=>{e.preventDefault();if(password.newPassword!==password.confirmPassword){toast({title:'Passwords do not match',variant:'destructive'});return;}changePassword.mutate();}}>{(['currentPassword','newPassword','confirmPassword'] as const).map(key=><label className="block" key={key}>{({currentPassword:'Current password',newPassword:'New password',confirmPassword:'Confirm new password'})[key]}<Input required type="password" minLength={key==='currentPassword'?1:12} autoComplete={key==='currentPassword'?'current-password':'new-password'} value={password[key]} onChange={e=>setPassword({...password,[key]:e.target.value})}/></label>)}<Button type="submit" disabled={changePassword.isPending}>Change password</Button></form></CardContent></Card></TabsContent>
+ </Tabs>;
 }

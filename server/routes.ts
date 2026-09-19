@@ -1,3 +1,4 @@
+import brandingRouter from './routes/branding';
 import orgChartsRouter from './routes/org-charts';
 import {documentExpiryStatus} from './services/documentGovernance';
 import {getCompanySettings} from './services/settings';
@@ -88,6 +89,7 @@ import bcrypt from "bcryptjs";
 export async function registerRoutes(app: Express): Promise<Server> {
   // Add cookie parser middleware
   app.use(cookieParser());
+  app.use('/api/branding',brandingRouter);
   
   // Register auth routes
   app.use('/api/auth', authRoutes);

@@ -1,3 +1,5 @@
+import {useBranding} from '@/components/Branding';
+import {defaultPublicBranding} from '@shared/branding';
 import {useLocation} from 'wouter';
 import { ReactNode, useEffect, useRef } from "react";
 import { Helmet } from 'react-helmet';
@@ -15,6 +17,7 @@ interface MainLayoutProps {
 
 export default function MainLayout({ children, pageTitle, className }: MainLayoutProps) {
   const { theme } = useTheme();
+  const {data:branding=defaultPublicBranding}=useBranding();
   const [location]=useLocation();
   const mainRef=useRef<HTMLElement>(null);
   useEffect(()=>{mainRef.current?.scrollTo({top:0,behavior:'instant'});},[location]);
@@ -25,7 +28,7 @@ export default function MainLayout({ children, pageTitle, className }: MainLayou
       theme === 'dark' ? 'bg-[#0F172A]' : 'bg-[#F8F9FA]',
       className
     )}>
-      <Helmet><title>{pageTitle} | E3 HR System</title></Helmet>
+      <Helmet><title>{pageTitle} | {branding.applicationName}</title></Helmet>
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:bg-background focus:p-3">Skip to content</a>
       <Sidebar />
       

@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Helmet } from 'react-helmet';
 import { Button } from '@/components/ui/button';
 import { Field, Section, Table, QueryError, fieldClass } from '@/components/hr/Operations';
 import { Input, Note, Toggle, text, number, today, useSave } from '@/components/hr/EmployeeServiceUI';
@@ -19,7 +18,7 @@ export default function Handbook(){
   const [tab,setTab]=useState('mine'),[editionId,setEditionId]=useState<number|null>(null),[assignmentId,setAssignmentId]=useState<number|null>(null),[create,setCreate]=useState(false);
   const overview=useQuery<Overview>({queryKey:[base+'/overview']});
   const selectTab=(value:string)=>{setTab(value);setEditionId(null);setAssignmentId(null);setCreate(false);};
-  return <div className="space-y-6"><Helmet><title>Handbooks & acknowledgements | E3 HR</title></Helmet><header className="flex flex-wrap items-start justify-between gap-4"><div><h1 className="text-2xl font-semibold">Handbooks & acknowledgements</h1><p className="mt-1 text-muted-foreground">Read company guidance and keep a record of the exact edition you acknowledge.</p></div>{overview.data?.canPublish&&<Button onClick={()=>{selectTab('library');setCreate(true);}}>Create handbook</Button>}</header><QueryError error={overview.error}/>
+  return <div className="space-y-6"><header className="flex flex-wrap items-start justify-between gap-4"><div><h1 className="text-2xl font-semibold">Handbooks & acknowledgements</h1><p className="mt-1 text-muted-foreground">Read company guidance and keep a record of the exact edition you acknowledge.</p></div>{overview.data?.canPublish&&<Button onClick={()=>{selectTab('library');setCreate(true);}}>Create handbook</Button>}</header><QueryError error={overview.error}/>
     <nav className="flex flex-wrap gap-2" aria-label="Handbook sections">{[['mine','My acknowledgements'],['library','Published library'],...(overview.data?.canManage?[['team','Assignment management']]:[]),...(overview.data?.canSetRules?[['rules','Acknowledgement rules']]:[])].map(([value,label])=><Button key={value} variant={tab===value?'default':'outline'} onClick={()=>selectTab(value)}>{label}</Button>)}</nav>
     {overview.isLoading&&<p>Loading handbooks…</p>}{overview.data&&(assignmentId?<><Button variant="outline" onClick={()=>setAssignmentId(null)}>Back to assignments</Button><AssignmentDetail id={assignmentId}/></>:editionId?<><Button variant="outline" onClick={()=>setEditionId(null)}>Back to library</Button><EditionPanel key={editionId} id={editionId} overview={overview.data} select={setEditionId}/></>:create?<Section title="New handbook draft"><ContentForm done={row=>{setCreate(false);setEditionId(row.id);}}/><Button variant="ghost" onClick={()=>setCreate(false)}>Cancel</Button></Section>:tab==='library'?<Library overview={overview.data} select={setEditionId}/>:tab==='rules'?<Rules policy={overview.data.policy}/>:<Assignments key={tab} view={tab==='team'?'team':'mine'} select={setAssignmentId}/>)}
   </div>;

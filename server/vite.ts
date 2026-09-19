@@ -1,3 +1,5 @@
+import {brandingHtml,getBranding,emptyBranding} from './services/branding';
+async function pageBranding(){try{return await getBranding();}catch{return emptyBranding();}}
 import express, { type Express } from "express";
 import fs from "fs";
 import path from "path";
@@ -58,7 +60,7 @@ export async function setupVite(app: Express, server: Server) {
         `src="/src/main.tsx"`,
         `src="/src/main.tsx?v=${nanoid()}"`,
       );
-      const page = await vite.transformIndexHtml(url, template);
+      const page = await vite.transformIndexHtml(url, brandingHtml(template,await pageBranding()));
       res.status(200).set({ "Content-Type": "text/html" }).end(page);
     } catch (e) {
       vite.ssrFixStacktrace(e as Error);
@@ -76,10 +78,13 @@ export function serveStatic(app: Express) {
     );
   }
 
-  app.use(express.static(distPath));
+  const staticFiles=express.static(distPath,{index:false});
+  app.use((req,res,next)=>req.path==="/index.html"?next():staticFiles(req,res,next));
 
   // fall through to index.html if the file doesn't exist
-  app.use("*", (_req, res) => {
-    res.sendFile(path.resolve(distPath, "index.html"));
+  app.get(["/index.html", "*"], async (_req, res, next) => {
+    try { const template=await fs.promises.readFile(path.resolve(distPath,"index.html"),"utf-8");
+      res.set({"Cache-Control":"no-store","X-Robots-Tag":"noindex, nofollow"}).type("html").send(brandingHtml(template,await pageBranding()));
+    } catch(error) { next(error); }
   });
 }

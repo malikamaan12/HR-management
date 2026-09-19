@@ -1,3 +1,5 @@
+import {BrandLogo,useBranding} from '@/components/Branding';
+import {defaultPublicBranding} from '@shared/branding';
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { z } from 'zod';
@@ -21,6 +23,7 @@ const loginSchema = z.object({
 type LoginForm = z.infer<typeof loginSchema>;
 
 const Login: React.FC = () => {
+  const {data:branding=defaultPublicBranding}=useBranding();
   const { login, isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
@@ -62,20 +65,13 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-slate-50 to-slate-100 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-2 text-center">
           <div className="flex justify-center mb-4">
-            <img 
-              src="/logo.svg" 
-              alt="E3 HR Management System" 
-              className="h-16 w-auto"
-              onError={(e) => {
-                e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiB2aWV3Qm94PSIwIDAgMTAwIDEwMCI+PHJlY3Qgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIGZpbGw9IiMwNTRBODAiIHJ4PSIxMCIvPjx0ZXh0IHg9IjUwIiB5PSI1OCIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjQwIiBmaWxsPSJ3aGl0ZSIgdGV4dC1hbmNob3I9Im1pZGRsZSI+RTM8L3RleHQ+PC9zdmc+';
-              }}
-            />
+            <BrandLogo className="h-16 w-48"/>
           </div>
-          <CardTitle className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-cyan-600 text-transparent bg-clip-text">E3 HR Management System</CardTitle>
+          <CardTitle className="justify-center text-center text-2xl font-bold text-foreground"><span>{branding.applicationName}</span></CardTitle>
           <CardDescription>
             Enter your credentials to access your account
           </CardDescription>
@@ -120,6 +116,7 @@ const Login: React.FC = () => {
                         />
                       </FormControl>
                       <button
+                        aria-label={showPassword ? "Hide password" : "Show password"}
                         type="button"
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
                         onClick={() => setShowPassword(!showPassword)}
@@ -160,7 +157,7 @@ const Login: React.FC = () => {
             </a>
           </div>
           <div className="text-xs text-center text-muted-foreground">
-            <p>© {new Date().getFullYear()} E3 HR Management System. All rights reserved.</p>
+            <p>© {new Date().getFullYear()} {branding.applicationName}. All rights reserved.</p>
           </div>
         </CardFooter>
       </Card>

@@ -1,6 +1,6 @@
 import type { UserRole } from '@shared/schema';
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { queryClient } from '@/lib/queryClient';
+import { clearSessionCache } from '@/lib/queryClient';
 import { parseAuthResponse } from './auth-session';
 
 interface User { userId: number; username: string; role: UserRole; employeeType?: string; contractEndDate?: string;
@@ -18,7 +18,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const currentToken = useRef<string | null>(null);
   const refreshing = useRef<Promise<string | null> | null>(null);
   const clear = useCallback(() => {
-    currentToken.current = null; setUser(null); setToken(null); queryClient.clear();
+    currentToken.current = null; setUser(null); setToken(null); clearSessionCache();
     localStorage.removeItem('accessToken'); localStorage.removeItem('refreshToken');
   }, []);
   const accept = useCallback((data: unknown) => {
@@ -58,7 +58,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const response = await fetch('/api/auth/login', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || 'Sign in failed');
-      queryClient.clear(); accept(data);
+      clearSessionCache(); accept(data);
     } finally { setIsLoading(false); }
   };
   const logout = async () => {

@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Helmet } from 'react-helmet';
 import { Button } from '@/components/ui/button';
 import { Tabs,TabsList,TabsTrigger,TabsContent } from '@/components/ui/tabs';
 import { Field,Section,QueryError,fieldClass } from '@/components/hr/Operations';
@@ -11,7 +10,7 @@ import { communicationPolicy,type CommunicationPolicy } from '@shared/communicat
 export default function Communications(){
   const [tab,setTab]=useState('announcements');
   const context=useQuery<any>({queryKey:[hub+'/context']});
-  return <div className="space-y-6"><Helmet><title>Communication Hub | E3 HR</title></Helmet><header><h1 className="text-3xl font-bold">Communication Hub</h1><p className="mt-2 text-muted-foreground">Your company notices, team conversations and HR action inbox.</p></header><QueryError error={context.error}/>{!context.data&&!context.error&&<p>Loading your workspace…</p>}{context.data&&<Tabs value={tab} onValueChange={setTab}><TabsList className="flex h-auto w-fit max-w-full flex-wrap"><TabsTrigger value="announcements">Announcements & briefings</TabsTrigger><TabsTrigger value="channels">Conversations</TabsTrigger><TabsTrigger value="inbox">Action inbox</TabsTrigger>{context.data.canConfigure&&<TabsTrigger value="settings">Administration</TabsTrigger>}</TabsList><TabsContent value="announcements"><HubAnnouncements context={context.data}/></TabsContent><TabsContent value="channels"><HubChannels context={context.data}/></TabsContent><TabsContent value="inbox"><Inbox onAnnouncements={()=>setTab('announcements')}/></TabsContent>{context.data.canConfigure&&<TabsContent value="settings"><Policy key={context.data.policy.version} current={context.data.policy}/></TabsContent>}</Tabs>}</div>;
+  return <div className="space-y-6"><header><h1 className="text-3xl font-bold">Communication Hub</h1><p className="mt-2 text-muted-foreground">Your company notices, team conversations and HR action inbox.</p></header><QueryError error={context.error}/>{!context.data&&!context.error&&<p>Loading your workspace…</p>}{context.data&&<Tabs value={tab} onValueChange={setTab}><TabsList className="flex h-auto w-fit max-w-full flex-wrap"><TabsTrigger value="announcements">Announcements & briefings</TabsTrigger><TabsTrigger value="channels">Conversations</TabsTrigger><TabsTrigger value="inbox">Action inbox</TabsTrigger>{context.data.canConfigure&&<TabsTrigger value="settings">Administration</TabsTrigger>}</TabsList><TabsContent value="announcements"><HubAnnouncements context={context.data}/></TabsContent><TabsContent value="channels"><HubChannels context={context.data}/></TabsContent><TabsContent value="inbox"><Inbox onAnnouncements={()=>setTab('announcements')}/></TabsContent>{context.data.canConfigure&&<TabsContent value="settings"><Policy key={context.data.policy.version} current={context.data.policy}/></TabsContent>}</Tabs>}</div>;
 }
 function Inbox({onAnnouncements}:{onAnnouncements:()=>void}){
   const [q,setQ]=useState(''),[offset,setOffset]=useState(0),[unread,setUnread]=useState(true);

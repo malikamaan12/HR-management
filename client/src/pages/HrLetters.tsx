@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Helmet } from 'react-helmet';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -106,5 +105,5 @@ function Requests({ team = false }: { team?: boolean }) {
 }
 export default function HrLetters() {
   const context = useQuery<{ canManage: boolean; canPublish: boolean }>({ queryKey: [base + '/context'] });
-  return <div className="space-y-5"><Helmet><title>HR Letter Centre | E3 HR</title></Helmet><header><h1 className="text-2xl font-semibold">HR Letter Centre</h1><p className="mt-2 text-muted-foreground">Request employment and compensation letters, follow HR review, and print issued copies.</p></header><QueryError error={context.error}/>{context.isLoading && <p role="status">Loading letter permissions…</p>}{context.data && <Tabs defaultValue={context.data.canManage ? 'team' : 'mine'}><TabsList className="flex h-auto flex-wrap justify-start"><TabsTrigger value="mine">My requests</TabsTrigger>{context.data.canManage && <TabsTrigger value="team">HR queue</TabsTrigger>}{context.data.canPublish && <TabsTrigger value="templates">Templates</TabsTrigger>}</TabsList><TabsContent value="mine"><Requests/></TabsContent>{context.data.canManage && <TabsContent value="team"><Requests team/></TabsContent>}{context.data.canPublish && <TabsContent value="templates"><Templates/></TabsContent>}</Tabs>}</div>;
+  return <div className="space-y-5"><header><h1 className="text-2xl font-semibold">HR Letter Centre</h1><p className="mt-2 text-muted-foreground">Request employment and compensation letters, follow HR review, and print issued copies.</p></header><QueryError error={context.error}/>{context.isLoading && <p role="status">Loading letter permissions…</p>}{context.data && <Tabs defaultValue={context.data.canManage ? 'team' : 'mine'}><TabsList className="flex h-auto flex-wrap justify-start"><TabsTrigger value="mine">My requests</TabsTrigger>{context.data.canManage && <TabsTrigger value="team">HR queue</TabsTrigger>}{context.data.canPublish && <TabsTrigger value="templates">Templates</TabsTrigger>}</TabsList><TabsContent value="mine"><Requests/></TabsContent>{context.data.canManage && <TabsContent value="team"><Requests team/></TabsContent>}{context.data.canPublish && <TabsContent value="templates"><Templates/></TabsContent>}</Tabs>}</div>;
 }

@@ -41,3 +41,8 @@ export const getQueryFn: <T>(options: {on401:'returnNull'|'throw'}) => QueryFunc
   return response.json();
 };
 export const queryClient = new QueryClient({defaultOptions:{queries:{queryFn:getQueryFn({on401:'throw'}),refetchOnWindowFocus:false,staleTime:30000,retry:false},mutations:{retry:false}}});
+// Public branding observers remain mounted through sign-in/out. Clear all private session data.
+export function clearSessionCache(client=queryClient){
+  client.removeQueries({predicate:query=>query.queryKey.length!==1||query.queryKey[0]!=='/api/branding'});
+  client.getMutationCache().clear();
+}
