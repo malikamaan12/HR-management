@@ -19,7 +19,7 @@ import type { UserRole } from "@shared/schema";
 export function usePermissions() {
   const { user } = useAuth();
   
-  const userRole = user?.role as UserRole || 'employee';
+  const userRole = user?.role as UserRole;
   const userId = user?.userId?.toString();
   const userDepartment = user?.department;
 

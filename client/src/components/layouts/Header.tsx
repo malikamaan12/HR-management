@@ -1,3 +1,4 @@
+import {canOpenPage,pageForPath,roleLabel} from '@shared/navigation';
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useLocation } from "wouter";
@@ -74,21 +75,11 @@ export default function Header({ pageTitle }: HeaderProps) {
               )}
             </Button>
             
-            <button aria-label="Open communication hub" onClick={()=>setLocation("/communications")} className={cn("relative",
-              theme === 'dark' ? 'text-gray-300 hover:text-white' : 'text-neutral-500 hover:text-neutral-700'
-            )}>
-              <i className="fas fa-bell text-xl"></i>
-            </button>
-            <button aria-label="Open communication hub" onClick={()=>setLocation("/communications")} className={cn("relative",
-              theme === 'dark' ? 'text-gray-300 hover:text-white' : 'text-neutral-500 hover:text-neutral-700'
-            )}>
-              <i className="fas fa-envelope text-xl"></i>
-            </button>
-
+            {canOpenPage(user?.role,pageForPath('/communications')!)&&<Button variant="ghost" size="icon" aria-label="Open communication hub" onClick={()=>setLocation('/communications')}><i aria-hidden="true" className="fas fa-envelope"/></Button>}
             {/* User Dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="flex items-center space-x-2 rounded-full overflow-hidden">
+                <button aria-label="Open account menu" className="flex items-center space-x-2 rounded-full overflow-hidden">
                   <Avatar className={cn("h-9 w-9 cursor-pointer ring-2 ring-offset-2 ring-primary", 
                     theme === 'dark' ? 'ring-offset-gray-800' : 'ring-offset-white'
                   )}>
@@ -108,7 +99,7 @@ export default function Header({ pageTitle }: HeaderProps) {
                 <DropdownMenuLabel>
                   <div className="flex flex-col space-y-1">
                     <p className="font-medium">{user?.firstName} {user?.lastName}</p>
-                    <p className="text-xs text-muted-foreground">{user?.role}</p>
+                    <p className="text-xs text-muted-foreground">{user&&roleLabel(user.role)}</p>
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
@@ -116,10 +107,10 @@ export default function Header({ pageTitle }: HeaderProps) {
                   <User className="mr-2 h-4 w-4" />
                   <span>My Account</span>
                 </DropdownMenuItem>
-                <DropdownMenuItem className="cursor-pointer" onClick={handleSettingsClick}>
+                {canOpenPage(user?.role,pageForPath('/settings')!)&&<DropdownMenuItem className="cursor-pointer" onClick={handleSettingsClick}>
                   <Settings className="mr-2 h-4 w-4" />
                   <span>Settings</span>
-                </DropdownMenuItem>
+                </DropdownMenuItem>}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem className="cursor-pointer text-destructive focus:text-destructive" onClick={handleLogout}>
                   <LogOut className="mr-2 h-4 w-4" />

@@ -7,17 +7,8 @@ import {helpdeskResponder,helpdeskTriage} from '@shared/helpdesk';
 import {commManager} from '@shared/communications';
 import {channelScope,channelManage} from './communications';
 
-export const reportSources:Record<ReportKind,HRModule>={headcount:'employee_database',turnover:'employee_database',leave:'leave_absence_management',compliance:'compliance_documents',workforce:'event_staff_management',attendance:'attendance_time_tracking',payroll:'payroll_management',recruitment:'recruitment_onboarding',lifecycle:'recruitment_onboarding',learning:'training_development',helpdesk:'employee_database',performance:'performance_management',expenses:'expense_management',benefits:'benefits_perks',equipment:'employee_database',handbook:'employee_database',communications:'communication_hub',qualifications:'training_development',employment:'employee_database',quality:'employee_database'};
-export function reportAllowed(role:TokenPayload['role'],kind:ReportKind){
- const source=reportSources[kind];
- if(!hasPermission(role,'reports_analytics','read')||['none','self'].includes(getAccessScope(role,'reports_analytics'))||!(kind==='communications'?commManager(role):hasPermission(role,source,'read'))||['none','self'].includes(getAccessScope(role,source)))return false;
- if(kind==='helpdesk')return helpdeskResponder(role);
- if(kind==='communications')return commManager(role);
- // Team compensation access does not grant detailed or aggregate salary amounts.
- if(['payroll','benefits','expenses'].includes(kind)&&['team','event_staff'].includes(getAccessScope(role,source)))return false;
- if(kind==='recruitment'&&getAccessScope(role,source)==='team')return false;
- return true;
-}
+import {reportSources,reportAllowed} from '@shared/report-access';
+export {reportSources,reportAllowed};
 export function reportTeamScope(user:TokenPayload,alias='t'):SQL{
  const t=sql.raw(alias);
  return workforceAdmin(user.role)?sql`true`:sql`EXISTS(SELECT 1 FROM workforce_grants rg WHERE rg.team_id=${t}.id AND rg.user_id=${user.userId} AND rg.revoked_at IS NULL AND rg.start_at<=now() AND rg.end_at>now())`;

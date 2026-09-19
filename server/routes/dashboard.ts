@@ -1,3 +1,4 @@
+import {hasPermission,getAccessScope} from '@shared/permissions';
 import { attendance, documents, leaves, events } from '@shared/schema';
 import { employeeScope } from '../services/access';
 import { getCompanySettings } from '../services/settings';
@@ -14,7 +15,7 @@ router.get('/stats',authenticate,async(req,res)=>{
  const [head]=await db.select({count:sql<number>`count(*)`}).from(employees).where(employeeScope(req.user!,'employee_database'));
  const [leave]=await db.select({count:sql<number>`count(*)`}).from(leaves).innerJoin(employees,eq(leaves.employeeId,employees.id)).where(and(employeeScope(req.user!,'leave_absence_management'),eq(leaves.status,'approved'),lte(leaves.startDate,today),gte(leaves.endDate,today)));
  const [document]=await db.select({count:sql<number>`count(*)`}).from(documents).innerJoin(employees,eq(documents.employeeId,employees.id)).where(and(employeeScope(req.user!,'compliance_documents'),gte(documents.expiryDate,today),lte(documents.expiryDate,until)));
- const [event]=await db.select({count:sql<number>`count(*)`}).from(events).where(and(eq(events.status,'upcoming'),gte(events.endDate,today)));
+ const [event]=await db.select({count:sql<number>`count(*)`}).from(events).where(and(hasPermission(req.user!.role,'event_staff_management','read')&&['all','event_staff'].includes(getAccessScope(req.user!.role,'event_staff_management'))?sql`true`:sql`false`,eq(events.status,'upcoming'),gte(events.endDate,today)));
  return res.json({employeeCount:Number(head.count),activeLeaves:Number(leave.count),expiringDocuments:Number(document.count),upcomingEvents:Number(event.count)});
  }catch{return res.status(500).json({message:'Unable to load dashboard counts'});}
 });
@@ -203,47 +204,11 @@ router.get("/personalized", authenticate, async (req, res) => {
 router.get("/employee-summary", authenticate, async (req, res) => {
   try {
     const userRole = req.user!.role;
-    const userId = req.user!.userId;
-    
-    // Only certain roles can access this endpoint
-    const allowedRoles = ["admin", "hr", "manager", "department_head"];
-    
-    if (!allowedRoles.includes(userRole)) {
-      return res.status(403).json({
-        success: false,
-        message: "You do not have permission to access this resource"
-      });
+    if (!hasPermission(userRole,'employee_database','read') || ['self','none'].includes(getAccessScope(userRole,'employee_database'))) {
+      return res.status(403).json({success:false,message:'You do not have permission to access this resource'});
     }
-    
-    // Get the employee record associated with the user
-    const [managerEmployee] = await db.select()
-      .from(employees)
-      .where(eq(employees.userId, userId));
-    
-    let teamQuery = db.select().from(employees).$dynamic();
-    
-    // Filter employees based on manager's role and department
-    if (userRole === "manager" || userRole === "department_head") {
-      if (!managerEmployee) {
-        return res.status(404).json({
-          success: false,
-          message: "Manager employee record not found"
-        });
-      }
-      
-      // For department heads, show all employees in their department
-      if (userRole === "department_head") {
-        teamQuery = teamQuery.where(eq(employees.department, managerEmployee.department));
-      } 
-      // For regular managers, show only direct reports
-      else {
-        teamQuery = teamQuery.where(eq(employees.reportingManagerId, managerEmployee.id));
-      }
-    }
-    
-    // Execute the query
-    const teamEmployees = await teamQuery;
-    
+    const teamEmployees = await db.select({type:employees.type,department:employees.department}).from(employees).where(employeeScope(req.user!,'employee_database'));
+
     // Count employees by type
     const permanentCount = teamEmployees.filter(e => e.type === "permanent").length;
     const temporaryCount = teamEmployees.filter(e => e.type === "temporary").length;

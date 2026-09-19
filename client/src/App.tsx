@@ -1,3 +1,4 @@
+import PageAccessGuard from '@/components/PageAccessGuard';
 
 
 import { Switch, Route, useLocation, Redirect } from "wouter";
@@ -180,7 +181,7 @@ function App() {
   return (
     <ProtectedRoute>
       <MainLayout pageTitle={getPageTitle()}>
-        <PageBoundary key={location}><Suspense fallback={<p role="status" className="p-6">Loading page…</p>}><Switch>
+        <PageBoundary key={location}><PageAccessGuard><Suspense fallback={<p role="status" className="p-6">Loading page…</p>}><Switch>
           <Route path="/" component={Dashboard} />
           <Route path="/employees" component={EmployeeDatabase} />
           <Route path="/payroll" component={Payroll} />
@@ -219,7 +220,7 @@ function App() {
           <Route path="/account" component={UserAccount} />
           <Route path="/bulk-import" component={BulkImport} />
           <Route component={NotFound} />
-        </Switch></Suspense></PageBoundary>
+        </Switch></Suspense></PageAccessGuard></PageBoundary>
       </MainLayout>
     </ProtectedRoute>
   );

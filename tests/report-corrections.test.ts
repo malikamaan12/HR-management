@@ -12,6 +12,7 @@ import {defaultCompanySettings} from '../shared/settings';
 import {qatarToday} from '../server/services/reportRecords';
 const ctx=vi.hoisted(()=>({db:null as any}));vi.mock('../server/db',()=>({get db(){return ctx.db;},pool:{}}));
 import reports,{reportRunLimiter} from '../server/routes/reportSnapshots';
+import dashboard from '../server/routes/dashboard';
 import teamTasks from '../server/routes/teamTasks';
 import corrections from '../server/routes/candidateCorrections';
 import {authenticate} from '../server/middleware/auth';
@@ -27,7 +28,7 @@ async function req(u:any,path:string,body?:unknown){const r=await fetch(base+pat
 const run=(u:any,kind='headcount',filters:any={},requestKey=randomUUID())=>req(u,'/reporting/snapshots/runs',{kind,filters,requestKey});
 async function candidate(){const [c]=await ctx.db.insert(s.candidates).values({fullNameEn:'Initial Candidate',email:'candidate@example.test',phone:'private',source:'other'}).returning();return c;}
 const correction=(u:any,c:any,fields:any,expectedVersion=c.recordVersion)=>req(u,`/hiring/candidates/${c.id}/corrections`,{fields,expectedVersion,reason});
-beforeAll(async()=>{process.env.JWT_SECRET='report-corrections-access-secret-32-characters';process.env.JWT_REFRESH_SECRET='report-corrections-refresh-secret-32-characters';pg=new PGlite();for(const f of readdirSync(new URL('../migrations',import.meta.url)).filter(n=>n.endsWith('.sql')).sort())await pg.exec(readFileSync(new URL('../migrations/'+f,import.meta.url),'utf8'));ctx.db=drizzle(pg);const app=express();app.use(express.json());app.use(authenticate,moduleAccess);app.use('/reporting/snapshots',reports);app.use('/team-tasks',teamTasks);app.use('/hiring',corrections);server=app.listen(0,'127.0.0.1');await new Promise<void>(r=>server.once('listening',r));base='http://127.0.0.1:'+(server.address() as any).port;});
+beforeAll(async()=>{process.env.JWT_SECRET='report-corrections-access-secret-32-characters';process.env.JWT_REFRESH_SECRET='report-corrections-refresh-secret-32-characters';pg=new PGlite();for(const f of readdirSync(new URL('../migrations',import.meta.url)).filter(n=>n.endsWith('.sql')).sort())await pg.exec(readFileSync(new URL('../migrations/'+f,import.meta.url),'utf8'));ctx.db=drizzle(pg);const app=express();app.use(express.json());app.use(authenticate,moduleAccess);app.use('/reporting/snapshots',reports);app.use('/team-tasks',teamTasks);app.use('/dashboard',dashboard);app.use('/hiring',corrections);server=app.listen(0,'127.0.0.1');await new Promise<void>(r=>server.once('listening',r));base='http://127.0.0.1:'+(server.address() as any).port;});
 beforeEach(async()=>{for(let id=1;id<=10;id++)reportRunLimiter.resetKey(String(id));await pg.exec('TRUNCATE employees,users,candidates,workforce_sites,report_correction_history,app_settings RESTART IDENTITY CASCADE');});
 afterAll(async()=>{await new Promise<void>(r=>server.close(()=>r()));await pg.close();});
 
@@ -89,3 +90,25 @@ test('candidate edit and private history roll back together if audit fails',asyn
 });
 
 test('team task owner lookup works for administrators after the import correction',async()=>{const u=await user(),[site]=await ctx.db.insert(s.workforceSites).values({name:'Task test site',timezone:'Asia/Qatar'}).returning(),[team]=await ctx.db.insert(s.workforceTeams).values({siteId:site.id,name:'Task test team',kind:'event'}).returning();const r=await req(u,'/team-tasks/owners?teamId='+team.id);expect(r.status).toBe(200);expect(Array.isArray(r.body)).toBe(true);});
+
+
+test('dashboard employee summaries respect team scope and deny self-only roles',async()=>{
+ const lead=await user('lead','department_head'),staff=await user('staff','employee'),admin=await user();
+ const manager=await employee(1,{userId:lead.id});await employee(2,{reportingManagerId:manager.id});await employee(3);await employee(4,{department:'Finance'});
+ const summary=await req(lead,'/dashboard/employee-summary');expect(summary.status).toBe(200);expect(summary.body.summary.totalEmployees).toBe(2);
+ expect((await req(staff,'/dashboard/employee-summary')).status).toBe(403);
+ expect((await req(admin,'/dashboard/employee-summary')).body.summary.totalEmployees).toBe(4);
+});
+test('dashboard department scope fails closed when the account has no department',async()=>{
+ const hr=await user('department-hr','hr_manager');await employee(1);await employee(2,{department:'Finance'});
+ expect((await req(hr,'/dashboard/employee-summary')).body.summary.totalEmployees).toBe(0);
+ await ctx.db.update(s.users).set({department:'Operations'}).where(eq(s.users.id,hr.id));
+ expect((await req(hr,'/dashboard/employee-summary')).body.summary.totalEmployees).toBe(1);
+});
+
+test('dashboard event totals are hidden from roles without event management access',async()=>{
+ const admin=await user(),lead=await user('lead','department_head');
+ await ctx.db.insert(s.events).values({name:'Private future event',startDate:'2099-01-01',endDate:'2099-01-02',location:'Test',status:'upcoming',createdBy:admin.id});
+ expect((await req(admin,'/dashboard/stats')).body.upcomingEvents).toBe(1);
+ expect((await req(lead,'/dashboard/stats')).body.upcomingEvents).toBe(0);
+});

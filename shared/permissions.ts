@@ -330,7 +330,7 @@ export function getModuleDescription(role: UserRole, module: HRModule): string {
 
 // Get all modules a role can access
 export function getAccessibleModules(role: UserRole): HRModule[] {
-  return Object.keys(ROLE_PERMISSIONS[role]).filter(module => 
+  return Object.keys(ROLE_PERMISSIONS[role] || {}).filter(module =>
     canAccessModule(role, module as HRModule)
   ) as HRModule[];
 }
@@ -361,7 +361,7 @@ export function canAccessData(
     case 'event_staff':
       return dataScope === 'own' || dataScope === 'team'; // Event staff scope
     case 'self':
-      return dataScope === 'own' && userId === targetUserId;
+      return dataScope === 'own' && !!userId && userId === targetUserId;
     case 'none':
     default:
       return false;
