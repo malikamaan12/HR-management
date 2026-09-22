@@ -6,8 +6,8 @@ import { Helmet } from 'react-helmet';
 import Sidebar from "./Sidebar";
 import Header from "./Header";
 import { cn } from "@/lib/utils";
-import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
+import {ExperienceMotion,Reveal} from '@/components/ux/ExperienceUI';
 
 interface MainLayoutProps {
   children: ReactNode;
@@ -23,9 +23,8 @@ export default function MainLayout({ children, pageTitle, className }: MainLayou
   useEffect(()=>{mainRef.current?.scrollTo({top:0,behavior:'instant'});},[location]);
   
   return (
-    <div className={cn(
-      "flex h-screen overflow-hidden", 
-      theme === 'dark' ? 'bg-[#0F172A]' : 'bg-[#F8F9FA]',
+    <ExperienceMotion><div className={cn(
+      "app-shell flex h-dvh overflow-hidden bg-background",
       className
     )}>
       <Helmet><title>{pageTitle} | {branding.applicationName}</title></Helmet>
@@ -33,19 +32,15 @@ export default function MainLayout({ children, pageTitle, className }: MainLayou
       <Sidebar />
       
       <div className="flex-1 min-w-0 flex flex-col overflow-hidden relative">
-        {/* Aurora Mesh Blurs */}
-        <div className="absolute top-0 right-0 w-96 h-96 bg-[#46A6A9]/10 blur-[100px] pointer-events-none rounded-full -mr-48 -mt-48" />
-        <div className="absolute bottom-0 left-0 w-96 h-96 bg-[#6A4FB3]/10 blur-[100px] pointer-events-none rounded-full -ml-48 -mb-48" />
-        
         <Header pageTitle={pageTitle} />
         
         <main ref={mainRef} id="main-content" tabIndex={-1} className={cn(
-          "module-workspace flex-1 min-w-0 overflow-y-auto px-4 py-6 sm:px-6 relative z-10",
+          "module-workspace flex-1 min-w-0 overflow-y-auto px-4 py-5 sm:px-6 lg:px-8 relative z-10",
           theme === 'dark' ? 'text-gray-100' : 'text-gray-900'
         )}>
-          {children}
+          <Reveal key={location} className="workspace-content mx-auto w-full max-w-[1600px]">{children}</Reveal>
         </main>
       </div>
-    </div>
+    </div></ExperienceMotion>
   );
 }

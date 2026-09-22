@@ -193,7 +193,7 @@ function App() {
           <Route path="/hr-letters" component={HrLetters} />
           <Route path="/event-staff/archive" component={EventArchive} />
           <Route path="/event-staff" component={EventStaff} />
-          <Route path="/workforce" component={Workforce} />
+          <Route path="/workforce"><Workforce /></Route>
           <Route path="/assignment-reviews" component={AssignmentReviews} />
           <Route path="/assignment-reviews/:id" component={AssignmentReviews} />
           <Route path="/org-charts" component={OrgCharts} />

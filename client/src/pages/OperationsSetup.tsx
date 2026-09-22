@@ -1,3 +1,4 @@
+import {HelpDisclosure} from '@/components/ux/WorkspaceUI';
 import {MetricCard} from '@/components/ux/ModuleVisuals';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -29,7 +30,7 @@ function ReadinessIssues({ section }: { section?: ReadinessSection }) {
   return <div className="space-y-3">
     <div className="flex flex-wrap items-center gap-2"><Badge variant={section.status === 'ready' ? 'secondary' : 'outline'}>{statusLabels[section.status]}</Badge><span className="text-sm">{section.issueCount} open {section.issueCount === 1 ? 'item' : 'items'}</span></div>
     <p className="text-sm text-muted-foreground">{section.summary}</p>
-    {!!section.issues.length && <ul className="list-disc space-y-2 pl-5 text-sm">{section.issues.map(issue => <li key={issue.key}><a className="text-primary underline underline-offset-2" href={safeIssueHref(issue.href)}>{issue.message}</a></li>)}</ul>}
+    {!!section.issues.length && <HelpDisclosure title={`View ${section.issues.length} items`}><ul className="list-disc space-y-2 pl-5 text-sm">{section.issues.map(issue => <li key={issue.key}><a className="text-primary underline underline-offset-2" href={safeIssueHref(issue.href)}>{issue.message}</a></li>)}</ul></HelpDisclosure>}
     {section.issueCount > section.issues.length && <p className="text-xs text-muted-foreground">Showing {section.issues.length} of {section.issueCount} items. Open the linked module to review the complete records.</p>}
   </div>;
 }
@@ -99,9 +100,11 @@ export default function OperationsSetup() {
   return <div className="space-y-6">
 
     <header className="space-y-2"><h1 className="text-2xl font-semibold">Operational setup</h1><p className="text-muted-foreground">Prepare employee access, work locations, supervisors, leave approvals and required induction courses.</p></header>
-    <Section title="Configuration readiness">
+    <Tabs value={tab} onValueChange={setTab}>
+      <TabsList className="flex h-auto flex-wrap justify-start"><TabsTrigger value="overview">Overview</TabsTrigger><TabsTrigger value="locations">Locations & geofencing</TabsTrigger><TabsTrigger value="supervisors">People & supervisors</TabsTrigger><TabsTrigger value="leave">Leave approvals</TabsTrigger><TabsTrigger value="induction">Required training</TabsTrigger><TabsTrigger value="services">Services & recovery</TabsTrigger></TabsList>
+      <TabsContent value="overview" className="space-y-4 pt-3">    <Section title="Configuration readiness">
       <div className="flex flex-wrap items-end gap-3"><Field label="Readiness date (Qatar)"><input className={fieldClass} type="date" required value={asOf} onChange={event => { if (event.target.value) setAsOf(event.target.value); }}/></Field><Button variant="outline" disabled={readiness.isFetching} onClick={() => void readiness.refetch()}>{readiness.isFetching ? 'Refreshing…' : 'Refresh readiness'}</Button></div>
-      <p className="text-xs text-muted-foreground">This date checks location, supervisor and rule coverage for currently active employees. Accounts, roles and published course requirements use their current state. The editors below use their current saved versions and explicit effective dates when you save.</p>
+<HelpDisclosure title="What the readiness date includes">      <p className="text-xs text-muted-foreground">This date checks location, supervisor and rule coverage for currently active employees. Accounts, roles and published course requirements use their current state. The editors below use their current saved versions and explicit effective dates when you save.</p></HelpDisclosure>
       <QueryError error={readiness.error}/>
       {readiness.isLoading && <p role="status">Loading configuration readiness…</p>}
       {data && <><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{[
@@ -111,9 +114,7 @@ export default function OperationsSetup() {
         {data.truncated && <p role="status" className="text-sm">Some readiness details are limited in this view. Review the linked modules for the remaining records.</p>}
       </>}
     </Section>
-    <Tabs value={tab} onValueChange={setTab}>
-      <TabsList className="flex h-auto flex-wrap justify-start"><TabsTrigger value="overview">Overview</TabsTrigger><TabsTrigger value="locations">Locations & geofencing</TabsTrigger><TabsTrigger value="supervisors">People & supervisors</TabsTrigger><TabsTrigger value="leave">Leave approvals</TabsTrigger><TabsTrigger value="induction">Required training</TabsTrigger><TabsTrigger value="services">Services & recovery</TabsTrigger></TabsList>
-      <TabsContent value="overview" className="space-y-4 pt-3">
+
         {data?.sections.map(item => <Section key={item.id} title={item.title}><ReadinessIssues section={item}/><Button variant="outline" onClick={() => setTab(item.id === 'people' ? 'supervisors' : item.id)}>Open {item.id === 'people' ? 'people setup' : item.title.toLowerCase()}</Button></Section>)}
         {!data && !readiness.isLoading && <p className="text-sm text-muted-foreground">Refresh readiness to load the configuration checklist. The setup tabs remain available.</p>}
       </TabsContent>

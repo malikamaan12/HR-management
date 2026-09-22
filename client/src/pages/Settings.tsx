@@ -12,6 +12,7 @@ import {Button} from '@/components/ui/button';
 import {useToast} from '@/hooks/use-toast';
 import CalculationRules from '@/components/CalculationRules';
 import SystemReadiness from '@/components/hr/SystemReadiness';
+import {PageHeading} from '@/components/ux/WorkspaceUI';
 export default function Settings(){
  const {user}=useAuth(),{toast}=useToast(),cache=useQueryClient();
  const admin=user?.role==='admin'||user?.role==='super_admin';
@@ -19,7 +20,7 @@ export default function Settings(){
  const [form,setForm]=useState(defaultCompanySettings);
  useEffect(()=>{if(data)setForm(data);},[data]);
  const save=useMutation({mutationFn:()=>apiJson('/api/settings/company',{method:'PUT',body:form}),onSuccess:()=>{cache.invalidateQueries({queryKey:['/api/settings/company']});toast({title:'Settings saved'});},onError:error=>toast({title:'Unable to save',description:error.message,variant:'destructive'})});
- return <Tabs defaultValue="company" className="space-y-6"><TabsList><TabsTrigger value="company">Company</TabsTrigger>{admin&&<><TabsTrigger value="branding">Branding</TabsTrigger><TabsTrigger value="rules">Calculation rules</TabsTrigger><TabsTrigger value="services">System readiness</TabsTrigger></>}<TabsTrigger value="password">Password</TabsTrigger></TabsList><TabsContent value="company"><Card><CardHeader><CardTitle>Company settings</CardTitle></CardHeader><CardContent>
+ return <div className="space-y-5"><PageHeading title="Settings" description="Company details, appearance and system preferences."/><Tabs defaultValue="company" className="space-y-6"><TabsList><TabsTrigger value="company">Company</TabsTrigger>{admin&&<><TabsTrigger value="branding">Branding</TabsTrigger><TabsTrigger value="rules">Calculation rules</TabsTrigger><TabsTrigger value="services">System readiness</TabsTrigger></>}<TabsTrigger value="password">Password</TabsTrigger></TabsList><TabsContent value="company"><Card><CardHeader><CardTitle>Company settings</CardTitle></CardHeader><CardContent>
   {admin&&<p className="mb-4"><a className="text-primary underline" href="/hr-rules">Configure attendance, leave and payroll rules by employee and effective date</a></p>}
   {error&&<p role="alert">Unable to load company settings.</p>}
   <form className="grid gap-4 sm:grid-cols-2" onSubmit={e=>{e.preventDefault();save.mutate();}}>
@@ -37,5 +38,5 @@ export default function Settings(){
  </CardContent></Card></TabsContent>
  {admin&&<><TabsContent value="branding"><BrandingSettings/></TabsContent><TabsContent value="rules"><CalculationRules/></TabsContent><TabsContent value="services"><SystemReadiness/></TabsContent></>}
  <TabsContent value="password"><Card><CardHeader><CardTitle>Change password</CardTitle></CardHeader><CardContent><AccountPassword/></CardContent></Card></TabsContent>
- </Tabs>;
+ </Tabs></div>;
 }

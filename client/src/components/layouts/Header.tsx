@@ -1,7 +1,6 @@
 import HubIndicator from '@/components/communications/HubIndicator';
 import ModuleLauncher from '@/components/ux/ModuleLauncher';
 import {canOpenPage,pageForPath,roleLabel} from '@shared/navigation';
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
@@ -25,7 +24,7 @@ interface HeaderProps {
 export default function Header({ pageTitle }: HeaderProps) {
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
 
   const handleLogout = async () => {
     try {
@@ -49,18 +48,14 @@ export default function Header({ pageTitle }: HeaderProps) {
   };
 
   return (
-    <header className={cn("shadow-sm z-20", 
-      theme === 'dark' ? 'bg-gray-800 text-white' : 'bg-white text-neutral-800'
-    )}>
+    <header className="z-20 border-b bg-card text-foreground">
       <div className="px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
-        <div className="flex items-center">
-          <h2 className={cn("text-base sm:text-xl font-poppins font-semibold",
-            theme === 'dark' ? 'text-white' : 'text-neutral-800'
-          )}>{pageTitle}</h2>
+        <div className="flex min-w-0 flex-1 items-center">
+          <div className="flex min-w-0 items-center gap-2 text-sm"><span className="hidden text-muted-foreground sm:inline">{pageForPath(location)?.section||'Workspace'}</span><span aria-hidden="true" className="hidden text-muted-foreground/50 sm:inline">/</span><span className="font-medium line-clamp-1">{pageTitle}</span></div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <div className="flex items-center gap-2">
-            <ModuleLauncher/>
+            <div className="hidden md:block"><ModuleLauncher/></div>
             {/* Theme Toggle Button */}
             <Button
               variant="ghost"
@@ -90,7 +85,7 @@ export default function Header({ pageTitle }: HeaderProps) {
                       src={user?.avatar || ''} 
                       alt={user?.firstName || 'User'} 
                     />
-                    <AvatarFallback className="bg-primary text-white">
+                    <AvatarFallback className="bg-primary text-primary-foreground">
                       {user?.firstName?.charAt(0)}{user?.lastName?.charAt(0)}
                     </AvatarFallback>
                   </Avatar>

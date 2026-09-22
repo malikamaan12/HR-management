@@ -1,3 +1,4 @@
+@import "./styles/experience.css";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -128,15 +129,3 @@
 .metric-positive { border-top-color: #20a477; }
 .metric-attention { border-top-color: #dfa12b; }
 .metric-primary { border-top-color: #7284c8; }
-
-/* Explicit dark tokens keep every shared control readable against slate surfaces. */
-html.dark {
-  color-scheme: dark;
-  --background: 222 47% 11%; --foreground: 210 40% 98%;
-  --card: 222 36% 14%; --card-foreground: 210 40% 98%;
-  --popover: 222 36% 14%; --popover-foreground: 210 40% 98%;
-  --primary: 174 59% 70%; --primary-foreground: 222 47% 11%;
-  --muted: 219 28% 21%; --muted-foreground: 215 20% 72%;
-  --accent: 219 28% 24%; --accent-foreground: 210 40% 98%;
-  --border: 217 26% 28%; --input: 217 26% 28%; --ring: 174 59% 70%;
-}
