@@ -7,6 +7,7 @@ import { z } from "zod";
 import { db } from "../db";
 import { users, employees, userRoleEnum } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { emailConfigured } from '../services/email';
 
 
 const router = express.Router();
@@ -31,7 +32,7 @@ router.post(['/register','/signup'], (_req,res) => res.status(403).json({success
  * POST /api/auth/login
  */
 router.post("/login", [
-  body("username").notEmpty().withMessage("Username is required"),
+  body("username").isString().bail().trim().notEmpty().withMessage("Username or email is required").isLength({ max: 254 }).withMessage("Username or email is too long"),
   body("password").notEmpty().withMessage("Password is required")
 ], async (req: express.Request, res: express.Response) => {
   try {
@@ -162,6 +163,10 @@ router.post("/forgot-password", [
   body("email").isEmail().withMessage("Valid email is required")
 ], async (req: express.Request, res: express.Response) => {
   try {
+    if (!emailConfigured()) return res.status(503).json({
+      success: false,
+      message: 'Email password recovery is not configured. Contact your system administrator for a recovery link.'
+    });
     // Check for validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {

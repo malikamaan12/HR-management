@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { apiJson } from '@/lib/queryClient';
+import { Link } from 'wouter';
 
 export default function AccountPassword() {
   const { logout, refreshToken } = useAuth(), { toast } = useToast();
@@ -28,7 +29,8 @@ export default function AccountPassword() {
     <fieldset disabled={change.isPending} className="space-y-4">{(['currentPassword', 'newPassword', 'confirmPassword'] as const).map(key => <div key={key}><label htmlFor={'account-' + key} className="mb-2 block text-sm font-medium">{({ currentPassword: 'Current password', newPassword: 'New password', confirmPassword: 'Confirm new password' })[key]}</label><Input id={'account-' + key} required type={visible ? 'text' : 'password'} autoComplete={key === 'currentPassword' ? 'current-password' : 'new-password'} maxLength={key === 'currentPassword' ? undefined : 72} value={password[key]} onChange={e => { setPassword({ ...password, [key]: e.target.value }); setError(''); change.reset(); }} aria-describedby={key === 'newPassword' ? 'password-requirements' : undefined}/></div>)}
     <Button type="button" variant="ghost" size="sm" aria-pressed={visible} onClick={() => setVisible(!visible)}>{visible ? <EyeOff className="mr-2 h-4 w-4"/> : <Eye className="mr-2 h-4 w-4"/>}{visible ? 'Hide passwords' : 'Show passwords'}</Button>
     <ul id="password-requirements" className="grid gap-2 rounded-xl bg-muted/40 p-4 text-xs">{rules.map(rule => <li key={rule.label} className={'flex items-center gap-2 ' + (rule.ok ? 'text-primary' : 'text-muted-foreground')}><Check className={'h-3.5 w-3.5 ' + (!rule.ok ? 'opacity-30' : '')}/>{rule.label}<span className="sr-only">{rule.ok ? ' — met' : ' — not met'}</span></li>)}</ul>
-    {(error || change.error) && <p role="alert" className="text-sm text-destructive">{error || change.error?.message}</p>}
+    {(error || change.error) && <p role="alert" className="text-sm text-destructive">{error || change.error?.message.replace(/^\d{3}:\s*/, '')}</p>}
+    <p className="text-sm text-muted-foreground">Forgot your current password? <Link href="/forgot-password" className="font-medium text-primary underline underline-offset-4">Request a reset link</Link>.</p>
     <Button type="submit" disabled={change.isPending || !password.currentPassword || !password.newPassword || !password.confirmPassword}><KeyRound className="mr-2 h-4 w-4"/>{change.isPending ? 'Updating password…' : 'Update password & sign out'}</Button></fieldset>
   </form>;
 }

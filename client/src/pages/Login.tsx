@@ -16,7 +16,7 @@ import { useAuth } from '@/contexts/AuthContext';
 
 // Define validation schema for login form
 const loginSchema = z.object({
-  username: z.string().min(1, 'Username is required'),
+  username: z.string().trim().min(1, 'Username or email is required').max(254),
   password: z.string().min(6, 'Password must be at least 6 characters'),
 });
 
@@ -90,9 +90,9 @@ const Login: React.FC = () => {
                 name="username"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Username</FormLabel>
+                    <FormLabel>Username or email</FormLabel>
                     <FormControl>
-                      <Input placeholder="Enter your username" {...field} disabled={isLoading} />
+                      <Input placeholder="Enter your username or email" autoComplete="username" autoCapitalize="none" spellCheck={false} {...field} disabled={isLoading} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -109,6 +109,7 @@ const Login: React.FC = () => {
                       <FormControl>
                         <Input 
                           type={showPassword ? "text" : "password"}
+                          autoComplete="current-password"
                           placeholder="Enter your password" 
                           {...field} 
                           disabled={isLoading}

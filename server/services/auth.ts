@@ -96,8 +96,8 @@ export class AuthService {
    */
   async login(username: string, password: string, ipAddress?: string, userAgent?: string): Promise<AuthResponse> {
     try {
-      // Find user by username
-      const user = await this.findUserByUsername(username);
+      // Accept either identifier, but never choose between ambiguous accounts.
+      const user = await this.findUserByLogin(username);
       
       if (!user) {
         throw new Error("Invalid credentials");
@@ -521,6 +521,18 @@ export class AuthService {
       console.error("Get user error:");
       throw new Error("Failed to get user");
     }
+  }
+
+  /**
+   * Resolve a unique username or account email without changing the password.
+   */
+  async findUserByLogin(identifier: string) {
+    const value = identifier.trim();
+    if (!value) return null;
+    const matches = await db.select().from(users).where(
+      sql`lower(${users.username}) = lower(${value}) OR lower(${users.email}) = lower(${value})`
+    ).limit(2);
+    return matches.length === 1 ? matches[0] : null;
   }
 
   /**
