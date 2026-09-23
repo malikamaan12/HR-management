@@ -13,9 +13,11 @@ import { fail } from '../services/workforce';
 import { hasPermission } from '@shared/permissions';
 import {requireApprovedPresence} from '../services/attendance-location';
 import { assertUnpaidLeaveUnchanged } from '../services/payroll-leave';
+import payrollExports from './payroll-exports';
 const router = Router();
 router.use(authenticate);
 router.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
+router.use('/exports',payrollExports);
 router.get('/options', handle(async (req, res) => res.json({ employees: await db.select({ id: employees.id, name: sql<string> `${employees.firstName} || ' ' || ${employees.lastName}` }).from(employees).where(employeeScope(req.user!, 'payroll_management', 'create')).orderBy(employees.id).limit(1000), canCreate: hasPermission(req.user!.role, 'payroll_management', 'create') })));
 router.get('/month/:month/year/:year', handle(async (req, res) => {
     const month = z.coerce.number().int().min(1).max(12).parse(req.params.month), year = z.coerce.number().int().min(2000).max(2200).parse(req.params.year);

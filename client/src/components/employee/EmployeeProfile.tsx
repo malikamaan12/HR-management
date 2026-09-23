@@ -1,3 +1,4 @@
+import EmployeePhoto from './EmployeePhoto';
 import {useAuth} from '@/contexts/AuthContext';
 import EmployeeCompensation from '@/components/employees/EmployeeCompensation';
 import {compensationDetailedReaders} from '@shared/compensation';
@@ -51,7 +52,7 @@ export default function EmployeeProfile({ employeeId, onClose }: { employeeId: n
   const e = employee;
   return <div className="space-y-6">
     <div className="flex flex-wrap items-center justify-between gap-4">
-      <div><Button variant="ghost" onClick={onClose}>← Back to employees</Button><h1 className="mt-3 text-2xl font-semibold">{e.firstName} {e.lastName}</h1><p className="text-muted-foreground">{e.employeeId} · {e.position} · {e.department}</p></div>
+      <div className="w-full"><Button variant="ghost" onClick={onClose}>← Back to employees</Button><div className="employee-profile-identity"><div className="employee-profile-portrait"><EmployeePhoto employee={e}/></div><div className="min-w-0"><span className="profile-id-chip">{e.employeeId}</span><h1 className="mt-3 text-2xl font-semibold">{e.firstName} {e.lastName}</h1><p className="mt-2 text-muted-foreground">{e.position} · {e.department}</p></div></div></div>
       <div className="flex gap-2"><Button variant="outline" onClick={() => refetch()}>Reload profile</Button>{e.access.canEdit && <Button onClick={() => setEdit(true)}>Edit Employee</Button>}</div>
     </div>
     <Tabs value={tab} onValueChange={setTab}>

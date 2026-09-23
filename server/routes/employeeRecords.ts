@@ -10,6 +10,9 @@ import type { TokenPayload } from '../services/auth';
 import { hasPermission } from '@shared/permissions';
 import { localDate } from '@shared/workforce';
 import {syncEmploymentService,endEmploymentAccess} from '../services/employment';
+import multer from 'multer';
+import rateLimit from 'express-rate-limit';
+import {validateBrandingPng} from '../services/branding';
 
 const router = Router();
 router.use(authenticate);
@@ -19,7 +22,8 @@ const writers = new Set(['super_admin', 'admin', 'hr_director', 'hr']);
 const privateReaders = new Set([...writers, 'hr_manager']);
 const bankReaders = new Set(['payroll_specialist', 'finance', 'finance_audit']);
 const canWrite = (user: TokenPayload) => writers.has(user.role);
-const directory = (row: Employee) => Object.fromEntries(directoryFields.map(key => [key, row[key]]));
+const photoUrl = (row: Pick<Employee,'id'|'photo'|'recordVersion'>) => row.photo?.startsWith('data:image/png;base64,') ? `/api/employees/${row.id}/photo?v=${row.recordVersion}` : null;
+const directory = (row: Employee) => ({...Object.fromEntries(directoryFields.map(key => [key, row[key]])), photo: photoUrl(row)});
 function project(row: Employee, user: TokenPayload) {
   const personal = privateReaders.has(user.role) || row.userId === user.userId;
   const banking = personal || bankReaders.has(user.role);
@@ -28,7 +32,7 @@ function project(row: Employee, user: TokenPayload) {
     swiftCode: row.swiftCode, bankBranch: row.bankBranch, accountName: row.accountName,
     costCenter: row.costCenter, contractEndDate: row.contractEndDate,
   } : {}) };
-  return { ...result, access: { canEdit: canWrite(user), personal, banking, documents: false, uploadDocuments: false, history: personal } } as EmployeeRecord;
+  return { ...result, photo: photoUrl(row), access: { canEdit: canWrite(user), personal, banking, documents: false, uploadDocuments: false, history: personal } } as EmployeeRecord;
 }
 class RecordError extends Error { constructor(public status: number, message: string) { super(message); } }
 const rejectEmployment=(status:number,message:string):never=>{throw new RecordError(status,message);};
@@ -72,6 +76,59 @@ router.get(['/', '/directory'], async (req, res) => {
     if (req.path === '/') return res.json(result.rows.map(row => project(row, req.user!)));
     return res.json({ employees: result.rows.map(directory), total: result.total, page: query.page, limit: query.limit, canCreate: canWrite(req.user!) });
   } catch (error) { return fail(res, error); }
+});
+
+// Small, normalized directory portraits use the existing photo column. They are
+// fetched separately so list responses do not contain image payloads.
+router.get('/:id/photo', async (req, res) => {
+  try {
+    const id = idSchema.parse(req.params.id);
+    const [row] = await db.select({photo: employees.photo}).from(employees).where(and(eq(employees.id, id), employeeScope(req.user!, 'employee_database')));
+    if (!row?.photo?.startsWith('data:image/png;base64,')) throw new RecordError(404, 'Employee photo not found');
+    res.set('X-Content-Type-Options','nosniff');
+    res.set('Cross-Origin-Resource-Policy','same-origin');
+    return res.type('image/png').send(Buffer.from(row.photo.slice('data:image/png;base64,'.length), 'base64'));
+  } catch(error) { return fail(res,error); }
+});
+const photoLimit = rateLimit({windowMs:15*60*1000, limit:30, standardHeaders:'draft-7', legacyHeaders:false});
+const photoUpload = multer({storage:multer.memoryStorage(),limits:{fileSize:384*1024,files:1,fields:1,fieldSize:100}}).single('photo');
+router.put('/:id/photo', photoLimit, (req,res,next) => {
+  if(!canWrite(req.user!)) return res.status(403).json({message:'HR administrator access is required to change employee photos'});
+  photoUpload(req,res,error=>error ? res.status(400).json({message:'Choose a photo using the image picker. Saved photos must be PNG and under 384 KB.'}) : next());
+}, async (req,res) => {
+  try {
+    const id=idSchema.parse(req.params.id),expectedVersion=idSchema.parse(req.body.expectedVersion);
+    if(!req.file) throw new RecordError(400,'Choose a photo first');
+    let png:Buffer;
+    try {
+      png=validateBrandingPng(req.file.buffer,'lightLogo');
+      if(png.readUInt32BE(16)>512||png.readUInt32BE(20)>512) throw new Error('dimensions');
+    } catch { throw new RecordError(400,'Choose a valid image with the photo picker (up to 512 × 512 pixels).'); }
+    const result=await db.transaction(async tx=>{
+      const [row]=await tx.select().from(employees).where(and(eq(employees.id,id),employeeScope(req.user!,'employee_database','update'))).for('update');
+      if(!row) throw new RecordError(404,'Employee not found');
+      if(row.recordVersion!==expectedVersion) throw new RecordError(409,'This employee was changed. Close the photo editor, reload the profile and try again.');
+      const [updated]=await tx.update(employees).set({photo:`data:image/png;base64,${png.toString('base64')}`,updatedAt:new Date()}).where(eq(employees.id,id)).returning();
+      await tx.insert(activityLogs).values({userId:req.user!.userId,action:'update',entityType:'employee',entityId:id,details:'Employee directory photo updated'});
+      return {photo:photoUrl(updated),recordVersion:updated.recordVersion};
+    });
+    return res.json(result);
+  } catch(error) { return fail(res,error); }
+});
+router.delete('/:id/photo', photoLimit, async (req,res) => {
+  try {
+    if(!canWrite(req.user!)) throw new RecordError(403,'HR administrator access is required to change employee photos');
+    const id=idSchema.parse(req.params.id),{expectedVersion}=z.object({expectedVersion:idSchema}).strict().parse(req.body);
+    await db.transaction(async tx=>{
+      const [row]=await tx.select().from(employees).where(and(eq(employees.id,id),employeeScope(req.user!,'employee_database','update'))).for('update');
+      if(!row) throw new RecordError(404,'Employee not found');
+      if(row.recordVersion!==expectedVersion) throw new RecordError(409,'This employee was changed. Reload the profile and try again.');
+      if(!row.photo) return;
+      await tx.update(employees).set({photo:null,updatedAt:new Date()}).where(eq(employees.id,id));
+      await tx.insert(activityLogs).values({userId:req.user!.userId,action:'update',entityType:'employee',entityId:id,details:'Employee directory photo removed'});
+    });
+    return res.json({removed:true});
+  } catch(error) { return fail(res,error); }
 });
 
 router.get('/:id/activity', async (req, res) => {

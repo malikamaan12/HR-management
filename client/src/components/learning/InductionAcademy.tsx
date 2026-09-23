@@ -1,63 +1,84 @@
-import {useState} from 'react';
+import {lazy,Suspense,useState} from 'react';
 import {useQuery} from '@tanstack/react-query';
+import {BookOpen,Play,Search,Clock3,ArrowRight,Plus,Settings2,Users,Award,ShieldCheck,MoreHorizontal,Pencil,GraduationCap} from 'lucide-react';
 import {Button} from '@/components/ui/button';
-import {QueryError,Section} from '@/components/hr/Operations';
+import {Tabs,TabsList,TabsTrigger,TabsContent} from '@/components/ui/tabs';
+import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from '@/components/ui/dialog';
+import {DropdownMenu,DropdownMenuContent,DropdownMenuItem,DropdownMenuTrigger} from '@/components/ui/dropdown-menu';
+import {QueryError} from '@/components/hr/Operations';
 import {Input,Note,Pager,Toggle,text,today,useSave,type Directory} from '@/components/hr/EmployeeServiceUI';
+import {useDebounced} from '@/components/communications/HubControls';
 import type {CourseDefinition} from '@shared/employee-services';
 import type {InductionBrand,InductionSettings} from '@shared/induction';
-import InductionAuthor,{InductionBrandEditor} from './InductionAuthor';
-import InductionPlayer from './InductionPlayer';
-import InductionReports from './InductionReports';
-import InductionSafetyLibrary from './InductionSafetyLibrary';
-
+import {CourseCover,LearningProgress,durationLabel} from './LearningVisuals';
+import MyLearning from './MyLearning';
+import type {Records} from './InductionReports';
+const InductionAuthor=lazy(()=>import('./InductionAuthor'));
+const InductionBrandEditor=lazy(()=>import('./InductionAuthor').then(m=>({default:m.InductionBrandEditor})));
+const InductionPlayer=lazy(()=>import('./InductionPlayer'));
+const InductionReports=lazy(()=>import('./InductionReports'));
+const InductionSafetyLibrary=lazy(()=>import('./InductionSafetyLibrary'));
 const base='/api/learning/induction';
 type Context={brand:{version:number;config:InductionBrand};canManage:boolean;canReport:boolean;canConfigure:boolean;storage:boolean;limits:Record<string,number>};
-type Course={id:number;version:number;definition:CourseDefinition;publishedRelease:{id:number;releaseNumber:number;lessonCount:number;questionCount:number;settings:InductionSettings}|null;hasDraft:boolean};
+type Course={id:number;version:number;definition:CourseDefinition;publishedRelease:{id:number;releaseNumber:number;lessonCount:number;questionCount:number;settings:InductionSettings}|null;hasDraft:boolean;canSelfEnroll?:boolean;selfEnrollmentNote?:string|null;ownEnrollment?:{id:number;status:string;progress:number}|null};
 type Courses={items:Course[];total:number};
 type SelectedEmployee={id:number;name:string;code:string};
 const enrollmentFromLocation=()=>{const value=Number(new URLSearchParams(window.location.search).get('enrollment'));return Number.isSafeInteger(value)&&value>0?value:null;};
+const enrollmentLabel=(row:NonNullable<Course['ownEnrollment']>)=>row.status==='completed'?'Review course':row.status==='requested'?'Awaiting approval':row.status==='completion_submitted'?'Awaiting review':row.status==='failed'?'View next steps':row.progress?'Continue learning':'Start learning';
 
 export default function InductionAcademy(){
-  const [tab,setTab]=useState('mine'),[q,setQ]=useState(''),[page,setPage]=useState(1),[editor,setEditor]=useState<number|null|undefined>(),[selected,setSelected]=useState<number|null>(enrollmentFromLocation),[assignment,setAssignment]=useState<Course|null>(null),[selfEnroll,setSelfEnroll]=useState<Course|null>(null);
-  const context=useQuery<Context>({queryKey:[base+'/context']}),courses=useQuery<Courses>({queryKey:[base+'/courses',{q,offset:(page-1)*25}],enabled:tab==='catalogue'&&editor===undefined&&!selected});
+  const [tab,setTab]=useState('catalogue'),[q,setQ]=useState(''),[page,setPage]=useState(1),[editor,setEditor]=useState<number|null|undefined>(),[selected,setSelected]=useState<number|null>(enrollmentFromLocation),[assignment,setAssignment]=useState<Course|null>(null),[preview,setPreview]=useState<Course|null>(null),[filter,setFilter]=useState('all');
+  const search=useDebounced(q);
+  const context=useQuery<Context>({queryKey:[base+'/context']}),courses=useQuery<Courses>({queryKey:[base+'/courses',{q:search,offset:(page-1)*25,filter}],enabled:tab==='catalogue'&&editor===undefined&&!selected});
+  const mine=useQuery<Records>({queryKey:[base+'/records',{mine:'true',q:'',status:'',offset:0}],enabled:!selected&&editor===undefined});
   if(!context.data)return <div className="space-y-3"><QueryError error={context.error}/>{context.isLoading?<p role="status">Loading your academy…</p>:<Button variant="outline" onClick={()=>context.refetch()}>Reload academy</Button>}</div>;
   const {brand,canManage,canReport,canConfigure}=context.data;
-  const openEnrollment=(id:number|null)=>{setSelected(id);const url=new URL(window.location.href);if(id)url.searchParams.set('enrollment',String(id));else url.searchParams.delete('enrollment');window.history.replaceState(window.history.state,'',url.pathname+url.search+url.hash);};
-  if(selected)return <InductionPlayer key={selected} id={selected} onBack={()=>openEnrollment(null)}/>;
-  if(editor!==undefined)return <InductionAuthor courseId={editor||undefined} onClose={()=>{setEditor(undefined);setTab('catalogue');}} onSaved={()=>setTab('catalogue')}/>;
-  const tabs=[{id:'mine',label:'My learning'},{id:'catalogue',label:'Course catalogue'},...(canManage?[{id:'library',label:'Safety course library'}]:[]),...(canReport?[{id:'records',label:'Team learning reports'}]:[]),...(canConfigure?[{id:'branding',label:'Academy branding'}]:[])];
-  return <div className="space-y-6">
-    <header className="rounded-lg border border-t-4 bg-card p-5" style={{borderTopColor:brand.config.accentColor}}><div className="flex flex-wrap items-start justify-between gap-4"><div className="flex items-start gap-4">{brand.config.logoAssetId&&<img className="h-14 w-24 object-contain" src={`${base}/assets/${brand.config.logoAssetId}/download`} alt={`${brand.config.organizationName} logo`}/>}<div><p className="text-sm text-muted-foreground">{brand.config.organizationName}</p><h2 className="mt-1 text-2xl font-semibold">{brand.config.academyTitle}</h2><p className="mt-2 max-w-3xl whitespace-pre-wrap text-sm text-muted-foreground">{brand.config.welcomeText}</p></div></div>{canManage&&<Button onClick={()=>setEditor(null)}>Create induction course</Button>}</div></header>
-    <div className="flex flex-wrap gap-2" role="tablist" aria-label="Induction academy sections">{tabs.map(item=><Button key={item.id} id={`induction-tab-${item.id}`} role="tab" aria-selected={tab===item.id} aria-controls={`induction-panel-${item.id}`} variant={tab===item.id?'default':'outline'} onClick={()=>{setTab(item.id);setAssignment(null);setSelfEnroll(null);}}>{item.label}</Button>)}</div>
-    <div id={`induction-panel-${tab}`} role="tabpanel" aria-labelledby={`induction-tab-${tab}`} className="space-y-5">
-      {tab==='mine'&&<InductionReports mine onOpen={openEnrollment}/>}
-      {tab==='records'&&canReport&&<InductionReports onOpen={openEnrollment}/>}
-      {tab==='library'&&canManage&&<InductionSafetyLibrary onEdit={setEditor} onCatalogue={()=>setTab('catalogue')}/>}
-      {tab==='branding'&&canConfigure&&<InductionBrandEditor onClose={()=>setTab('mine')}/>}
-      {tab==='catalogue'&&<>
-        {assignment&&<Section title={`Assign training · ${assignment.definition.title}`}><AssignmentForm key={assignment.id} course={assignment} onClose={()=>setAssignment(null)} onOpen={openEnrollment}/></Section>}
-        {selfEnroll&&<Section title={`Start training · ${selfEnroll.definition.title}`}><SelfEnrollment key={selfEnroll.id} course={selfEnroll} onClose={()=>setSelfEnroll(null)} onOpen={openEnrollment}/></Section>}
-        <Section title="Induction course catalogue"><div className="flex flex-wrap items-end justify-between gap-3"><div className="min-w-60 flex-1"><Input label="Search courses" placeholder="Course title or description" value={q} maxLength={100} onChange={e=>{setQ(e.target.value);setPage(1);}}/></div>{canManage&&<p className="max-w-md text-sm text-muted-foreground">Publish a course before assigning it. Existing learners retain the release assigned to them.</p>}</div><QueryError error={courses.error}/>{courses.error&&<Button variant="outline" onClick={()=>courses.refetch()}>Reload courses</Button>}
-          {courses.isLoading?<p role="status">Loading courses…</p>:<div className="grid gap-4 xl:grid-cols-2">{courses.data?.items.map(course=>{
-            const release=course.publishedRelease,settings=release?.settings,available=!!release&&course.definition.status!=='archived';
-            return <article className="space-y-4 rounded-lg border p-5" key={course.id}><div className="flex items-start justify-between gap-3"><h3 className="text-lg font-semibold">{course.definition.title}</h3><span className="rounded bg-muted px-2 py-1 text-xs">{course.definition.status==='archived'?'Archived':release?`Release ${release.releaseNumber}`:'Draft'}</span></div><p className="whitespace-pre-wrap text-sm">{course.definition.description}</p><div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground"><span>{course.definition.durationMinutes} minutes</span>{release&&<><span>{release.lessonCount} lessons</span><span>{release.questionCount} quiz questions</span><span>Pass score: {settings?.passScore}%</span></>}</div>
-              {settings&&<div className="space-y-1 text-sm"><p>{settings.mandatoryForOnboarding?'Part of required induction':'Role and skills training'}</p><p className="text-xs text-muted-foreground">{settings.employeeTypes.map(t=>t==='temporary'?'Temporary / event staff':t==='contract'?'Contract employees':'Permanent employees').join(' · ')}{settings.departments.length?` · ${settings.departments.join(', ')}`:' · All departments'}</p>{settings.enrollmentApprovalRequired&&<p className="text-xs text-muted-foreground">Enrollment approval required.</p>}</div>}
-              {canManage&&course.hasDraft&&release&&<p className="rounded bg-muted p-2 text-xs">There are unpublished changes. New assignments use release {release.releaseNumber} until a new release is published.</p>}
-              <div className="flex flex-wrap gap-2">{available&&settings?.allowSelfEnrollment&&<Button onClick={()=>{setSelfEnroll(course);setAssignment(null);}}>{settings.enrollmentApprovalRequired?'Request enrollment':'Enroll & start'}</Button>}{available&&!settings?.allowSelfEnrollment&&!canManage&&<p className="text-sm text-muted-foreground">Your HR team assigns this course.</p>}{canManage&&<><Button variant="outline" onClick={()=>setEditor(course.id)}>Edit course</Button>{available&&<Button variant="outline" onClick={()=>{setAssignment(course);setSelfEnroll(null);}}>Assign employees</Button>}</>}</div>
-            </article>;
-          })}</div>}
-          {courses.data&&!courses.data.items.length&&<p className="text-sm text-muted-foreground">{canManage?'No courses match this search. Create an induction course with your own lessons and quiz to get started.':'No published courses match this search. Assigned training appears under My learning.'}</p>}<Pager page={page} total={courses.data?.total||0} onChange={setPage}/>
-        </Section>
-      </>}
-    </div>
+  const openEnrollment=(id:number|null)=>{setSelected(id);setPreview(null);const url=new URL(window.location.href);if(id)url.searchParams.set('enrollment',String(id));else url.searchParams.delete('enrollment');window.history.replaceState(window.history.state,'',url.pathname+url.search+url.hash);};
+  const loading=<p role="status" className="p-6">Opening learning workspace…</p>;
+  if(selected)return <Suspense fallback={loading}><InductionPlayer key={selected} id={selected} onBack={()=>openEnrollment(null)}/></Suspense>;
+  if(editor!==undefined)return <Suspense fallback={loading}><InductionAuthor courseId={editor||undefined} onClose={()=>{setEditor(undefined);setTab('catalogue');}} onSaved={()=>setTab('catalogue')}/></Suspense>;
+  const next=mine.error?undefined:mine.data?.items.find(row=>row.status==='in_progress')||mine.data?.items.find(row=>row.status==='approved');
+  const visible=courses.data?.items||[];
+  const tabs=[{id:'catalogue',label:'Explore',Icon:BookOpen},{id:'mine',label:'My learning',Icon:Play},...(canReport?[{id:'records',label:'Team progress',Icon:Users}]:[])];
+  return <div className="learning-academy space-y-6">
+    <header className="learning-hero"><div className="learning-hero-copy"><span className="learning-eyebrow"><GraduationCap className="h-4 w-4"/>{brand.config.organizationName}</span><h1>{brand.config.academyTitle}</h1><p>{brand.config.welcomeText}</p><div className="learning-hero-actions"><Button onClick={()=>{setTab('catalogue');document.getElementById('academy-catalog')?.scrollIntoView({behavior:'smooth',block:'start'});}} className="gap-2">Explore courses<ArrowRight className="h-4 w-4"/></Button><Button variant="outline" className="gap-2" onClick={()=>setTab('mine')}><Play className="h-4 w-4"/>My learning</Button></div></div><div className="learning-hero-image"><CourseCover course={{title:'Welcome',coverImage:'welcome'}} eager/></div></header>
+    {next&&<button className="learning-resume" onClick={()=>openEnrollment(next.id)}><span className="learning-resume-icon"><Play/></span><span className="min-w-0 flex-1 text-left"><small>CONTINUE LEARNING</small><strong>{next.title}</strong><span>{next.progress}% complete{next.dueDate?` · Due ${next.dueDate}`:''}</span></span><ArrowRight className="h-5 w-5 shrink-0"/></button>}
+    <Tabs value={tab} onValueChange={setTab} id="academy-catalog">
+      <div className="learning-navigation"><TabsList aria-label="Learning sections">{tabs.map(item=><TabsTrigger key={item.id} value={item.id} className="gap-2"><item.Icon className="h-4 w-4"/>{item.label}</TabsTrigger>)}{['library','branding'].includes(tab)&&<TabsTrigger value={tab}>{tab==='library'?'Safety library':'Branding'}</TabsTrigger>}</TabsList>{(canManage||canConfigure)&&<DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" className="gap-2" aria-label="Manage academy"><Settings2 className="h-4 w-4"/><span className="hidden sm:inline">Manage</span></Button></DropdownMenuTrigger><DropdownMenuContent align="end">{canManage&&<><DropdownMenuItem onSelect={()=>setEditor(null)}><Plus/>Create course</DropdownMenuItem><DropdownMenuItem onSelect={()=>setTab('library')}><ShieldCheck/>Safety course library</DropdownMenuItem></>}{canConfigure&&<DropdownMenuItem onSelect={()=>setTab('branding')}><Settings2/>Academy branding</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu>}</div>
+      <TabsContent value="mine" className="pt-5"><MyLearning onOpen={openEnrollment} onBrowse={()=>setTab('catalogue')}/></TabsContent>
+      <TabsContent value="records" className="pt-5">{canReport&&<Suspense fallback={loading}><InductionReports onOpen={openEnrollment}/></Suspense>}</TabsContent>
+      <TabsContent value="library" className="pt-5">{canManage&&<Suspense fallback={loading}><InductionSafetyLibrary onEdit={setEditor} onCatalogue={()=>setTab('catalogue')}/></Suspense>}</TabsContent>
+      <TabsContent value="branding" className="pt-5">{canConfigure&&<Suspense fallback={loading}><InductionBrandEditor onClose={()=>setTab('catalogue')}/></Suspense>}</TabsContent>
+      <TabsContent value="catalogue" className="space-y-5 pt-5">
+        <div className="learning-section-heading"><div><h2>Find your next course</h2><p>Build confidence, one lesson at a time.</p></div>{canManage&&<Button variant="outline" size="sm" onClick={()=>setEditor(null)} className="gap-2"><Plus className="h-4 w-4"/>Create course</Button>}</div>
+        <div className="learning-catalog-toolbar"><label className="learning-search"><Search/><input aria-label="Search courses" placeholder="What would you like to learn?" value={q} maxLength={100} onChange={e=>{setQ(e.target.value);setPage(1);}}/></label><div className="learning-filter-pills" role="group" aria-label="Course filters">{[{id:'all',label:'All courses'},{id:'required',label:'Required induction'},{id:'self',label:'Self-enrollment'},...(canManage?[{id:'draft',label:'Drafts'}]:[])].map(item=><button key={item.id} aria-pressed={filter===item.id} onClick={()=>{setFilter(item.id);setPage(1);}}>{item.label}</button>)}</div></div>
+        <QueryError error={courses.error}/>{courses.error&&<Button variant="outline" onClick={()=>courses.refetch()}>Reload courses</Button>}
+        {courses.isLoading&&<div className="learning-course-grid" role="status" aria-label="Loading courses">{[1,2,3].map(key=><div key={key} className="course-skeleton"><div/><span/><span/></div>)}</div>}
+        <div className="learning-course-grid">{!courses.error&&visible.map(course=>{
+          const release=course.publishedRelease,settings=release?.settings,available=!!release&&course.definition.status!=='archived',own=course.ownEnrollment;
+          return <article key={course.id} className="learning-course-card"><button className="course-cover-button" onClick={()=>setPreview(course)} aria-label={`Preview ${course.definition.title}`}><CourseCover course={course.definition}/><span className="course-image-tag">{course.definition.status==='archived'?'Archived':!release?'Draft':settings?.mandatoryForOnboarding?'Required induction':'Self-paced'}</span><span className="course-preview-icon"><ArrowRight/></span></button>
+            <div className="course-card-body"><span className="course-provider">{course.definition.provider}</span><h3><button onClick={()=>setPreview(course)}>{course.definition.title}</button></h3><p className="course-description">{course.definition.description}</p><div className="course-meta"><span><Clock3/>{durationLabel(course.definition.durationMinutes)}</span>{release&&<span><BookOpen/>{release.lessonCount} lessons</span>}</div>{own&&<LearningProgress value={own.progress} label="Your progress"/>}
+              <div className="course-card-actions flex gap-2"><Button className="min-w-0 flex-1 gap-2" variant={own?.status==='completed'?'outline':'default'} onClick={()=>own?openEnrollment(own.id):setPreview(course)}>{own?<Play className="h-4 w-4"/>:<ArrowRight className="h-4 w-4"/>}{own?enrollmentLabel(own):available&&settings?.allowSelfEnrollment&&course.canSelfEnroll?'Enroll now':'View course'}</Button>{canManage&&<DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" size="icon" aria-label={`Manage ${course.definition.title}`}><MoreHorizontal className="h-4 w-4"/></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={()=>setEditor(course.id)}><Pencil/>Edit course</DropdownMenuItem>{available&&<DropdownMenuItem onSelect={()=>setAssignment(course)}><Users/>Assign employees</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu>}</div>
+            </div>
+          </article>;
+        })}</div>
+        {!courses.isLoading&&!courses.error&&!visible.length&&<div className="learning-empty"><BookOpen/><h3>No courses found</h3><p>Try another search or filter.</p><Button variant="outline" onClick={()=>{setQ('');setFilter('all');setPage(1);}}>Show all courses</Button></div>}
+        {(courses.data?.total||0)>25&&<><Pager page={page} total={courses.data?.total||0} onChange={setPage}/></>}
+      </TabsContent>
+    </Tabs>
+    <Dialog open={!!preview} onOpenChange={open=>{if(!open)setPreview(null);}}><DialogContent className="course-preview-dialog sm:max-w-2xl">{preview&&<CoursePreview key={preview.id} course={preview} onOpen={openEnrollment} onAssign={canManage?()=>{setAssignment(preview);setPreview(null);}:undefined}/>}</DialogContent></Dialog>
+    <Dialog open={!!assignment} onOpenChange={open=>{if(!open)setAssignment(null);}}><DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl"><DialogHeader><DialogTitle>Assign training</DialogTitle><DialogDescription>{assignment?.definition.title}</DialogDescription></DialogHeader>{assignment&&<AssignmentForm key={assignment.id} course={assignment} onClose={()=>setAssignment(null)} onOpen={openEnrollment}/>}</DialogContent></Dialog>
   </div>;
 }
-
-function SelfEnrollment({course,onClose,onOpen}:{course:Course;onClose:()=>void;onOpen:(id:number)=>void}){
-  const save=useSave<{enrollmentId:number}>(value=>onOpen(value.enrollmentId));
-  return <form className="space-y-4" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);save.mutate({url:`${base}/courses/${course.id}/enroll`,body:{releaseId:course.publishedRelease!.id,reason:text(f,'reason')}});}}><p className="text-sm">You will be enrolled in release {course.publishedRelease?.releaseNumber}. {course.publishedRelease?.settings.enrollmentApprovalRequired?'Your assigned reviewer must approve the enrollment before you begin.':'Your lessons will be available after enrollment.'}</p><Note label="Reason for enrollment" value="Complete my employee induction and training."/><QueryError error={save.error}/><div className="flex gap-2"><Button disabled={save.isPending}>Confirm enrollment</Button><Button type="button" variant="outline" onClick={onClose} disabled={save.isPending}>Cancel</Button></div></form>;
+function CoursePreview({course,onOpen,onAssign}:{course:Course;onOpen:(id:number)=>void;onAssign?:()=>void}){
+  const save=useSave<{enrollmentId:number}>(value=>onOpen(value.enrollmentId)),release=course.publishedRelease,settings=release?.settings,own=course.ownEnrollment,available=!!release&&course.definition.status!=='archived';
+  return <><CourseCover course={course.definition} eager/><DialogHeader><span className="course-provider">{course.definition.provider}</span><DialogTitle className="text-xl">{course.definition.title}</DialogTitle><DialogDescription className="whitespace-pre-wrap">{course.definition.description}</DialogDescription></DialogHeader><div className="course-preview-facts"><span><Clock3/>{durationLabel(course.definition.durationMinutes)}<small>At your pace</small></span>{release&&<><span><BookOpen/>{release.lessonCount} lessons<small>Learn step by step</small></span><span><Award/>{settings?.passScore}% to pass<small>{release.questionCount} quiz questions</small></span></>}</div>
+    {settings&&<p className="text-xs text-muted-foreground">{settings.mandatoryForOnboarding?'Required induction. ':''}{settings.enrollmentApprovalRequired?'Approval is needed before starting.':'Lessons open after enrollment.'}{settings.reviewRequired?' A reviewer confirms completion.':''}</p>}
+    <QueryError error={save.error}/>
+    {own?<Button className="gap-2" onClick={()=>onOpen(own.id)}><Play className="h-4 w-4"/>{enrollmentLabel(own)}</Button>:available&&settings?.allowSelfEnrollment&&course.canSelfEnroll?<Button className="gap-2" disabled={save.isPending} onClick={()=>save.mutate({url:`${base}/courses/${course.id}/enroll`,body:{releaseId:release!.id,reason:'Employee requested enrollment from the learning course catalog.'}})}><Play className="h-4 w-4"/>{save.isPending?'Opening enrollment…':settings.enrollmentApprovalRequired?'Request enrollment':'Enroll & start'}</Button>:<p className="rounded-xl bg-muted p-3 text-sm">{!available?'This course is not open for new enrollments.':!settings?.allowSelfEnrollment?'Your HR team assigns this training.':course.selfEnrollmentNote||'Contact HR to enroll in this course.'}</p>}
+    {onAssign&&available&&<Button variant="outline" className="gap-2" onClick={onAssign}><Users className="h-4 w-4"/>Assign to employees</Button>}
+  </>;
 }
-
 function AssignmentForm({course,onClose,onOpen}:{course:Course;onClose:()=>void;onOpen:(id:number)=>void}){
   const [q,setQ]=useState(''),[selected,setSelected]=useState<SelectedEmployee[]>([]),[saved,setSaved]=useState<{id:number;enrollmentId:number;employeeId:number}[]|null>(null);
   const directory=useQuery<Directory>({queryKey:['/api/learning/directory',{q}]}),save=useSave<{items:{id:number;enrollmentId:number;employeeId:number}[]}>(value=>setSaved(value.items));

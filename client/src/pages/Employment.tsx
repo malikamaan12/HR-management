@@ -140,6 +140,10 @@ function ServiceHistory({ employeeId }: { employeeId: number }) {
   return <div className="space-y-3"><QueryError error={query.error}/><DecisionHistory rows={query.data?.items || []}/><div className="flex gap-3"><Button variant="outline" disabled={page === 1} onClick={() => setPage(page - 1)}>Previous history</Button><Button variant="outline" disabled={!query.data?.hasMore} onClick={() => setPage(page + 1)}>More history</Button></div></div>;
 }
 
+export function EmploymentSettings() {
+  const context=useQuery<Context>({queryKey:[base+'/context']});
+  return <><QueryError error={context.error}/>{context.isLoading&&<p role="status">Loading employment rules…</p>}{context.data?.canConfigure&&<PolicyEditor/>}</>;
+}
 function PolicyEditor() {
   const query = useQuery<Policy>({ queryKey: [base + '/policy'] }), history = useQuery<{ version: number; definition: EmploymentPolicy; reason: string; created_by: number; created_at: string }[]>({ queryKey: [base + '/policy/history'] });
   return <div className="space-y-5"><QueryError error={query.error}/>{query.data && <PolicyForm key={query.data.version} policy={query.data}/>}<Section title="Policy history"><QueryError error={history.error}/><Table headers={['Version', 'Saved', 'Reason', 'Rules']} rows={(history.data || []).map(r => [r.version, new Date(r.created_at).toLocaleString(), r.reason, <details><summary className="cursor-pointer">View saved rules</summary><pre className="whitespace-pre-wrap text-xs">{JSON.stringify(r.definition, null, 2)}</pre></details>])}/></Section></div>;

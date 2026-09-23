@@ -5,10 +5,10 @@ import {Field,QueryError,Section,Table,downloadCsv,fieldClass} from '@/component
 import {Input,Pager,today} from '@/components/hr/EmployeeServiceUI';
 
 const base='/api/learning/induction';
-export type InductionRecord={id:number;employeeId:number;employeeName:string;employeeCode:string;courseId:number;title:string;status:string;progress:number;score:number|null;dueDate:string|null;expiresOn:string|null;completedAt:string|null;certificateNumber:string|null;required:boolean;releaseNumber:number;attemptCount:number;own:boolean};
-type Records={items:InductionRecord[];total:number;stats:{assigned:number;completed:number;inProgress:number;failed:number;overdue:number;averageScore:number|null}};
+export type InductionRecord={id:number;employeeId:number;employeeName:string;employeeCode:string;courseId:number;title:string;coverImage?:import('@shared/employee-services').CourseDefinition['coverImage'];coverImageUrl?:string;status:string;progress:number;score:number|null;dueDate:string|null;expiresOn:string|null;completedAt:string|null;certificateNumber:string|null;required:boolean;releaseNumber:number;attemptCount:number;own:boolean};
+export type Records={items:InductionRecord[];total:number;stats:{assigned:number;completed:number;inProgress:number;failed:number;overdue:number;averageScore:number|null}};
 type CourseOptions={items:{id:number;definition:{title:string}}[];total:number};
-export const inductionStatus=(value:string)=>value==='completion_submitted'?'Awaiting completion review':value.replaceAll('_',' ').replace(/^./,v=>v.toUpperCase());
+import {inductionStatus} from './LearningVisuals';
 const statuses=['requested','approved','in_progress','completion_submitted','completed','failed','withdrawn','rejected'];
 
 export default function InductionReports({onOpen,mine=false}:{onOpen:(id:number)=>void;mine?:boolean}){

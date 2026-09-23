@@ -5,7 +5,7 @@ interface AddEditEmployeeModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   employee?: any;
-  onSuccess: () => void;
+  onSuccess: (employeeId?: number) => void;
 }
 
 export default function AddEditEmployeeModal({ open, onOpenChange, employee, onSuccess }: AddEditEmployeeModalProps) {
@@ -23,8 +23,8 @@ export default function AddEditEmployeeModal({ open, onOpenChange, employee, onS
         <EmployeeForm 
           employee={employee} 
           onCancel={() => onOpenChange(false)}
-          onSuccess={() => {
-            onSuccess();
+          onSuccess={(id) => {
+            onSuccess(id);
             onOpenChange(false);
           }} 
         />

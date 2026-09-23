@@ -72,7 +72,7 @@ function TrainingRequirementsForm({ course, onClose }: { course: TrainingCourse;
   </form>;
 }
 
-function TrainingRequirements() {
+export function TrainingRequirements() {
   const [search, setSearch] = useState(''), [q, setQuery] = useState(''), [offset, setOffset] = useState(0), [selected, setSelected] = useState<TrainingCourse | null>(null);
   const courses = useQuery<{ items: TrainingCourse[]; total: number }>({ queryKey: ['/api/operations-training/courses', { q, offset }] });
   return <Section title="Required induction courses">
@@ -91,20 +91,20 @@ function TrainingRequirements() {
   </Section>;
 }
 
-export default function OperationsSetup() {
+export default function OperationsSetup({settingsOnly=false}:{settingsOnly?:boolean}={}) {
   const { user } = useAuth(), allowed = ['admin', 'super_admin'].includes(user?.role || '');
-  const [asOf, setAsOf] = useState(localToday), [tab, setTab] = useState(initialTab);
+  const [asOf, setAsOf] = useState(localToday), [tab, setTab] = useState(()=>settingsOnly?'overview':initialTab());
   const readiness = useQuery<OperationsSetupResponse>({ queryKey: ['/api/operations-setup', { asOf }], enabled: allowed });
   if (!allowed) return <p>Only administrators can configure operational setup.</p>;
   const data = readiness.data, section = (id: ReadinessSection['id']) => data?.sections.find(item => item.id === id);
   return <div className="space-y-6">
 
-    <header className="space-y-2"><h1 className="text-2xl font-semibold">Operational setup</h1><p className="text-muted-foreground">Prepare employee access, work locations, supervisors, leave approvals and required induction courses.</p></header>
+    {!settingsOnly&&<header className="space-y-2"><h1 className="text-2xl font-semibold">Operational setup</h1><p className="text-muted-foreground">Prepare employee access, work locations, supervisors, leave approvals and required induction courses.</p></header>}
     <Tabs value={tab} onValueChange={setTab}>
-      <TabsList className="flex h-auto flex-wrap justify-start"><TabsTrigger value="overview">Overview</TabsTrigger><TabsTrigger value="locations">Locations & geofencing</TabsTrigger><TabsTrigger value="supervisors">People & supervisors</TabsTrigger><TabsTrigger value="leave">Leave approvals</TabsTrigger><TabsTrigger value="induction">Required training</TabsTrigger><TabsTrigger value="services">Services & recovery</TabsTrigger></TabsList>
+      {!settingsOnly&&<TabsList className="flex h-auto flex-wrap justify-start"><TabsTrigger value="overview">Overview</TabsTrigger><TabsTrigger value="locations">Locations & geofencing</TabsTrigger><TabsTrigger value="supervisors">People & supervisors</TabsTrigger><TabsTrigger value="leave">Leave approvals</TabsTrigger><TabsTrigger value="induction">Required training</TabsTrigger><TabsTrigger value="services">Services & recovery</TabsTrigger></TabsList>}
       <TabsContent value="overview" className="space-y-4 pt-3">    <Section title="Configuration readiness">
       <div className="flex flex-wrap items-end gap-3"><Field label="Readiness date (Qatar)"><input className={fieldClass} type="date" required value={asOf} onChange={event => { if (event.target.value) setAsOf(event.target.value); }}/></Field><Button variant="outline" disabled={readiness.isFetching} onClick={() => void readiness.refetch()}>{readiness.isFetching ? 'Refreshing…' : 'Refresh readiness'}</Button></div>
-<HelpDisclosure title="What the readiness date includes">      <p className="text-xs text-muted-foreground">This date checks location, supervisor and rule coverage for currently active employees. Accounts, roles and published course requirements use their current state. The editors below use their current saved versions and explicit effective dates when you save.</p></HelpDisclosure>
+<HelpDisclosure title="What the readiness date includes">      <p className="text-xs text-muted-foreground">This date checks location, supervisor and rule coverage for currently active employees. Accounts, roles and published course requirements use their current state. Each settings editor uses its current saved version and the effective date you choose when saving.</p></HelpDisclosure>
       <QueryError error={readiness.error}/>
       {readiness.isLoading && <p role="status">Loading configuration readiness…</p>}
       {data && <><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{[
@@ -115,8 +115,8 @@ export default function OperationsSetup() {
       </>}
     </Section>
 
-        {data?.sections.map(item => <Section key={item.id} title={item.title}><ReadinessIssues section={item}/><Button variant="outline" onClick={() => setTab(item.id === 'people' ? 'supervisors' : item.id)}>Open {item.id === 'people' ? 'people setup' : item.title.toLowerCase()}</Button></Section>)}
-        {!data && !readiness.isLoading && <p className="text-sm text-muted-foreground">Refresh readiness to load the configuration checklist. The setup tabs remain available.</p>}
+        {data?.sections.map(item => <Section key={item.id} title={item.title}><ReadinessIssues section={item}/>{settingsOnly?<Button variant="outline" asChild><a href={`/settings/${({people:'accounts',supervisors:'teams',locations:'devices?tab=geofencing',leave:'leave',induction:'training',services:'readiness'} as Record<string,string>)[item.id]||'setup'}`}>Open settings</a></Button>:<Button variant="outline" onClick={() => setTab(item.id === 'people' ? 'supervisors' : item.id)}>Open {item.id === 'people' ? 'people setup' : item.title.toLowerCase()}</Button>}</Section>)}
+        {!data && !readiness.isLoading && <p className="text-sm text-muted-foreground">Refresh readiness to load the configuration checklist. The settings editors remain available from HR Rules & Settings.</p>}
       </TabsContent>
       <TabsContent value="locations" className="space-y-4 pt-3"><Section title="Location coverage"><ReadinessIssues section={section('locations')}/><p className="text-sm">Create event, mall and FEC sites in <a href="/workforce" className="text-primary underline">Workforce</a>, then record their actual coordinates, radius and dates here. Enable GPS enforcement after checking coverage for the employees and sites you operate.</p></Section><AttendanceLocationManagement/></TabsContent>
       <TabsContent value="supervisors" className="space-y-4 pt-3"><Section title="Employee records and account access"><ReadinessIssues section={section('people')}/><p className="text-sm">Create the employee record, link the approved account and keep their department and employment type accurate.</p><div className="flex flex-wrap gap-4 text-sm"><a href="/employees" className="text-primary underline">Employee database</a><a href="/user-management" className="text-primary underline">User accounts and roles</a></div></Section><Section title="Supervisor assignments"><ReadinessIssues section={section('supervisors')}/><p className="text-sm">In Workforce, choose the site and team, add dated employee membership and grant the supervisor the required access for those dates. Attendance and timesheet approval need independent review access; scheduling access alone does not approve time.</p><p className="text-sm text-muted-foreground">Temporary, contract and workforce attendance requires supervisor approval. For office employees, maintain the reporting relationship in their employee profile and review the attendance enforcement rules.</p><div className="flex flex-wrap gap-4 text-sm"><a href="/workforce" className="text-primary underline">Manage teams and lead access</a><a href="/employees" className="text-primary underline">Manage reporting relationships</a><a href="/attendance" className="text-primary underline">Attendance approval queue</a></div></Section></TabsContent>

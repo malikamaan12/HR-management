@@ -30,7 +30,7 @@ export function checkEmploymentDates(value: Pick<Employee, 'dateOfBirth' | 'join
 export const directoryFields = ['id', 'employeeId', 'firstName', 'lastName', 'fullNameArabic', 'type',
   'eventStaffEligible', 'workSchedule', 'department', 'position', 'location', 'workLocation', 'workEmail', 'workPhone',
   'reportingManagerId', 'secondaryManagerId', 'joiningDate', 'status'] as const;
-export type EmployeeDirectoryEntry = Pick<Employee, typeof directoryFields[number]>;
+export type EmployeeDirectoryEntry = Pick<Employee, typeof directoryFields[number]> & { photo?: string | null };
 export type EmployeeRecord = EmployeeDirectoryEntry & Partial<Employee> & {
   managers?: { primary: Pick<Employee, 'id' | 'employeeId' | 'firstName' | 'lastName'> | null; secondary: Pick<Employee, 'id' | 'employeeId' | 'firstName' | 'lastName'> | null };
   access: { canEdit: boolean; personal: boolean; banking: boolean; documents: boolean; uploadDocuments: boolean; history: boolean };

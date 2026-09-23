@@ -1,28 +1,85 @@
-import {useEffect,useState} from 'react';
-import {useQuery} from '@tanstack/react-query';
-import {MessageCircle,MessageSquarePlus,Plus,Search,Bookmark,Files,Star,AtSign,BellOff,Users,ArrowRight,Maximize2,Minimize2} from 'lucide-react';
-import {Button} from '@/components/ui/button';
-import {Dialog,DialogContent,DialogHeader,DialogTitle} from '@/components/ui/dialog';
-import {QueryError,fieldClass} from '@/components/hr/Operations';
-import {hub,Pager,type Page,useDebounced} from './HubControls';
-import type {ChatChannel} from '@shared/communications';
-import Conversation,{type ChatDraft} from './Conversation';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { MessageCircle, MessageSquarePlus, Search, Bookmark, Files, Star, AtSign, BellOff, Users, MoreHorizontal, UsersRound, ArrowUpRight } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { QueryError } from '@/components/hr/Operations';
+import { hub, Pager, type Page, useDebounced } from './HubControls';
+import type { ChatChannel, HubContext } from '@shared/communications';
+import Conversation, { type ChatDraft } from './Conversation';
 import CreateChannel from './CreateChannel';
 import ChatSearch from './ChatSearch';
-import {initials} from './ChatMessageCard';
+import { initials } from './ChatMessageCard';
 
-export default function HubChannels({context,filterRequest,drafts,focused,onFocus}:{context:any;filterRequest:{value:string;revision:number};drafts:Map<number,ChatDraft>;focused:boolean;onFocus:()=>void}){
- const [q,setQ]=useState(''),[offset,setOffset]=useState(0),[filter,setFilter]=useState(filterRequest.value),[selected,setSelected]=useState<number|null>(null),[focus,setFocus]=useState<number|null>(null),[create,setCreate]=useState(''),[mode,setMode]=useState('chats');
- const search=useDebounced(q);
- useEffect(()=>{setFilter(filterRequest.value);setOffset(0);setSelected(null);setMode('chats');},[filterRequest]);
- const channels=useQuery<Page<ChatChannel>>({queryKey:[`${hub}/channels?q=${encodeURIComponent(search)}&offset=${offset}&filter=${filter}`],refetchInterval:10000,refetchIntervalInBackground:false});
- const current=channels.data?.items.find(c=>c.id===selected);
- const open=(id:number,message:number|null=null)=>{setSelected(id);setFocus(message);setMode('chats');};
- return <div className="space-y-4"><div className="flex flex-wrap items-center justify-between gap-3"><div className="flex flex-wrap gap-1 rounded-xl border bg-card p-1" aria-label="Conversation tools">{[{id:'chats',label:'Chats',Icon:MessageCircle},{id:'all',label:'Search',Icon:Search},{id:'saved',label:'Saved',Icon:Bookmark},{id:'files',label:'Files',Icon:Files}].map(item=><Button key={item.id} size="sm" variant={mode===item.id?'secondary':'ghost'} aria-pressed={mode===item.id} className="gap-1.5 px-2 text-xs sm:gap-2 sm:px-3 sm:text-sm" onClick={()=>setMode(item.id)}><item.Icon className="h-4 w-4"/>{item.label}</Button>)}</div><div className="flex flex-wrap gap-2">{mode==='chats'&&<Button size="sm" variant="ghost" className="gap-2" onClick={onFocus}>{focused?<Minimize2 className="h-4 w-4"/>:<Maximize2 className="h-4 w-4"/>}{focused?'Show hub':'Focus chat'}</Button>}{context.policy.definition.directMessages&&<Button variant="outline" size="sm" className="gap-1.5 px-2 sm:px-3" aria-label="New message" onClick={()=>setCreate('direct')}><MessageSquarePlus className="h-4 w-4"/><span className="sm:hidden">Message</span><span className="hidden sm:inline">New message</span></Button>}{context.canManage&&<Button size="sm" className="gap-1.5 px-2 sm:px-3" aria-label="New channel" onClick={()=>setCreate('group')}><Plus className="h-4 w-4"/><span className="sm:hidden">Channel</span><span className="hidden sm:inline">New channel</span></Button>}</div></div>
- {mode!=='chats'?<ChatSearch key={mode} mode={mode as 'all'|'saved'|'files'} onOpen={open}/>:<div className={`chat-workspace grid overflow-hidden rounded-2xl border bg-card shadow-sm lg:grid-cols-[300px_minmax(0,1fr)] ${focused?'h-[calc(100dvh-15rem)] min-h-[500px] lg:h-[calc(100dvh-11rem)]':'h-[680px] min-h-[610px] lg:h-[calc(100dvh-20rem)]'}`}>
- <aside aria-label="Conversation list" className={`flex min-h-0 flex-col border-r ${selected?'hidden lg:flex':''}`}><div className="space-y-3 border-b p-4"><h2 className="font-semibold">Your conversations</h2><input className={fieldClass+' text-sm'} aria-label="Find conversations" placeholder="Find a person or channel…" value={q} maxLength={100} onChange={e=>{setQ(e.target.value);setOffset(0);}}/><div className="flex flex-wrap gap-1">{[{id:'all',label:'All'},{id:'unread',label:'Unread'},{id:'mentions',label:'Mentions'},{id:'favorites',label:'Favorites'}].map(item=><button key={item.id} aria-pressed={filter===item.id} className={`rounded-full px-2.5 py-1 text-xs font-medium ${filter===item.id?'bg-primary text-primary-foreground':'bg-muted text-muted-foreground hover:bg-accent'}`} onClick={()=>{setFilter(item.id);setOffset(0);}}>{item.label}</button>)}</div></div>
- <div className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2"><QueryError error={channels.error}/>{channels.isLoading&&<p role="status" className="p-4 text-sm text-muted-foreground">Loading chats…</p>}{!channels.error&&channels.data?.items.map(c=><button key={c.id} onClick={()=>open(c.id)} aria-pressed={selected===c.id} className={`flex w-full gap-3 rounded-xl p-3 text-left transition-colors hover:bg-accent ${selected===c.id?'bg-primary/10 ring-1 ring-inset ring-primary/20':''}`}><span aria-hidden="true" className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-xs font-semibold ${c.kind==='direct'?'bg-violet-500/10 text-violet-600 dark:text-violet-300':'bg-primary/10 text-primary'}`}>{c.kind==='direct'?initials(c.display_name):<Users className="h-5 w-5"/>}</span><span className="min-w-0 flex-1"><span className="flex items-center gap-1"><strong className="truncate text-sm">{c.display_name}</strong>{c.favorite&&<Star className="h-3 w-3 shrink-0 fill-amber-400 text-amber-500"/>}{c.muted&&<BellOff className="h-3 w-3 shrink-0 text-muted-foreground"/>}</span><span className="mt-1 block truncate text-xs text-muted-foreground">{c.archived_at?'Archived · ':''}{c.last_message?(c.last_author+': '+c.last_message):'No messages yet'}</span><span className="mt-1.5 flex items-center gap-2 text-[10px] text-muted-foreground">{c.last_activity?new Date(c.last_activity).toLocaleDateString([],{month:'short',day:'numeric'}):c.kind==='workforce'?'Event / FEC team':'Private conversation'}{c.mentions>0&&<span className="ml-auto flex items-center gap-0.5 text-amber-700 dark:text-amber-300"><AtSign className="h-3 w-3"/>{c.mentions}</span>}{!c.muted&&c.unread>0&&<span className="ml-auto rounded-full bg-primary px-1.5 text-primary-foreground">{c.unread>99?'99+':c.unread}</span>}</span></span></button>)}{!channels.error&&channels.data&&!channels.data.items.length&&<div className="px-4 py-12 text-center"><MessageCircle className="mx-auto mb-3 h-8 w-8 text-muted-foreground"/><p className="text-sm font-medium">{filter==='unread'?'You’re caught up':filter==='favorites'?'No favorite chats yet':'No conversations to show'}</p><p className="mt-1 text-xs text-muted-foreground">{filter==='favorites'?'Use the star in a conversation to keep it close.':'Try another filter or start a new message.'}</p></div>}</div><div className="border-t p-3"><Pager offset={offset} hasMore={channels.data?.hasMore} onChange={setOffset}/></div></aside>
- {selected?<Conversation key={selected} id={selected} userId={context.userId} displayName={current?.display_name} focusMessage={focus} onBack={()=>setSelected(null)} drafts={drafts}/>:<div className="hidden flex-col items-center justify-center p-8 text-center lg:flex"><div className="mb-5 rounded-3xl bg-primary/10 p-6"><MessageCircle className="h-12 w-12 text-primary"/></div><h2 className="text-xl font-semibold">A shared space for your team</h2><p className="mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">Keep shift updates, event instructions and quick questions together. Choose a chat to get started.</p>{context.policy.definition.directMessages&&<Button className="mt-5 gap-2" onClick={()=>setCreate('direct')}>Start a conversation<ArrowRight className="h-4 w-4"/></Button>}<p className="mt-6 text-xs text-muted-foreground">Use HR Helpdesk for confidential employee cases.</p></div>}
- </div>}
- <Dialog open={!!create} onOpenChange={open=>{if(!open)setCreate('');}}><DialogContent><DialogHeader><DialogTitle>{create==='direct'?'New direct message':'New team channel'}</DialogTitle></DialogHeader>{create&&<CreateChannel key={create} mode={create} onDone={id=>{setCreate('');open(id);}}/>}</DialogContent></Dialog></div>;
+export type OpenChat = { id: number; message: number | null; name?: string };
+function activityLabel(value: string) {
+  const date = new Date(value), now = new Date();
+  if (date.toDateString() === now.toDateString()) return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
+  return date.toDateString() === yesterday.toDateString() ? 'Yesterday' : date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+
+export default function HubChannels({ context, drafts, selected, onSelect }: {
+  context: HubContext; drafts: Map<number, ChatDraft>; selected: OpenChat | null; onSelect: (chat: OpenChat | null) => void;
+}) {
+  const [q, setQ] = useState(''), [offset, setOffset] = useState(0), [filter, setFilter] = useState('all');
+  const [create, setCreate] = useState(''), [mode, setMode] = useState<'' | 'all' | 'saved' | 'files'>('');
+  const search = useDebounced(q);
+  const channels = useQuery<Page<ChatChannel>>({ queryKey: [`${hub}/channels?q=${encodeURIComponent(search)}&offset=${offset}&filter=${filter}`], refetchInterval: 10000, refetchIntervalInBackground: false });
+  const current = channels.data?.items.find(c => c.id === selected?.id);
+  const open = (id: number, message: number | null = null) => {
+    onSelect({ id, message, name: channels.data?.items.find(c => c.id === id)?.display_name });
+    setMode('');
+  };
+  const canCreateGroup = context.canManage;
+
+  return <>
+    <div className="messenger-workspace" data-selected={!!selected}>
+      <aside aria-label="Conversation list" className="messenger-list">
+        <div className="messenger-list-heading">
+          <h2>Chats</h2>
+          <div className="flex items-center gap-1">
+            {context.policy.definition.directMessages && <Button size="icon" variant="secondary" aria-label="New message" title="New message" onClick={() => setCreate('direct')}><MessageSquarePlus className="h-5 w-5"/></Button>}
+            <DropdownMenu><DropdownMenuTrigger asChild><Button size="icon" variant="ghost" aria-label="Chat tools" title="Chat tools"><MoreHorizontal className="h-5 w-5"/></Button></DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {canCreateGroup && <DropdownMenuItem onSelect={() => setCreate('group')}><UsersRound/>New group</DropdownMenuItem>}
+                <DropdownMenuItem onSelect={() => setMode('all')}><Search/>Search all messages</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setMode('saved')}><Bookmark/>Saved messages</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setMode('files')}><Files/>Shared files</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+        <div className="px-4 pb-3">
+          <label className="messenger-search"><Search className="h-4 w-4 shrink-0"/><input aria-label="Find conversations" placeholder="Search chats" value={q} maxLength={100} onChange={e => { setQ(e.target.value); setOffset(0); }}/></label>
+          <div className="messenger-filters" aria-label="Filter chats">
+            {[{ id: 'all', label: 'All' }, { id: 'unread', label: 'Unread' }, { id: 'favorites', label: 'Favorites' }, { id: 'mentions', label: 'Mentions' }].map(item => <button key={item.id} aria-pressed={filter === item.id} onClick={() => { setFilter(item.id); setOffset(0); }}>{item.label}</button>)}
+          </div>
+        </div>
+        <div className="messenger-chat-list">
+          <QueryError error={channels.error}/>
+          {channels.isLoading && <p role="status" className="p-4 text-sm text-muted-foreground">Loading chats…</p>}
+          {!channels.error && channels.data?.items.map(c => <button key={c.id} onClick={() => open(c.id)} aria-pressed={selected?.id === c.id} className="messenger-chat-row">
+            <span aria-hidden="true" className={`chat-avatar ${c.kind === 'direct' ? 'chat-avatar-person' : ''}`}>{c.kind === 'direct' ? initials(c.display_name) : <Users className="h-5 w-5"/>}</span>
+            <span className="min-w-0 flex-1">
+              <span className="flex items-baseline gap-2"><strong className="min-w-0 flex-1 truncate text-sm" title={c.display_name}>{c.display_name}</strong>{c.last_activity && <time className={`shrink-0 text-[10px] ${c.unread && !c.muted ? 'text-primary' : 'text-muted-foreground'}`} dateTime={c.last_activity}>{activityLabel(c.last_activity)}</time>}</span>
+              <span className="mt-1.5 flex items-center gap-1.5"><span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{c.archived_at ? 'Archived · ' : ''}{drafts.get(c.id)?.body ? <><span className="text-primary">Draft: </span>{drafts.get(c.id)?.body}</> : c.last_message ? `${c.last_author ? c.last_author + ': ' : ''}${c.last_message}` : 'No messages yet'}</span>{c.favorite && <Star aria-label="Favorite" className="h-3 w-3 shrink-0 fill-amber-400 text-amber-500"/>}{c.muted && <BellOff aria-label="Muted" className="h-3 w-3 shrink-0 text-muted-foreground"/>}{c.mentions > 0 && <AtSign aria-label={`${c.mentions} mentions`} className="h-3.5 w-3.5 shrink-0 text-primary"/>}{!c.muted && c.unread > 0 && <span className="chat-unread" aria-label={`${c.unread} unread messages`}>{c.unread > 99 ? '99+' : c.unread}</span>}</span>
+            </span>
+          </button>)}
+          {!channels.error && channels.data && !channels.data.items.length && <div className="px-5 py-12 text-center"><MessageCircle className="mx-auto mb-3 h-8 w-8 text-primary/50"/><p className="text-sm font-medium">{filter === 'unread' ? 'You’re all caught up' : q ? 'No chats found' : filter === 'favorites' ? 'No favorites yet' : 'No conversations here'}</p><p className="mt-1 text-xs text-muted-foreground">{filter === 'favorites' ? 'Star a chat from its menu to keep it close.' : 'Try another filter or start a message.'}</p></div>}
+        </div>
+        {(offset > 0 || channels.data?.hasMore) && <div className="border-t p-3"><Pager offset={offset} hasMore={channels.data?.hasMore} onChange={setOffset}/></div>}
+      </aside>
+      {selected ? <Conversation key={selected.id} id={selected.id} userId={context.userId} displayName={current?.display_name || selected.name} focusMessage={selected.message} onBack={() => onSelect(null)} drafts={drafts}/> : <div className="messenger-welcome">
+        <div className="messenger-welcome-art" aria-hidden="true"><MessageCircle/><span><UsersRound/></span></div>
+        <h2>Your team, one conversation away</h2>
+        <p>Choose a chat or say hello to someone new.</p>
+        {context.policy.definition.directMessages && <Button className="mt-6 gap-2" onClick={() => setCreate('direct')}><MessageSquarePlus className="h-4 w-4"/>New message</Button>}
+        <a href="/helpdesk" className="mt-10 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-primary">Need HR support?<ArrowUpRight className="h-3 w-3"/></a>
+      </div>}
+    </div>
+    <Dialog open={!!create} onOpenChange={value => { if (!value) setCreate(''); }}><DialogContent className="max-h-[90dvh] overflow-y-auto"><DialogHeader><DialogTitle>{create === 'direct' ? 'New message' : 'New group'}</DialogTitle></DialogHeader>{create && <CreateChannel key={create} mode={create} onDone={id => { setCreate(''); open(id); }}/>}</DialogContent></Dialog>
+    <Dialog open={!!mode} onOpenChange={value => { if (!value) setMode(''); }}><DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-3xl"><DialogHeader><DialogTitle>{mode === 'saved' ? 'Saved messages' : mode === 'files' ? 'Shared files' : 'Search messages'}</DialogTitle></DialogHeader>{mode && <ChatSearch key={mode} mode={mode} onOpen={open}/>}</DialogContent></Dialog>
+  </>;
 }

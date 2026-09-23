@@ -4,7 +4,7 @@ import type {UserRole} from './schema';
 import {ROLE_PERMISSIONS,canAccessModule,getAccessScope,hasPermission,type HRModule} from './permissions';
 import {workforceAdmin} from './workforce';
 export type PageAccess='signed_in'|'admin'|'retention'|'team'|'events'|'communication'|'module'|'reports'|'recruitment';
-export type PageDefinition={href:string;label:string;icon:string;section:string;access:PageAccess;module?:HRModule};
+export type PageDefinition={href:string;label:string;icon:string;section:string;access:PageAccess;module?:HRModule;hidden?:boolean};
 export const pages:PageDefinition[]=[
  {href:'/',label:'Dashboard',icon:'gauge',section:'Workspace',access:'signed_in'},
  {href:'/account',label:'My account',icon:'user',section:'Workspace',access:'signed_in'},
@@ -34,11 +34,11 @@ export const pages:PageDefinition[]=[
  {href:'/reports',label:'Reports & analytics',icon:'chart-bar',section:'Insights',access:'reports',module:'reports_analytics'},
  {href:'/retention',label:'Record retention',icon:'archive',section:'Administration',access:'retention'},
  {href:'/bulk-import',label:'Bulk Import',icon:'upload',section:'Administration',access:'admin'},
- {href:'/user-management',label:'User Management',icon:'user-shield',section:'Administration',access:'admin'},
- {href:'/hr-rules',label:'HR Rules',icon:'sliders-h',section:'Administration',access:'admin'},
- {href:'/operations-setup',label:'Operational setup',icon:'list-check',section:'Administration',access:'admin'},
- {href:'/reminder-rules',label:'Reminder Rules',icon:'bell',section:'Administration',access:'admin'},
- {href:'/settings',label:'Settings',icon:'cog',section:'Administration',access:'admin'},
+ {href:'/user-management',hidden:true,label:'User Management',icon:'user-shield',section:'Administration',access:'admin'},
+ {href:'/hr-rules',hidden:true,label:'HR Rules',icon:'sliders-h',section:'Administration',access:'admin'},
+ {href:'/operations-setup',hidden:true,label:'Operational setup',icon:'list-check',section:'Administration',access:'admin'},
+ {href:'/reminder-rules',hidden:true,label:'Reminder Rules',icon:'bell',section:'Administration',access:'admin'},
+ {href:'/settings',label:'HR Rules & Settings',icon:'cog',section:'Administration',access:'admin'},
 ];
 export function pageForPath(path:string){const clean=path.split(/[?#]/)[0];return pages.find(p=>p.href===clean||p.href!=='/'&&clean.startsWith(p.href+'/'));}
 export function canOpenPage(role:UserRole|null|undefined,page:PageDefinition,hasTeamAccess=false){

@@ -57,6 +57,10 @@ function TemplateEditor({ row, close }: { row?: LetterTemplate; close: () => voi
     </form>
   </Section>;
 }
+export function LetterTemplatesSettings() {
+  const context=useQuery<{canManage:boolean;canPublish:boolean}>({queryKey:[base+'/context']});
+  return <><QueryError error={context.error}/>{context.isLoading&&<p role="status">Loading letter templates…</p>}{context.data?.canPublish&&<Templates/>}</>;
+}
 function Templates() {
   const [offset, setOffset] = useState(0), [q, setQ] = useState(''), [selected, setSelected] = useState<LetterTemplate | null | undefined>(undefined);
   const query = useQuery<{ items: LetterTemplate[]; hasMore: boolean }>({ queryKey: [base + '/templates', { all: 'true', offset, q }] });

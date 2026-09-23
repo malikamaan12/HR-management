@@ -1,3 +1,4 @@
+import {EmployeeAvatar} from '@/components/employee/EmployeePhoto';
 import {PageHeading} from '@/components/ux/WorkspaceUI';
 import {StatusPill} from '@/components/ux/ModuleVisuals';
 import {Users,LayoutGrid,List,Briefcase,MapPin} from 'lucide-react';
@@ -41,13 +42,13 @@ export default function EmployeeDatabase() {
         </select>
       </div>
       {error ? <div role="alert" className="py-8 text-center"><p>Unable to load employees.</p><Button variant="outline" className="mt-3" onClick={() => refetch()}>Retry</Button></div> :
-        view==='cards'?<div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{isLoading?<p role="status">Loading employees…</p>:!data?.employees.length?<p className="p-5 text-sm text-muted-foreground">No employees match these filters.</p>:data.employees.map(employee=><button key={employee.id} onClick={()=>setSelected(employee.id)} className="person-card group rounded-xl border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><div className="flex items-start justify-between gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-sm font-semibold text-primary">{employee.firstName[0]}{employee.lastName[0]}</span><StatusPill value={employee.status}/></div><h3 className="mt-3 font-semibold">{employee.firstName} {employee.lastName}</h3><p className="mt-1 text-xs text-muted-foreground">{employee.employeeId} · {employee.type}</p><p className="mt-4 flex items-center gap-2 text-sm"><Briefcase aria-hidden="true" className="h-3.5 w-3.5 text-muted-foreground"/>{employee.position}</p><p className="mt-2 text-xs text-muted-foreground">{employee.department}</p></button>)}</div>:
+        view==='cards'?<div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{isLoading?<p role="status">Loading employees…</p>:!data?.employees.length?<p className="p-5 text-sm text-muted-foreground">No employees match these filters.</p>:data.employees.map(employee=><button key={employee.id} onClick={()=>setSelected(employee.id)} className="person-card group rounded-xl border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><div className="flex items-start justify-between gap-3"><EmployeeAvatar employee={employee} className="h-14 w-14"/><StatusPill value={employee.status}/></div><h3 className="mt-3 font-semibold">{employee.firstName} {employee.lastName}</h3><p className="mt-1 text-xs text-muted-foreground">{employee.employeeId} · {employee.type}</p><p className="mt-4 flex items-center gap-2 text-sm"><Briefcase aria-hidden="true" className="h-3.5 w-3.5 text-muted-foreground"/>{employee.position}</p><p className="mt-2 text-xs text-muted-foreground">{employee.department}</p></button>)}</div>:
         <div className="overflow-x-auto"><table className="w-full text-sm">
           <thead><tr className="border-b text-left text-muted-foreground">{['Employee', 'Position', 'Department', 'Type', 'Status', 'Joined', ''].map((label, i) => <th key={i} className="p-3 font-medium">{label}</th>)}</tr></thead>
           <tbody>{isLoading ? <tr><td className="p-8 text-center" colSpan={7}>Loading employees…</td></tr> : !data?.employees.length ?
             <tr><td className="p-8 text-center" colSpan={7}>{query || type || status ? 'No employees match these filters.' : 'No employee records yet.'}</td></tr> : data.employees.map(employee =>
               <tr key={employee.id} className="border-b hover:bg-muted/40">
-                <td className="p-3"><button className="text-left font-medium text-primary hover:underline" onClick={() => setSelected(employee.id)}>{employee.firstName} {employee.lastName}</button><div className="text-xs text-muted-foreground">{employee.employeeId}</div></td>
+                <td className="p-3"><div className="flex items-center gap-3"><EmployeeAvatar employee={employee}/><div><button className="text-left font-medium text-primary hover:underline" onClick={() => setSelected(employee.id)}>{employee.firstName} {employee.lastName}</button><div className="text-xs text-muted-foreground">{employee.employeeId}</div></div></div></td>
                 <td className="p-3">{employee.position}</td><td className="p-3">{employee.department}</td><td className="p-3 capitalize">{employee.type}</td>
                 <td className="p-3"><StatusPill value={employee.status}/></td>
                 <td className="p-3 whitespace-nowrap">{formatDate(employee.joiningDate)}</td>
@@ -59,5 +60,5 @@ export default function EmployeeDatabase() {
         <div className="flex gap-2"><Button variant="outline" disabled={isLoading || page <= 1} onClick={() => setPage(page - 1)}>Previous</Button><Button variant="outline" disabled={isLoading || !data || page >= pages} onClick={() => setPage(page + 1)}>Next</Button></div>
       </div>
     </CardContent>
-  </Card><AddEditEmployeeModal open={showAdd} onOpenChange={setShowAdd} onSuccess={() => { setPage(1); refetch(); }} /></div>;
+  </Card><AddEditEmployeeModal open={showAdd} onOpenChange={setShowAdd} onSuccess={(id) => { setPage(1); refetch(); if(id)setSelected(id); }} /></div>;
 }

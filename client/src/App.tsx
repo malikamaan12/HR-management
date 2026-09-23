@@ -40,8 +40,6 @@ const EmployeeDatabase=lazy(()=>import('@/pages/EmployeeDatabase'));
 const Payroll=lazy(()=>import('@/pages/PayrollOperations'));
 const Attendance=lazy(()=>import('@/pages/AttendanceOperations'));
 const Leave=lazy(()=>import('@/pages/Leave'));
-const HrRules=lazy(()=>import('@/pages/HrRules'));
-const OperationsSetup=lazy(()=>import('@/pages/OperationsSetup'));
 const Documents=lazy(()=>import('@/pages/Documents'));
 const EventStaff=lazy(()=>import('@/pages/EventStaff'));
 const Workforce=lazy(()=>import('@/pages/Workforce'));
@@ -59,10 +57,8 @@ const Handbook=lazy(()=>import('@/pages/Handbook'));
 const HrLetters=lazy(()=>import('@/pages/HrLetters'));
 const Employment=lazy(()=>import('@/pages/Employment'));
 const Retention=lazy(()=>import('@/pages/Retention'));
-const ReminderRules=lazy(()=>import('@/pages/ReminderRules'));
 const Communications=lazy(()=>import('@/pages/Communications'));
 const Performance=lazy(()=>import('@/pages/Performance'));
-const UserManagement=lazy(()=>import('@/pages/UserManagement'));
 const UserAccount=lazy(()=>import('@/pages/UserAccount'));
 const BulkImport=lazy(()=>import('@/pages/BulkImport'));
 const Benefits=lazy(()=>import('@/pages/EmployeeServices').then(m=>({default:m.Benefits})));
@@ -118,6 +114,7 @@ function App() {
   
   // Get page title based on current location
   const getPageTitle = () => {
+    if(location==='/settings'||location.startsWith('/settings/'))return 'HR Rules & Settings';
     if(location.startsWith('/assignment-reviews'))return 'Assignment reviews';
     if(location.startsWith('/org-charts'))return 'Organization charts';
     if(location.startsWith('/team-overview'))return 'Team overview';
@@ -187,8 +184,8 @@ function App() {
           <Route path="/payroll" component={Payroll} />
           <Route path="/attendance" component={Attendance} />
           <Route path="/leave" component={Leave} />
-          <Route path="/hr-rules"><HrRules /></Route>
-          <Route path="/operations-setup" component={OperationsSetup} />
+          <Route path="/hr-rules"><Redirect to="/settings/attendance"/></Route>
+          <Route path="/operations-setup"><LegacySetupRedirect/></Route>
           <Route path="/documents" component={Documents} />
           <Route path="/hr-letters" component={HrLetters} />
           <Route path="/event-staff/archive" component={EventArchive} />
@@ -207,16 +204,18 @@ function App() {
           <Route path="/equipment" component={Equipment} />
           <Route path="/handbook" component={Handbook} />
           <Route path="/employment" component={Employment} />
-          <Route path="/retention" component={Retention} />
-          <Route path="/reminder-rules" component={ReminderRules} />
+          <Route path="/retention"><Retention/></Route>
+          <Route path="/reminder-rules"><Redirect to="/settings/reminders"/></Route>
           <Route path="/communications" component={Communications} />
           <Route path="/performance" component={Performance} />
           <Route path="/learning" component={Learning} />
           <Route path="/benefits" component={Benefits} />
           <Route path="/expenses" component={Expenses} />
+          <Route path="/settings/locations"><Redirect to="/settings/devices?tab=geofencing"/></Route>
+          <Route path="/settings/:section" component={Settings} />
           <Route path="/settings" component={Settings} />
           <Route path="/reports" component={Reports} />
-          <Route path="/user-management" component={UserManagement} />
+          <Route path="/user-management"><Redirect to="/settings/accounts"/></Route>
           <Route path="/account" component={UserAccount} />
           <Route path="/bulk-import" component={BulkImport} />
           <Route component={NotFound} />
@@ -227,3 +226,9 @@ function App() {
 }
 
 export default App;
+
+function LegacySetupRedirect(){
+ const tab=new URLSearchParams(window.location.search).get('tab')||'overview';
+ const section:Record<string,string>={overview:'setup',locations:'locations',supervisors:'teams',leave:'leave',induction:'training',services:'readiness'};
+ return <Redirect to={'/settings/'+(section[tab]||'setup')}/>;
+}

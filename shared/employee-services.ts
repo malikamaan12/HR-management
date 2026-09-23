@@ -13,6 +13,8 @@ export const courseDefinition = z.object({
   passScore: z.number().int().min(0).max(100), requiresEvidence: z.boolean(), validMonths: z.number().int().min(1).max(120).nullable(),
   approverId: positiveId, status: z.enum(['draft', 'published', 'archived']),
   delivery:z.enum(['record','internal']).default('record'),
+  coverImage:z.enum(['auto','welcome','safety','service','leadership','fire','first-aid']).optional(),
+  coverImageUrl:z.union([z.literal(''),z.string().url().max(2000).refine(value=>{try{const url=new URL(value);return url.protocol==='https:'&&!url.username&&!url.password;}catch{return false;}},'Use an HTTPS image URL without credentials')]).optional(),
 }).strict();
 export type CourseDefinition = z.infer<typeof courseDefinition>;
 export const learningOverride = courseDefinition.pick({passScore: true, requiresEvidence: true, validMonths: true}).extend({reason}).strict();

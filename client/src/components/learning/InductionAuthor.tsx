@@ -1,3 +1,4 @@
+import {CourseCoverPicker} from './LearningVisuals';
 import {useEffect,useRef,useState,type ReactNode} from 'react';
 import {useMutation,useQuery,useQueryClient} from '@tanstack/react-query';
 import {Button} from '@/components/ui/button';
@@ -95,7 +96,7 @@ export default function InductionAuthor({courseId,onClose,onSaved}: {courseId?:n
     <fieldset disabled={busy} className="space-y-5 min-w-0">
     {tab==='course'&&<Section title="Course details">
       <Input label="Course title" value={definition.title} minLength={3} maxLength={200} required onChange={e=>updateDefinition({title:e.target.value})}/>
-      <Textarea label="Course description" value={definition.description} onChange={description=>updateDefinition({description})}/>
+      <CourseCoverPicker course={definition} onChange={updateDefinition}/><Textarea label="Course description" value={definition.description} onChange={description=>updateDefinition({description})}/>
       <div className="grid gap-4 md:grid-cols-2"><Input label="Organization / internal provider" value={definition.provider} minLength={2} maxLength={150} required onChange={e=>updateDefinition({provider:e.target.value})}/><NumberField label="Estimated course duration (minutes)" min={1} max={100000} value={definition.durationMinutes} onChange={v=>updateDefinition({durationMinutes:v||0})}/><NumberField label="Active enrollment capacity (blank = unlimited)" min={1} max={100000} nullable value={definition.capacity} onChange={capacity=>updateDefinition({capacity})}/><Field label="Assigned enrollment and completion reviewer"><select className={fieldClass} value={definition.approverId||''} required onChange={e=>updateDefinition({approverId:Number(e.target.value)})}><option value="">Select an eligible reviewer</option>{!!definition.approverId&&!directory.data?.approvers.some(a=>a.id===definition.approverId)&&<option value={definition.approverId}>Assigned reviewer #{definition.approverId}</option>}{directory.data?.approvers.map(a=><option value={a.id} key={a.id}>{a.name} · {a.role.replaceAll('_',' ')}</option>)}</select></Field></div>
       <QueryError error={directory.error}/><p className="text-sm text-muted-foreground">Delivery: internal, self paced. The reviewer is used whenever enrollment approval or completion review is enabled. Uploaded completion evidence is replaced by lesson progress and a server-scored assessment.</p>
     </Section>}

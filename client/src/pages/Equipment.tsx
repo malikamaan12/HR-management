@@ -11,6 +11,10 @@ type Context={canManage:boolean;canPolicy:boolean;ownEmployeeId:number|null;toda
 const label=(s:string)=>s.replaceAll('_',' ');
 const open=(status:string)=>['issued','return_requested'].includes(status);
 const conditions=['new','good','fair','damaged','lost'];
+export function EquipmentSettings(){
+  const query=useQuery<Context>({queryKey:[base+'/context']});
+  return <><QueryError error={query.error}/>{query.isLoading&&<p role="status">Loading equipment rules…</p>}{query.data?.canPolicy&&<PolicyEditor policy={query.data.policy}/>}</>;
+}
 export default function Equipment(){
   const context=useQuery<Context>({queryKey:[base+'/context']});
   const [tab,setTab]=useState('assignments'),[selected,setSelected]=useState<{kind:'asset'|'assignment';id:number}|null>(null),[creating,setCreating]=useState(false);

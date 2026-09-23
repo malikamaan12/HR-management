@@ -1,3 +1,4 @@
+import ThemePicker from '@/components/ux/ThemePicker';
 import {BrandLogo,useBranding} from '@/components/Branding';
 import {defaultPublicBranding} from '@shared/branding';
 import React, { useState, useEffect } from 'react';
@@ -65,8 +66,8 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
+    <div className="login-stage min-h-dvh flex items-center justify-center bg-background p-4"><div className="login-theme"><ThemePicker/></div><div className="login-orb login-orb-one" aria-hidden="true"/><div className="login-orb login-orb-two" aria-hidden="true"/>
+      <Card className="login-card w-full max-w-md">
         <CardHeader className="space-y-2 text-center">
           <div className="flex justify-center mb-4">
             <BrandLogo className="h-16 w-48"/>
@@ -121,7 +122,6 @@ const Login: React.FC = () => {
                         type="button"
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
                         onClick={() => setShowPassword(!showPassword)}
-                        tabIndex={-1}
                       >
                         {showPassword ? (
                           <EyeOff className="h-4 w-4" />

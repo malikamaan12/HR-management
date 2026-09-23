@@ -53,7 +53,7 @@ const bank: Field[] = [
 ];
 const sections = [{ id: 'personal', label: 'Personal', fields: personal }, { id: 'employment', label: 'Employment', fields: employment }, { id: 'bank', label: 'Bank & emergency', fields: bank }];
 
-export default function EmployeeForm({ employee, onSuccess, onCancel, initialValues, submit }: { employee?: ApiEmployeeRecord; onSuccess: () => void; onCancel?: () => void; initialValues?: Partial<Values>; submit?: (values:Values)=>Promise<unknown> }) {
+export default function EmployeeForm({ employee, onSuccess, onCancel, initialValues, submit }: { employee?: ApiEmployeeRecord; onSuccess: (employeeId?: number) => void; onCancel?: () => void; initialValues?: Partial<Values>; submit?: (values:Values)=>Promise<unknown> }) {
   const [tab, setTab] = useState('personal');
   const [saving, setSaving] = useState(false);
   const [managerSearch, setManagerSearch] = useState('');
@@ -68,12 +68,13 @@ export default function EmployeeForm({ employee, onSuccess, onCancel, initialVal
   async function save(values: Values) {
     setSaving(true);
     try {
-      if(submit)await submit(values);else await apiRequest(employee ? `/api/employees/${employee.id}` : '/api/employees', {
+      let savedId=employee?.id;
+      if(submit)await submit(values);else {const response=await apiRequest(employee ? `/api/employees/${employee.id}` : '/api/employees', {
         method: employee ? 'PATCH' : 'POST', body: { ...values, ...(employee ? { expectedVersion: editingVersion } : {}) },
-      });
+      });savedId=(await response.json()).id;}
       await queryClient.invalidateQueries({ predicate: query => typeof query.queryKey[0] === 'string' && query.queryKey[0].startsWith('/api/employees') });
       toast({ title: employee ? 'Employee updated' : 'Employee added', description: `${values.firstName} ${values.lastName} saved successfully.` });
-      onSuccess();
+      onSuccess(savedId);
     } catch (error) {
       toast({ title: 'Unable to save employee', description: error instanceof Error ? error.message : 'Try again', variant: 'destructive' });
     } finally { setSaving(false); }

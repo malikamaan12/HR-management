@@ -76,6 +76,10 @@ function RecordHistory({kind,id}:{kind:'editions'|'assignments';id:number}){
   return <Section title={kind==='editions'?'Edition revision history':'Assignment history'}><QueryError error={query.error}/><ol className="space-y-4">{query.data?.map(item=><li key={item.version} className="space-y-1 border-b pb-3 text-sm"><p className="font-medium">Revision {item.version}{item.status?' · '+item.status:''}</p><p className="text-muted-foreground">{pretty(item.created_at)} · User #{item.actor_id}</p><p className="whitespace-pre-wrap">{item.reason}</p>{item.due_date&&<p>Deadline {item.due_date}</p>}{item.snapshot&&<details><summary className="cursor-pointer">View preserved content</summary><h3 className="mt-3 font-semibold">{item.snapshot.title}</h3><p className="whitespace-pre-wrap mt-2">{item.snapshot.body}</p></details>}</li>)}</ol><PageControls offset={offset} hasMore={query.data?.length===25} change={setOffset}/></Section>;
 }
 
+export function HandbookSettings(){
+  const query=useQuery<Overview>({queryKey:[base+'/overview']});
+  return <><QueryError error={query.error}/>{query.isLoading&&<p role="status">Loading handbook rules…</p>}{query.data?.canSetRules&&<Rules policy={query.data.policy}/>}</>;
+}
 function Rules({policy}:{policy:HandbookPolicy}){
   const mutation=useSave(),history=useQuery<{version:number;default_due_days:number;required_by_default:boolean;acknowledgement_text:string;reason:string;created_at:string}[]>({queryKey:[base+'/policy/history']}),[offset,setOffset]=useState(0);
   const historyPage=useQuery<typeof history.data>({queryKey:[base+'/policy/history',{offset}],enabled:offset>0});

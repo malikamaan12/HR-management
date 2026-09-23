@@ -12,11 +12,11 @@ type Objective={id:number;kind:string;title:string;measure:string;dueDate:string
 type ReviewDetail={cycle:Cycle;review:Review;participation:{status:'active'|'withdrawn';reason:string|null};employee:{id:number;name:string};objectives:Objective[];history:{id:number;action:string;reason:string|null;actorName:string;createdAt:string}[];access:{own:boolean;reviewer:boolean;calibrate:boolean;manage:boolean;editObjectives:boolean;manageParticipation:boolean}};
 const endpoint='/api/review-cycles';
 const title=(s:string)=>s.replaceAll('_',' ');
-export default function PerformanceCycles(){
+export default function PerformanceCycles({embedded=false}:{embedded?:boolean}={}){
   const [cycleId,setCycleId]=useState<number|null>(null),[reviewId,setReviewId]=useState<number|null>(null),[earlier,setEarlier]=useState(false),[create,setCreate]=useState(false),[page,setPage]=useState(1);
   const config=useQuery<{canManage:boolean;userId:number}>({queryKey:[endpoint+'/config']});
   const list=useQuery<{items:Cycle[];total:number}>({queryKey:[endpoint,{page}],enabled:!cycleId});
-  return <div className="space-y-6"><div><h1 className="text-3xl font-bold">Performance & development</h1><p className="mt-2 text-muted-foreground">Set objectives, reflect on progress and complete a structured review together.</p></div><QueryError error={config.error}/>
+  return <div className="space-y-6">{!embedded&&<div><h1 className="text-3xl font-bold">Performance & development</h1><p className="mt-2 text-muted-foreground">Set objectives, reflect on progress and complete a structured review together.</p></div>}<QueryError error={config.error}/>
     {reviewId?<><Button variant="outline" onClick={()=>setReviewId(null)}>Back to cycle</Button><ReviewPanel key={reviewId} id={reviewId}/></>:cycleId?<><Button variant="outline" onClick={()=>setCycleId(null)}>All review cycles</Button><CyclePanel id={cycleId} manage={Boolean(config.data?.canManage)} openReview={setReviewId}/></>:<>
       {config.data?.canManage&&<Button onClick={()=>setCreate(!create)}>{create?'Close form':'Create review cycle'}</Button>}
       {create&&<CycleForm done={()=>setCreate(false)}/>}

@@ -38,7 +38,7 @@ function RulesEditor({scope}:{scope:RuleScope}){
  const changeSample=(values:Partial<typeof sample>)=>{setSample({...sample,...values});setPreview(null);};
  return <fieldset disabled={simulate.isPending||publish.isPending} className="space-y-6 min-w-0">
   <div className="rounded-md bg-muted p-3 text-sm">Active today: {data.active.version?`version ${data.active.version}, effective ${data.active.effectiveFrom}`:'baseline rules (no published changes)'}. {data.history.some(v=>v.effectiveFrom>data.today)&&'Future versions are scheduled; check the history below.'}
-   <p>Working days and management hours come from Company settings above and are saved with each new record. Payroll selects the policy effective on the first day of its monthly period; leave uses the request start date and timesheets use the shift start date.</p>
+   <p>Working days and management hours come from the Company & office calendar and are saved with each new record. Payroll selects the policy effective on the first day of its monthly period; leave uses the request start date and timesheets use the shift start date.</p>
   </div>
   {expectedVersion!==data.latestVersion&&<p role="alert">A newer version was published while you were editing. Reload the rules before publishing.</p>}
   <Button variant="outline" onClick={async()=>{const result=await refetch();if(result.data)load(result.data);}}>Reload active rules</Button>

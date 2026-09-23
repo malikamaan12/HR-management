@@ -3,7 +3,7 @@ import multer from 'multer';
 import rateLimit from 'express-rate-limit';
 import {and,eq,sql,desc} from 'drizzle-orm';
 import {z} from 'zod';
-import {learningCourses as courses,learningEnrollments as enrollments} from '@shared/schema';
+import {learningCourses as courses,learningEnrollments as enrollments,employees} from '@shared/schema';
 import {learningAdmin,policyAdmin} from '@shared/employee-services';
 import {hasPermission} from '@shared/permissions';
 import {positiveId,reason} from '@shared/hr-rules';
@@ -13,7 +13,7 @@ import {authenticate} from '../middleware/auth';
 import {handle} from './hr-rules';
 import {fail} from '../services/workforce';
 import {approver,enrollmentRecord,event,versionCheck} from '../services/employee-services';
-import {audit} from '../services/hr-rules';
+import {audit,businessToday} from '../services/hr-rules';
 import {recordHistory} from '../services/workflowRecords';
 import {inductionBranding,inductionCourse,inductionMediaUsage,internalDefinition,requireInductionAuthor,requireInductionAdmin,validateInductionAssets} from '../services/induction';
 import {privateStorageConfigured,validateInductionFile,uploadInductionAsset,deleteInductionAsset,inductionAssetUrl,StorageUnavailableError} from '../services/r2';
@@ -23,7 +23,7 @@ import {ensureInductionSafetyCourses,safetyLibraryCatalogue} from '../services/i
 const router=Router();
 router.use(authenticate);
 router.use((req,res,next)=>{res.set('Cache-Control','no-store');if(!hasPermission(req.user!.role,'training_development','read'))return res.status(403).json({message:'Learning access required'});next();});
-const listInput=z.object({q:z.string().trim().max(100).default(''),offset:z.coerce.number().int().min(0).max(1000000).default(0)}).strict();
+const listInput=z.object({q:z.string().trim().max(100).default(''),offset:z.coerce.number().int().min(0).max(1000000).default(0),filter:z.enum(['all','required','self','draft']).default('all')}).strict();
 router.get('/library',handle(async(req,res)=>{requireInductionAuthor(req.user!);res.json(await safetyLibraryCatalogue());}));
 router.post('/library/install',handle(async(req,res)=>{requireInductionAuthor(req.user!);const input=z.object({reason}).strict().parse(req.body);res.json(await ensureInductionSafetyCourses({actor:req.user!,reason:input.reason}));}));
 router.get('/context',handle(async(req,res)=>{
@@ -32,13 +32,19 @@ router.get('/context',handle(async(req,res)=>{
 }));
 router.get('/courses',handle(async(req,res)=>{
  const input=listInput.parse(req.query),author=learningAdmin(req.user!.role);
- const where=sql`(${author} OR (c.definition->>'status'='published' AND r.id IS NOT NULL)) AND (${input.q}='' OR strpos(lower(c.definition->>'title'),lower(${input.q}))>0)`;
+ const [learner]=await db.select().from(employees).where(eq(employees.userId,req.user!.userId)).limit(1);
+ const learnerActive=!!learner&&learner.status==='active'&&businessToday()>=learner.joiningDate&&(!learner.contractEndDate||businessToday()<=learner.contractEndDate)&&(!learner.terminationDate||businessToday()<learner.terminationDate);
+ const where=sql`(${author} OR (c.definition->>'status'='published' AND r.id IS NOT NULL)) AND (${input.q}='' OR strpos(lower(c.definition->>'title'),lower(${input.q}))>0)
+ AND (${input.filter}='all' OR (${input.filter}='required' AND r.content->'settings'->>'mandatoryForOnboarding'='true' AND c.definition->>'status'='published')
+ OR (${input.filter}='draft' AND r.id IS NULL AND c.definition->>'status'='draft')
+ OR (${input.filter}='self' AND ${learnerActive} AND c.definition->>'status'='published' AND r.content->'settings'->>'allowSelfEnrollment'='true' AND (r.content->'settings'->'employeeTypes') ? ${learner?.type||''} AND (jsonb_array_length(r.content->'settings'->'departments')=0 OR (r.content->'settings'->'departments') ? ${learner?.department||''})))`;
  const rows=(await db.execute(sql`SELECT c.id,c.version,c.definition,r.id AS release_id,r.release_number,r.content,
+  (SELECT jsonb_build_object('id',e.id,'status',e.status,'progress',e.progress) FROM learning_enrollments e JOIN learning_induction_enrollments ie ON ie.enrollment_id=e.id WHERE e.course_id=c.id AND e.employee_id=${learner?.id??0} AND e.status NOT IN ('withdrawn','rejected') AND (e.status<>'completed' OR e.expires_on IS NULL OR e.expires_on>=${businessToday()}::date) ORDER BY e.id DESC LIMIT 1) AS own_enrollment,
   EXISTS(SELECT 1 FROM learning_induction_drafts d WHERE d.course_id=c.id AND (r.id IS NULL OR d.content IS DISTINCT FROM r.content OR (d.definition-'status') IS DISTINCT FROM (r.definition-'status'))) AS has_draft
   FROM learning_courses c JOIN learning_induction_courses i ON i.course_id=c.id LEFT JOIN learning_induction_releases r ON r.id=i.published_release_id
   WHERE ${where} ORDER BY c.id DESC LIMIT 25 OFFSET ${input.offset}`)).rows;
  const count=(await db.execute(sql`SELECT count(*)::int AS count FROM learning_courses c JOIN learning_induction_courses i ON i.course_id=c.id LEFT JOIN learning_induction_releases r ON r.id=i.published_release_id WHERE ${where}`)).rows[0];
- res.json({items:rows.map((row:any)=>{const content=row.content?publicInductionContent(inductionContent.parse(row.content)):null;return {id:row.id,version:row.version,definition:row.definition,hasDraft:author&&row.has_draft,publishedRelease:content?{id:row.release_id,releaseNumber:row.release_number,lessonCount:content.lessons.length,questionCount:content.questionCount,settings:content.settings}:null};}),total:Number(count.count)});
+ res.json({items:rows.map((row:any)=>{const content=row.content?publicInductionContent(inductionContent.parse(row.content)):null;const current=!!learner&&learner.status==='active'&&businessToday()>=learner.joiningDate&&(!learner.contractEndDate||businessToday()<=learner.contractEndDate)&&(!learner.terminationDate||businessToday()<learner.terminationDate);const eligible=current&&!!content&&!!learner&&content.settings.employeeTypes.includes(learner.type)&&(!content.settings.departments.length||content.settings.departments.includes(learner.department));return {id:row.id,version:row.version,definition:row.definition,ownEnrollment:row.own_enrollment,canSelfEnroll:eligible,selfEnrollmentNote:!learner?'An employee profile is needed to enroll.':!current?'Enrollment requires an active employee profile.':!eligible?'This course is assigned to other roles or departments.':null,hasDraft:author&&row.has_draft,publishedRelease:content?{id:row.release_id,releaseNumber:row.release_number,lessonCount:content.lessons.length,questionCount:content.questionCount,settings:content.settings}:null};}),total:Number(count.count)});
 }));
 router.post('/courses',handle(async(req,res)=>{
  requireInductionAuthor(req.user!);const input=inductionCreate.parse(req.body);

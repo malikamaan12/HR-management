@@ -1,3 +1,4 @@
+import ThemePicker from '@/components/ux/ThemePicker';
 import HubIndicator from '@/components/communications/HubIndicator';
 import ModuleLauncher from '@/components/ux/ModuleLauncher';
 import {canOpenPage,pageForPath,roleLabel} from '@shared/navigation';
@@ -23,7 +24,7 @@ interface HeaderProps {
 
 export default function Header({ pageTitle }: HeaderProps) {
   const { user, logout } = useAuth();
-  const { theme, toggleTheme } = useTheme();
+  const { theme } = useTheme();
   const [location, setLocation] = useLocation();
 
   const handleLogout = async () => {
@@ -43,10 +44,6 @@ export default function Header({ pageTitle }: HeaderProps) {
     setLocation('/settings');
   };
   
-  const handleThemeToggle = () => {
-    toggleTheme();
-  };
-
   return (
     <header className="z-20 border-b bg-card text-foreground">
       <div className="px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
@@ -56,23 +53,7 @@ export default function Header({ pageTitle }: HeaderProps) {
         <div className="flex shrink-0 items-center gap-2">
           <div className="flex items-center gap-2">
             <div className="hidden md:block"><ModuleLauncher/></div>
-            {/* Theme Toggle Button */}
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn("rounded-full", 
-                theme === 'dark' ? 'text-yellow-300 hover:text-yellow-200 hover:bg-gray-700' : 'text-gray-500 hover:text-gray-700'
-              )}
-              onClick={handleThemeToggle}
-              aria-label="Toggle theme"
-            >
-              {theme === 'dark' ? (
-                <Sun className="h-5 w-5" />
-              ) : (
-                <Moon className="h-5 w-5" />
-              )}
-            </Button>
-            
+            <ThemePicker/>
             {canOpenPage(user?.role,pageForPath('/communications')!)&&<HubIndicator onOpen={()=>setLocation('/communications')}/>}
             {/* User Dropdown */}
             <DropdownMenu>
@@ -107,7 +88,7 @@ export default function Header({ pageTitle }: HeaderProps) {
                 </DropdownMenuItem>
                 {canOpenPage(user?.role,pageForPath('/settings')!)&&<DropdownMenuItem className="cursor-pointer" onClick={handleSettingsClick}>
                   <Settings className="mr-2 h-4 w-4" />
-                  <span>Settings</span>
+                  <span>HR Rules & Settings</span>
                 </DropdownMenuItem>}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem className="cursor-pointer text-destructive focus:text-destructive" onClick={handleLogout}>
