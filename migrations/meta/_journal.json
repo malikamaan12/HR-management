@@ -344,6 +344,27 @@
       "when": 1789800000006,
       "tag": "0048_helpdesk_workspace",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1789800000007,
+      "tag": "0049_employee_contracts",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1789800000008,
+      "tag": "0050_bilingual_contract_templates",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1789800000009,
+      "tag": "0051_end_of_service",
+      "breakpoints": true
     }
   ]
 }

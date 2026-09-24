@@ -13,11 +13,8 @@ export default function AccountPassword() {
   const [password, setPassword] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [visible, setVisible] = useState(false), [error, setError] = useState('');
   const rules = [
-    { label: '8–72 characters', ok: password.newPassword.length >= 8 && password.newPassword.length <= 72 },
-    { label: 'Uppercase and lowercase letters', ok: /[A-Z]/.test(password.newPassword) && /[a-z]/.test(password.newPassword) },
-    { label: 'At least one number', ok: /\d/.test(password.newPassword) },
-    { label: 'A symbol: @ $ ! % * ? &', ok: /[@$!%*?&]/.test(password.newPassword) },
-    { label: 'Only letters, numbers and the symbols above', ok: /^[A-Za-z\d@$!%*?&]+$/.test(password.newPassword) },
+    { label: 'At least 12 characters; spaces and symbols are welcome', ok: [...password.newPassword].length >= 12 },
+    { label: 'Within the 72-byte limit (accented letters and emoji use more space)', ok: !!password.newPassword && new TextEncoder().encode(password.newPassword).length <= 72 },
   ];
   const change = useMutation({ mutationFn: () => apiJson('/api/auth/change-password', { method: 'POST', body: password }), onSuccess: async () => {
     setPassword({ currentPassword: '', newPassword: '', confirmPassword: '' }); setVisible(false);

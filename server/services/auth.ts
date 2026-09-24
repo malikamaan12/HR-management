@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { eq, and, gt, sql } from "drizzle-orm";
+import { eq, and, gt, sql, inArray } from "drizzle-orm";
 import { users, authSessions, securityLogs, userRoleEnum, securityEventTypeEnum, type UserRole } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -27,6 +27,10 @@ function requireActive(user: typeof users.$inferSelect | null | undefined) {
   if (user.passwordSetupRequired) throw new Error('Set your password using your account setup link before signing in');
 }
 const hashResetToken = (token: string) => createHash('sha256').update(token).digest('hex');
+export const hashSessionToken = (token: string) => 'sha256:' + createHash('sha256').update(token).digest('hex');
+// Legacy sessions remain usable while rotation replaces their stored tokens.
+const sessionTokens = (token: string) => [hashSessionToken(token), token];
+const unavailablePasswordHash = bcrypt.hashSync(randomBytes(32).toString('hex'), 12);
 
 // Secret key for JWT token signing - should be in environment variable
 
@@ -50,8 +54,9 @@ interface AuthResponse {
 
 export class AuthService {
   async logoutSession(token?: string) {
+    if (token !== undefined && (typeof token !== 'string' || token.length > 4096)) throw new Error('Invalid session token');
     if (token) {
-      await db.update(authSessions).set({ isActive: false }).where(eq(authSessions.refreshToken, token));
+      await db.update(authSessions).set({ isActive: false }).where(inArray(authSessions.refreshToken, sessionTokens(token)));
     }
     return { success: true, message: 'Logout successful' };
   }
@@ -96,21 +101,21 @@ export class AuthService {
    */
   async login(username: string, password: string, ipAddress?: string, userAgent?: string): Promise<AuthResponse> {
     try {
+      if(typeof username!=='string'||!username.trim()||username.length>254||typeof password!=='string'||!password||password.length>1024) throw new Error('Invalid credentials');
       // Accept either identifier, but never choose between ambiguous accounts.
       const user = await this.findUserByLogin(username);
       
       if (!user) {
+        await bcrypt.compare(password, unavailablePasswordHash);
         throw new Error("Invalid credentials");
       }
       
+      // Compare passwords
+      const isPasswordValid = await bcrypt.compare(password, user.password);
       requireActive(user);
       if (user.lockoutUntil && user.lockoutUntil > new Date()) throw new Error('Account temporarily locked');
       
-      // Compare passwords
-      const isPasswordValid = await bcrypt.compare(password, user.password);
-      
       if (!isPasswordValid) {
-        // Skip failed login attempt tracking since failedLoginAttempts field doesn't exist
         await this.incrementFailedLoginAttempts(user.id);
         
         await this.logSecurityEvent({
@@ -140,6 +145,7 @@ export class AuthService {
       await db.transaction(async tx => {
       const [current] = await tx.select().from(users).where(eq(users.id,user.id)).for('update');
       requireActive(current);
+      if (current.lockoutUntil && current.lockoutUntil > new Date()) throw new Error('Account temporarily locked');
       if (current.accountVersion !== user.accountVersion || current.password !== user.password) throw new Error('Account changed. Sign in again');
       await tx.update(users)
         .set({ 
@@ -150,8 +156,8 @@ export class AuthService {
       // Create auth session
       await tx.insert(authSessions).values({
         userId: user.id,
-        accessToken,
-        refreshToken,
+        accessToken: hashSessionToken(accessToken),
+        refreshToken: hashSessionToken(refreshToken),
         ipAddress: ipAddress || null,
         userAgent: userAgent || null,
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
@@ -194,7 +200,7 @@ export class AuthService {
         .where(
           and(
             eq(authSessions.userId, userId),
-            eq(authSessions.refreshToken, refreshToken)
+            inArray(authSessions.refreshToken, sessionTokens(refreshToken))
           )
         );
       
@@ -225,6 +231,7 @@ export class AuthService {
    */
   async refreshToken(refreshToken: string, ipAddress?: string, userAgent?: string) {
     try {
+      if(typeof refreshToken!=='string'||refreshToken.length>4096)throw new Error('Invalid refresh token');
       // Verify refresh token
       const decoded = jwt.verify(refreshToken, secret('JWT_REFRESH_SECRET'), { algorithms: ['HS256'] }) as TokenPayload;
       
@@ -248,7 +255,7 @@ export class AuthService {
         .where(
           and(
             eq(authSessions.userId, user.id),
-            eq(authSessions.refreshToken, refreshToken),
+            inArray(authSessions.refreshToken, sessionTokens(refreshToken)),
             eq(authSessions.isActive, true),
             gt(authSessions.expiresAt, new Date())
           )
@@ -272,13 +279,12 @@ export class AuthService {
       // Rotate the session token atomically
       const renewed = await db.update(authSessions)
         .set({
-          accessToken: newAccessToken,
-          refreshToken: newRefreshToken,
-          issuedAt: new Date(),
+          accessToken: hashSessionToken(newAccessToken),
+          refreshToken: hashSessionToken(newRefreshToken),
           lastUsed: new Date(),
-          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
+          expiresAt: session.expiresAt // A session cannot extend itself indefinitely.
         })
-        .where(and(eq(authSessions.id, session.id), eq(authSessions.refreshToken, refreshToken), eq(authSessions.isActive, true)))
+        .where(and(eq(authSessions.id, session.id), inArray(authSessions.refreshToken, sessionTokens(refreshToken)), eq(authSessions.isActive, true), gt(authSessions.expiresAt, new Date())))
         .returning({ id: authSessions.id });
       if (!renewed.length) throw new Error('Refresh token already used');
       // Log the event
@@ -485,6 +491,7 @@ export class AuthService {
    */
   verifyAccessToken(token: string): TokenPayload {
     try {
+      if(typeof token!=='string'||token.length>4096)throw new Error('Invalid token');
       return jwt.verify(token, secret('JWT_SECRET'), { algorithms: ['HS256'] }) as TokenPayload;
     } catch (error) {
       throw new Error("Invalid token");
@@ -497,7 +504,7 @@ export class AuthService {
     const [user] = await db.select().from(users).where(eq(users.id, payload.userId));
     requireActive(user);
     const [session] = await db.select({ id: authSessions.id }).from(authSessions).where(and(
-      eq(authSessions.userId, user.id), eq(authSessions.accessToken, token), eq(authSessions.isActive, true), gt(authSessions.expiresAt, new Date())));
+      eq(authSessions.userId, user.id), inArray(authSessions.accessToken, sessionTokens(token)), eq(authSessions.isActive, true), gt(authSessions.expiresAt, new Date())));
     if (!session) throw new Error('Session has been invalidated');
     return { userId: user.id, username: user.username, role: user.role, department: user.department };
   }
@@ -609,7 +616,7 @@ export class AuthService {
     try {
       const sessions = await db.select({ id: authSessions.id, userId: authSessions.userId, ipAddress: authSessions.ipAddress,
           userAgent: authSessions.userAgent, issuedAt: authSessions.issuedAt, lastUsed: authSessions.lastUsed, expiresAt: authSessions.expiresAt,
-          isCurrent: currentRefreshToken ? sql<boolean>`${authSessions.refreshToken}=${currentRefreshToken}` : sql<boolean>`false` })
+          isCurrent: currentRefreshToken ? inArray(authSessions.refreshToken, sessionTokens(currentRefreshToken)) : sql<boolean>`false` })
         .from(authSessions)
         .where(
           and(
@@ -664,12 +671,11 @@ export class AuthService {
 
   /**
    * Handle failed login attempts and account lockout
-   * Note: Disabled since failedLoginAttempts and lockoutUntil fields don't exist in current DB schema
    */
   private async incrementFailedLoginAttempts(userId: number) {
     await db.update(users).set({
-      failedLoginAttempts: sql`coalesce(${users.failedLoginAttempts}, 0) + 1`,
-      lockoutUntil: sql`case when coalesce(${users.failedLoginAttempts}, 0) + 1 >= 5 then now() + interval '30 minutes' else ${users.lockoutUntil} end`
+      failedLoginAttempts: sql`case when ${users.lockoutUntil} <= now() then 1 else coalesce(${users.failedLoginAttempts}, 0) + 1 end`,
+      lockoutUntil: sql`case when ${users.lockoutUntil} <= now() then null when coalesce(${users.failedLoginAttempts}, 0) + 1 >= 5 then now() + interval '30 minutes' else ${users.lockoutUntil} end`
     }).where(eq(users.id, userId));
   }
 

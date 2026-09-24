@@ -1,5 +1,5 @@
 import express from "express";
-import { rateLimit } from 'express-rate-limit';
+import {loginRateLimit, credentialRateLimit, sameOriginWrites} from '../middleware/security';
 import { authService } from "../services/auth";
 import { authenticate, authorize } from "../middleware/auth";
 import { body, validationResult } from "express-validator";
@@ -11,16 +11,12 @@ import { emailConfigured } from '../services/email';
 
 
 const router = express.Router();
-const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false,
-  message: { success: false, message: 'Too many attempts. Please try again later.' } });
-router.use(['/login','/signup','/register','/forgot-password','/reset-password'], authLimiter);
+router.use(['/login','/signup','/register'], loginRateLimit);
+router.use(['/forgot-password','/reset-password','/change-password'], credentialRateLimit);
+router.use(sameOriginWrites);
 // Cookies are sent only to this application; no browser cross-origin writes.
 router.use((req, res, next) => {
   res.set('Cache-Control', 'no-store');
-  if (!['GET','HEAD','OPTIONS'].includes(req.method) && req.headers.origin) {
-    const expected = process.env.APP_URL ? new URL(process.env.APP_URL).origin : req.protocol + '://' + req.get('host');
-    if (req.headers.origin !== expected) return res.status(403).json({ message: 'Cross-origin request denied' });
-  }
   next();
 });
 
@@ -33,7 +29,7 @@ router.post(['/register','/signup'], (_req,res) => res.status(403).json({success
  */
 router.post("/login", [
   body("username").isString().bail().trim().notEmpty().withMessage("Username or email is required").isLength({ max: 254 }).withMessage("Username or email is too long"),
-  body("password").notEmpty().withMessage("Password is required")
+  body("password").isString().bail().isLength({min:1,max:1024}).withMessage("Password is required")
 ], async (req: express.Request, res: express.Response) => {
   try {
     // Check for validation errors
@@ -41,7 +37,7 @@ router.post("/login", [
     if (!errors.isEmpty()) {
       return res.status(400).json({
         success: false,
-        errors: errors.array()
+        errors: errors.array().map(issue => ({msg: issue.msg, ...('path' in issue ? {path: issue.path} : {})}))
       });
     }
     
@@ -76,13 +72,13 @@ router.post("/login", [
       message: "Login successful",
       user: auth.user,
       accessToken: auth.accessToken, // Include for non-cookie clients
-      refreshToken: auth.refreshToken // Include for non-cookie clients
+      ...(!req.get('origin') && !req.get('sec-fetch-site') ? {refreshToken: auth.refreshToken} : {})
     });
   } catch (error) {
-    console.error("Login error:", error);
+    console.error("Login failed");
     res.status(401).json({
       success: false,
-      message: (error instanceof Error ? error.message : "Login failed")
+      message: 'Unable to sign in. Check your credentials or contact HR for account access.'
     });
   }
 });
@@ -109,7 +105,7 @@ router.post("/refresh-token", async (req: express.Request, res: express.Response
   try {
     const refreshToken = req.cookies.refreshToken || req.body.refreshToken;
     
-    if (!refreshToken) {
+    if (typeof refreshToken !== 'string' || !refreshToken || refreshToken.length > 4096) {
       return res.status(400).json({
         success: false,
         message: "Refresh token is required"
@@ -144,7 +140,7 @@ router.post("/refresh-token", async (req: express.Request, res: express.Response
       message: "Token refreshed",
       user: auth.user,
       accessToken: auth.accessToken, // Include for non-cookie clients
-      refreshToken: auth.refreshToken  // Include for non-cookie clients
+      ...(!req.get('origin') && !req.get('sec-fetch-site') && !req.cookies?.refreshToken ? {refreshToken: auth.refreshToken} : {})
     });
   } catch (error) {
     console.error("Token refresh error:", error);
@@ -172,7 +168,7 @@ router.post("/forgot-password", [
     if (!errors.isEmpty()) {
       return res.status(400).json({
         success: false,
-        errors: errors.array()
+        errors: errors.array().map(issue => ({msg: issue.msg, ...('path' in issue ? {path: issue.path} : {})}))
       });
     }
     
@@ -200,11 +196,10 @@ router.post("/forgot-password", [
  * POST /api/auth/reset-password
  */
 router.post("/reset-password", [
-  body("token").notEmpty().withMessage("Reset token is required"),
+  body("token").isString().bail().matches(/^[a-f0-9]{64}$/).withMessage("A valid reset token is required"),
   body("newPassword")
-    .isLength({ min: 8 }).withMessage("Password must be at least 8 characters")
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/)
-    .withMessage("Password must include uppercase, lowercase, number, and special character"),
+    .isString().bail().isLength({ min: 12, max: 72 }).withMessage("Use a password or passphrase with 12–72 characters")
+    .custom(value => Buffer.byteLength(value,'utf8') <= 72).withMessage("Password must be at most 72 UTF-8 bytes"),
   body("confirmPassword").custom((value, { req }) => {
     if (value !== req.body.newPassword) {
       throw new Error("Passwords do not match");
@@ -218,7 +213,7 @@ router.post("/reset-password", [
     if (!errors.isEmpty()) {
       return res.status(400).json({
         success: false,
-        errors: errors.array()
+        errors: errors.array().map(issue => ({msg: issue.msg, ...('path' in issue ? {path: issue.path} : {})}))
       });
     }
     
@@ -247,11 +242,10 @@ router.post("/reset-password", [
  * POST /api/auth/change-password
  */
 router.post("/change-password", authenticate, [
-  body("currentPassword").notEmpty().withMessage("Current password is required"),
+  body("currentPassword").isString().bail().isLength({min:1,max:1024}).withMessage("Current password is required"),
   body("newPassword")
-    .isLength({ min: 8 }).withMessage("Password must be at least 8 characters")
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/)
-    .withMessage("Password must include uppercase, lowercase, number, and special character"),
+    .isString().bail().isLength({ min: 12, max: 72 }).withMessage("Use a password or passphrase with 12–72 characters")
+    .custom(value => Buffer.byteLength(value,'utf8') <= 72).withMessage("Password must be at most 72 UTF-8 bytes"),
   body("confirmPassword").custom((value, { req }) => {
     if (value !== req.body.newPassword) {
       throw new Error("Passwords do not match");
@@ -265,7 +259,7 @@ router.post("/change-password", authenticate, [
     if (!errors.isEmpty()) {
       return res.status(400).json({
         success: false,
-        errors: errors.array()
+        errors: errors.array().map(issue => ({msg: issue.msg, ...('path' in issue ? {path: issue.path} : {})}))
       });
     }
     
@@ -374,7 +368,7 @@ router.put("/update-role/:id", authenticate, authorize(["super_admin", "admin"])
     if (!errors.isEmpty()) {
       return res.status(400).json({
         success: false,
-        errors: errors.array()
+        errors: errors.array().map(issue => ({msg: issue.msg, ...('path' in issue ? {path: issue.path} : {})}))
       });
     }
     
@@ -491,7 +485,7 @@ router.put("/qid", authenticate, authorize(["admin", "super_admin"]), [
     if (!errors.isEmpty()) {
       return res.status(400).json({
         success: false,
-        errors: errors.array()
+        errors: errors.array().map(issue => ({msg: issue.msg, ...('path' in issue ? {path: issue.path} : {})}))
       });
     }
     

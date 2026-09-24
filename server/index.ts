@@ -1,4 +1,4 @@
-import express, { type Request, Response, NextFunction } from "express";
+import express from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 
@@ -10,17 +10,22 @@ import {runOperationalReminders} from './services/operational-reminders';
 import {runHelpdeskAutomation} from './services/helpdesk-automation';
 import {runReportSchedules} from './services/reportWorkspace';
 import {ensureInductionSafetyCourses} from './services/induction-course-library';
+import {securityHeaders, privateApiResponses, sameOriginWrites, apiRateLimit, requestError} from './middleware/security';
 validateAuthConfiguration();
 validateAppConfiguration();
 const app = express();
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
+app.use(securityHeaders());
+app.use('/api', privateApiResponses, sameOriginWrites, apiRateLimit);
 app.get('/healthz', (_req, res) => res.json({ status: 'ok' }));
 const readinessQuery = { text: 'SELECT 1 FROM users LIMIT 0', query_timeout: 2000 };
 app.get('/readyz', createReadinessHandler(() => pool.query(readinessQuery)));
-app.use('/api/learning/induction', express.json({limit:'2mb'}));
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+app.use('/api/learning/induction', express.json({limit:'2mb', inflate:false}));
+app.use('/api/contracts', express.json({limit:'256kb', inflate:false}));
+app.use('/api/separations', express.json({limit:'256kb', inflate:false}));
+app.use(express.json({limit:'100kb', inflate:false}));
+app.use(express.urlencoded({ extended: false, limit:'100kb', parameterLimit:100, inflate:false }));
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -45,14 +50,6 @@ app.use((req, res, next) => {
   await ensureInductionSafetyCourses();
   const server = await registerRoutes(app);
 
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = status >= 500 ? "Internal Server Error" : err.message;
-
-    res.status(status).json({ message });
-    if (status >= 500) console.error("Request failed", { status });
-  });
-
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
@@ -61,6 +58,11 @@ app.use((req, res, next) => {
   } else {
     serveStatic(app);
   }
+  app.use(requestError);
+  server.headersTimeout = 15_000;
+  server.requestTimeout = 120_000;
+  server.keepAliveTimeout = 5_000;
+  server.maxRequestsPerSocket = 1000;
 
   // ALWAYS serve the app on port 5000
   // this serves both the API and the client.

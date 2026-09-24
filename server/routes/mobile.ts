@@ -14,6 +14,8 @@ import multer from 'multer';
 import path from 'path';
 import { format } from 'date-fns';
 import jwt from 'jsonwebtoken';
+import {rateLimit} from 'express-rate-limit';
+import {loginRateLimit} from '../middleware/security';
 
 const router = Router();
 
@@ -22,45 +24,16 @@ const router = Router();
 export const verifyJWT = authenticate;
 
 // Rate limiting middleware
-export const rateLimiter = (limit: number, timeWindow: number) => {
-  const requests: Record<string, { count: number, resetTime: number }> = {};
-  
-  return (req: Request, res: Response, next: NextFunction) => {
-    const ip = req.ip || req.connection.remoteAddress || 'unknown';
-    const now = Date.now();
-    
-    if (!requests[ip]) {
-      requests[ip] = {
-        count: 1,
-        resetTime: now + timeWindow
-      };
-      return next();
-    }
-    
-    if (now > requests[ip].resetTime) {
-      requests[ip] = {
-        count: 1,
-        resetTime: now + timeWindow
-      };
-      return next();
-    }
-    
-    if (requests[ip].count >= limit) {
-      return res.status(429).json({ message: 'Too many requests, please try again later' });
-    }
-    
-    requests[ip].count++;
-    next();
-  };
-};
+export const rateLimiter = (limit: number, timeWindow: number) => rateLimit({limit, windowMs:timeWindow,
+  standardHeaders:'draft-8', legacyHeaders:false, message:{message:'Too many requests, please try again later'}});
 
 // Apply rate limiting to all mobile endpoints: 60 requests per minute
 router.use(rateLimiter(60, 60 * 1000));
 router.use('/leave-request',leaveRoutes);
 
 // Authentication endpoint - generate JWT token
-router.post('/auth/login', async (req: Request, res: Response) => {
-  const input=z.object({username:z.string().min(1),password:z.string().min(1)}).safeParse(req.body);
+router.post('/auth/login', loginRateLimit, async (req: Request, res: Response) => {
+  const input=z.object({username:z.string().trim().min(1).max(254),password:z.string().min(1).max(1024)}).safeParse(req.body);
   if(!input.success)return res.status(400).json({message:'Username and password are required'});
   try { const session=await authService.login(input.data.username,input.data.password,req.ip,req.get('user-agent'));
     return res.json({...session,token:session.accessToken});

@@ -6,8 +6,10 @@ import { db } from '../db';
 import { users, employees, authSessions, securityLogs, userRoleEnum } from '@shared/schema';
 import { authenticate, authorize } from '../middleware/auth';
 import { accountFields as fields, accountActor, accountTarget, auditAccount, invalidateAccount, updateAccount, provisionEmployees, setupSecret } from '../services/account-management';
+import {credentialRateLimit} from '../middleware/security';
 const router = Router();
 router.use(authenticate, authorize(['admin','super_admin']));
+router.post(['/', '/:id/set-password', '/:id/password-setup'], credentialRateLimit);
 router.use((_req,res,next) => { res.setHeader('Cache-Control','no-store'); next(); });
 const idSchema = z.coerce.number().int().positive();
 const controlSchema = z.object({ accountVersion: z.number().int().positive(), reason: z.string().trim().min(3).max(500) }).strict();
@@ -21,7 +23,7 @@ router.post('/provision-employees', async (req,res) => {
 });
 router.post('/', async (req,res) => {
   try {
-    const input = z.object({ username:z.string().trim().min(3).max(254), email:z.string().trim().email().max(254), firstName:z.string().trim().min(1).max(100), lastName:z.string().trim().min(1).max(100), password:z.string().min(12).max(72), role:z.enum(userRoleEnum.enumValues), department:z.string().max(100).optional() }).strict().parse(req.body);
+    const input = z.object({ username:z.string().trim().min(3).max(254), email:z.string().trim().email().max(254), firstName:z.string().trim().min(1).max(100), lastName:z.string().trim().min(1).max(100), password:z.string().min(12).max(72).refine(value=>Buffer.byteLength(value,'utf8')<=72,'Password must be at most 72 UTF-8 bytes'), role:z.enum(userRoleEnum.enumValues), department:z.string().max(100).optional() }).strict().parse(req.body);
     const password = await bcrypt.hash(input.password,12);
     const user = await db.transaction(async tx => {
       const actor = await accountActor(tx,req.user!.userId);

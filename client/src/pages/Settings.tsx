@@ -10,6 +10,7 @@ const Wps=lazy(()=>import('@/components/settings/WpsSettings'));
 const Company=lazy(()=>import('@/components/settings/CompanySettings'));
 const Branding=lazy(()=>import('@/components/BrandingSettings'));
 const Rules=lazy(()=>import('@/pages/HrRules'));
+const SeparationSettings=lazy(()=>import('@/components/SeparationSettings'));
 const Calculations=lazy(()=>import('@/components/CalculationRules'));
 const Devices=lazy(()=>import('@/components/settings/DeviceConnections'));
 const Teams=lazy(()=>import('@/pages/Workforce'));
@@ -24,6 +25,8 @@ const Helpdesk=lazy(()=>import('@/components/settings/HelpdeskRules'));
 const Communication=lazy(()=>import('@/pages/Communications').then(m=>({default:m.CommunicationSettings})));
 const Documents=lazy(()=>import('@/components/documents/DocumentReviewPolicy').then(m=>({default:m.DocumentReviewPolicy})));
 const Handbook=lazy(()=>import('@/pages/Handbook').then(m=>({default:m.HandbookSettings})));
+const ContractTemplates=lazy(()=>import('@/components/contracts/TemplateLibrary'));
+const ContractClauses=lazy(()=>import('@/pages/Contracts').then(m=>({default:m.ClauseLibrary})));
 const Letters=lazy(()=>import('@/pages/HrLetters').then(m=>({default:m.LetterTemplatesSettings})));
 const Retention=lazy(()=>import('@/pages/Retention'));
 const Reports=lazy(()=>import('@/components/reports/ReportPolicy'));
@@ -52,6 +55,7 @@ const settings:Setting[]=[
   {id:'wps',group:'time-pay',title:'WPS & bank export settings',description:'Employer registration, paying account and bank mappings.',keywords:'wages salary protection SIF Qatar bank IBAN QID payroll payslip export',icon:Wallet},
   {id:'calculations',group:'time-pay',title:'Calculation methods',description:'Attendance, leave, payroll and service calculations.',keywords:'rounding formula wage gratuity end service eos',icon:Calculator},
   {id:'devices',group:'time-pay',title:'Devices & attendance connections',description:'Biometric terminals, staff IDs, geofencing and device setup.',keywords:'external devices fingerprint faceid face recognition scan machine RFID card QR kiosk integration network IP GPS radius geofence supervisor coordinates location approval',icon:Fingerprint},
+  {id:'separation',group:'time-pay',title:'Notice & end-of-service',description:'Gratuity methods, notice periods and bilingual exit documents.',keywords:'termination resignation final settlement leaving eos service certificate',icon:Calculator},
   {id:'employment',group:'people',title:'Employment & continuity',description:'Change approvals and qualifying service periods.',keywords:'promotion contract probation reporting manager service gap',icon:BriefcaseBusiness},
   {id:'onboarding',group:'people',title:'Onboarding approval rules',description:'Review requirements for joining and exit tasks.',keywords:'offboarding checklist independent reviewer deadline',icon:CheckCheck},
   {id:'checklists',group:'people',title:'Checklist templates',description:'Reusable onboarding and offboarding checklists.',keywords:'new hire tasks joining exit offboard documents',icon:ClipboardList},
@@ -64,6 +68,8 @@ const settings:Setting[]=[
   {id:'communications',group:'services',title:'Communication rules',description:'Team chat access, attachments and message limits.',keywords:'announcements direct messages dm group channel hub retention',icon:MessagesSquare},
   {id:'documents',group:'records',title:'Document review rules',description:'Replacement approvals and assigned reviewers.',keywords:'upload types approval expiry review days evidence',icon:FileCheck2},
   {id:'handbook',group:'records',title:'Handbook acknowledgements',description:'Acknowledgement statements and due periods.',keywords:'policy book required default employee read',icon:BookOpen},
+  {id:'contract-templates',group:'records',title:'Contract templates',description:'Create, edit and reuse complete English–Arabic contracts.',keywords:'bilingual Arabic English agreement editor preset forms norms terms signature',icon:FileText},
+  {id:'contracts',group:'records',title:'Contract clause library',description:'Reusable contract terms, categories and company-specific clauses.',keywords:'employment agreement norms rules signature builder employee terms',icon:FileText},
   {id:'letters',group:'records',title:'HR letter templates',description:'Letter content, approval requirements and publishing.',keywords:'salary certificate employment bank signatory document',icon:FileText},
   {id:'retention',group:'records',title:'Record retention rules',description:'Retention periods and archive review deadlines.',keywords:'archive delete document expiry preservation',icon:Archive},
   {id:'reports',group:'records',title:'Reporting rules',description:'Report calculations, row limits and schedules.',keywords:'analytics turnover denominator performance sample export',icon:ChartNoAxesCombined},
@@ -83,6 +89,7 @@ function SettingsPanel({id}:{id:string}):ReactNode{
     case 'calculations':return <Calculations/>;
     case 'devices':return <Devices/>;
     case 'employment':return <Employment/>;
+    case 'separation':return <SeparationSettings/>;
     case 'onboarding':return <Onboarding/>;
     case 'checklists':return <Onboarding templatesOnly/>;
     case 'training':return <Training/>;
@@ -94,6 +101,8 @@ function SettingsPanel({id}:{id:string}):ReactNode{
     case 'communications':return <Communication/>;
     case 'documents':return <Documents/>;
     case 'handbook':return <Handbook/>;
+    case 'contract-templates':return <ContractTemplates/>;
+    case 'contracts':return <ContractClauses/>;
     case 'letters':return <Letters/>;
     case 'retention':return <Retention settingsOnly/>;
     case 'reports':return <Reports/>;

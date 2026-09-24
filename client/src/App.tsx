@@ -55,6 +55,8 @@ const Onboarding=lazy(()=>import('@/pages/Lifecycle'));
 const Equipment=lazy(()=>import('@/pages/Equipment'));
 const Handbook=lazy(()=>import('@/pages/Handbook'));
 const HrLetters=lazy(()=>import('@/pages/HrLetters'));
+const Contracts=lazy(()=>import('@/pages/Contracts'));
+const Separation=lazy(()=>import('@/pages/Separation'));
 const Employment=lazy(()=>import('@/pages/Employment'));
 const Retention=lazy(()=>import('@/pages/Retention'));
 const Communications=lazy(()=>import('@/pages/Communications'));
@@ -128,6 +130,8 @@ function App() {
       case '/leave': return 'Leave Management';
       case '/documents': return 'Document Management';
       case '/hr-letters': return 'HR Letter Centre';
+      case '/contracts': return 'Contracts';
+      case '/end-of-service': return 'End of Service';
       case '/event-staff/archive': return 'Event Archive';
       case '/event-staff': return 'Event Staff Management';
       case '/workforce': return 'Workforce';
@@ -188,6 +192,8 @@ function App() {
           <Route path="/operations-setup"><LegacySetupRedirect/></Route>
           <Route path="/documents" component={Documents} />
           <Route path="/hr-letters" component={HrLetters} />
+          <Route path="/contracts" component={Contracts} />
+          <Route path="/end-of-service" component={Separation} />
           <Route path="/event-staff/archive" component={EventArchive} />
           <Route path="/event-staff" component={EventStaff} />
           <Route path="/workforce"><Workforce /></Route>

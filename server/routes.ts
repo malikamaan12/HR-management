@@ -85,10 +85,15 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
+import {uploadCapacity} from './middleware/security';
+import contractsRouter from './routes/contracts';
+import separationRouter from './routes/separation';
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Add cookie parser middleware
   app.use(cookieParser());
+  const admitUpload = uploadCapacity();
+  app.use('/api', (req,res,next) => req.is('multipart/form-data') ? authenticate(req,res,() => admitUpload(req,res,next)) : next());
   app.use('/api/branding',brandingRouter);
   
   // Register auth routes
@@ -121,6 +126,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/equipment',equipmentRoutes);
   app.use('/api/handbook',handbookRoutes);
   app.use('/api/hr-letters',hrLetterRoutes);
+  app.use('/api/contracts',contractsRouter);
+  app.use('/api/separations',separationRouter);
   app.use('/api/employment',employmentRoutes);
   app.use('/api/retention',retentionRoutes);
   app.use('/api/reminder-rules',reminderRuleRoutes);
@@ -1529,6 +1536,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.use('/api', (_req,res) => res.status(404).json({message:'API endpoint not found'}));
   const httpServer = createServer(app);
   return httpServer;
 }

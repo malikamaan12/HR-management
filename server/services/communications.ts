@@ -79,5 +79,6 @@ export function safeMessage(row: any) {
 }
 export function notificationLink(data: any) {
   const value = typeof data?.url === 'string' ? data.url : '';
+  if (/^\/contracts(?:\?contract=[1-9]\d{0,9})?$/.test(value)) return value;
   return /^\/(documents|learning|handbook|equipment|team-overview|helpdesk|leave|attendance|payroll|workforce|hr-letters|benefits|expenses)(\/[a-zA-Z0-9_-]+)*$/.test(value) ? value : null;
 }

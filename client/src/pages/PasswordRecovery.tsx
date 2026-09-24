@@ -30,8 +30,8 @@ export default function PasswordRecovery({ reset = false }: { reset?: boolean })
   return <main className="min-h-screen flex items-center justify-center bg-muted p-6">
     <Card className="w-full max-w-md"><CardHeader><BrandLogo className="h-12 w-40 mb-3"/><CardTitle>{reset ? 'Choose a new password' : 'Reset your password'}</CardTitle></CardHeader>
       <CardContent><form onSubmit={submit} className="space-y-4">
-        {reset ? <><p className="text-sm text-muted-foreground">Use at least eight characters, including uppercase, lowercase, a number and a special character.</p>
-          <Label htmlFor="password">New password</Label><Input id="password" type="password" autoComplete="new-password" required minLength={8} maxLength={72} value={password} onChange={e => setPassword(e.target.value)} />
+        {reset ? <><p className="text-sm text-muted-foreground">Use a unique password or passphrase of at least 12 characters. Spaces and symbols are welcome, up to 72 UTF-8 bytes.</p>
+          <Label htmlFor="password">New password</Label><Input id="password" type="password" autoComplete="new-password" required minLength={12} maxLength={72} value={password} onChange={e => setPassword(e.target.value)} />
           <Label htmlFor="confirm">Confirm password</Label><Input id="confirm" type="password" autoComplete="new-password" required value={confirm} onChange={e => setConfirm(e.target.value)} /></>
           : <><Label htmlFor="email">Email address</Label><Input id="email" type="email" autoComplete="email" required value={email} onChange={e => setEmail(e.target.value)} /></>}
         {error && <p role="alert" className="text-destructive">{error}</p>}
