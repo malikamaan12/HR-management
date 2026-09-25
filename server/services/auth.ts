@@ -7,6 +7,7 @@ import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { emailConfigured, sendPasswordResetEmail } from './email';
 import { updateAccount, accountActor, accountTarget, auditAccount, invalidateAccount } from './account-management';
 import {mfaState,mfaRequired,mfaConfigured,verifyMfa} from './mfa';
+import {accountAvatar,avatarPrefix} from './account-avatar';
 
 export function validateAuthConfiguration() {
   if(process.env.MFA_ENFORCE_PRIVILEGED==='true'&&!mfaConfigured())throw new Error('MFA enforcement requires a 32-byte hexadecimal MFA_ENCRYPTION_KEY');
@@ -22,7 +23,7 @@ function secret(name: 'JWT_SECRET' | 'JWT_REFRESH_SECRET'): string {
 }
 function safeUser(user: typeof users.$inferSelect) {
   const { password, refreshToken, passwordResetToken, passwordResetExpires, failedLoginAttempts, lockoutUntil, ...safe } = user;
-  return safe;
+  return {...safe,avatar:safe.avatar?.startsWith(avatarPrefix)?accountAvatar(safe.avatar).url:safe.avatar};
 }
 function requireActive(user: typeof users.$inferSelect | null | undefined) {
   if (!user || !user.isActive || user.approvalStatus !== 'approved' || user.accountState !== 'active') throw new Error('Account is pending approval or inactive');

@@ -15,7 +15,7 @@ export function EmployeeAvatar({employee, className}: {employee:Person; classNam
   return <Avatar className={cn('employee-avatar',className)}><AvatarImage src={employee.photo||undefined} alt="" loading="lazy" decoding="async" className="object-cover"/><AvatarFallback>{employee.firstName[0]}{employee.lastName[0]}</AvatarFallback></Avatar>;
 }
 
-async function preparePhoto(file:File) {
+export async function preparePhoto(file:File) {
   if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>10*1024*1024) throw new Error('Choose a JPG, PNG or WebP image up to 10 MB.');
   const bitmap=await createImageBitmap(file);
   try {
