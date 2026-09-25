@@ -1,3 +1,4 @@
+import {useLocale} from '@/contexts/LocaleContext';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import EmployeeForm from "./EmployeeForm";
 
@@ -9,24 +10,25 @@ interface AddEditEmployeeModalProps {
 }
 
 export default function AddEditEmployeeModal({ open, onOpenChange, employee, onSuccess }: AddEditEmployeeModalProps) {
+ const {t,language}=useLocale();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-xl">{employee ? "Edit Employee" : "Add New Employee"}</DialogTitle>
+          <DialogTitle className="text-xl">{employee ? t("Edit Employee") : t("Add New Employee")}</DialogTitle>
           <DialogDescription>
-            {employee 
-              ? "Update employee details in the system" 
-              : "Enter employee information to add them to the system"}
+            {employee
+              ? t("Update employee details in the system")
+              : t("Enter employee information to add them to the system")}
           </DialogDescription>
         </DialogHeader>
-        <EmployeeForm 
-          employee={employee} 
+        <EmployeeForm
+          employee={employee}
           onCancel={() => onOpenChange(false)}
           onSuccess={(id) => {
             onSuccess(id);
             onOpenChange(false);
-          }} 
+          }}
         />
       </DialogContent>
     </Dialog>

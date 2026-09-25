@@ -1,3 +1,4 @@
+import {useLocale} from '@/contexts/LocaleContext';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -54,6 +55,7 @@ const bank: Field[] = [
 const sections = [{ id: 'personal', label: 'Personal', fields: personal }, { id: 'employment', label: 'Employment', fields: employment }, { id: 'bank', label: 'Bank & emergency', fields: bank }];
 
 export default function EmployeeForm({ employee, onSuccess, onCancel, initialValues, submit }: { employee?: ApiEmployeeRecord; onSuccess: (employeeId?: number) => void; onCancel?: () => void; initialValues?: Partial<Values>; submit?: (values:Values)=>Promise<unknown> }) {
+ const {t,language}=useLocale();
   const [tab, setTab] = useState('personal');
   const [saving, setSaving] = useState(false);
   const [managerSearch, setManagerSearch] = useState('');
@@ -73,52 +75,52 @@ export default function EmployeeForm({ employee, onSuccess, onCancel, initialVal
         method: employee ? 'PATCH' : 'POST', body: { ...values, ...(employee ? { expectedVersion: editingVersion } : {}) },
       });savedId=(await response.json()).id;}
       await queryClient.invalidateQueries({ predicate: query => typeof query.queryKey[0] === 'string' && query.queryKey[0].startsWith('/api/employees') });
-      toast({ title: employee ? 'Employee updated' : 'Employee added', description: `${values.firstName} ${values.lastName} saved successfully.` });
+      toast({ title: employee ? t('Employee updated') : t('Employee added'), description: `${values.firstName} ${values.lastName} — ${t('Saved successfully.')}` });
       onSuccess(savedId);
     } catch (error) {
-      toast({ title: 'Unable to save employee', description: error instanceof Error ? error.message : 'Try again', variant: 'destructive' });
+      toast({ title: t('Unable to save employee'), description: error instanceof Error ? error.message : t('Try again'), variant: 'destructive' });
     } finally { setSaving(false); }
   }
   return <Form {...form}><form noValidate onSubmit={form.handleSubmit(save, errors => {
     const first = Object.keys(errors)[0];
     setTab(sections.find(section => section.fields.some(field => field.name === first))?.id || 'employment');
-    toast({ title: 'Check employee details', description: 'Complete the highlighted fields before saving.', variant: 'destructive' });
+    toast({ title: t('Check employee details'), description: t('Complete the highlighted fields before saving.'), variant: 'destructive' });
   })} className="space-y-5">
-    <p className="text-sm text-muted-foreground">Fields marked * are required. Leave optional details blank when they have not been provided.</p>
-    <Tabs value={tab} onValueChange={setTab}>
-      <TabsList className="grid w-full grid-cols-3">{sections.map(section => <TabsTrigger key={section.id} value={section.id}>{section.label}</TabsTrigger>)}</TabsList>
+    <p className="text-sm text-muted-foreground">{t("Fields marked * are required. Leave optional details blank when they have not been provided.")}</p>
+    <Tabs dir={language==='ar'?'rtl':'ltr'} value={tab} onValueChange={setTab}>
+      <TabsList className="grid w-full grid-cols-3">{sections.map(section => <TabsTrigger key={section.id} value={section.id}>{t(section.label)}</TabsTrigger>)}</TabsList>
       {sections.map(section => <TabsContent key={section.id} value={section.id} className="space-y-5">
         <div className="grid gap-4 sm:grid-cols-2">{section.fields.map(item => <FormField key={item.name} control={form.control} name={item.name} render={({ field }) => <FormItem>
-          <FormLabel>{item.label}{item.required ? ' *' : ''}</FormLabel>
+          <FormLabel>{t(item.label)}{item.required ? ' *' : ''}</FormLabel>
           <FormControl>{item.options
             ? <select className="h-10 w-full rounded-md border bg-background px-3" name={field.name} ref={field.ref} onBlur={field.onBlur} value={String(field.value ?? '')} onChange={event => field.onChange(event.target.value || (item.required ? undefined : null))}>
-              <option value="">{item.required ? 'Select...' : 'Not recorded'}</option>{item.options.map((value, i) => <option key={value} value={value}>{item.choices?.[i] || value.replaceAll('_', ' ')}</option>)}
+              <option value="">{item.required ? t('Select...') : t('Not recorded')}</option>{item.options.map((value, i) => <option key={value} value={value}>{t(item.choices?.[i] || value.replaceAll('_', ' '))}</option>)}
             </select>
             : <Input name={field.name} ref={field.ref} onBlur={field.onBlur} type={item.type || 'text'} value={String(field.value ?? '')} min={item.type === 'number' ? 0 : undefined} step={item.type === 'number' ? 1 : undefined}
               onChange={event => field.onChange(event.target.value === '' ? item.required ? '' : null : item.type === 'number' ? event.target.valueAsNumber : event.target.value)} />}
           </FormControl><FormMessage />
         </FormItem>} />)}</div>
         {section.id === 'employment' && <div className="space-y-4 border-t pt-4">
-          <FormField control={form.control} name="eventStaffEligible" render={({field}) => <FormItem className="flex items-center gap-3 space-y-0"><FormControl><input type="checkbox" name={field.name} ref={field.ref} onBlur={field.onBlur} checked={!!field.value} onChange={event => field.onChange(event.target.checked)} /></FormControl><FormLabel>Eligible for event staffing</FormLabel><FormMessage /></FormItem>} />
-          <div><label htmlFor="manager-search" className="text-sm font-medium">Find a reporting manager</label><Input id="manager-search" className="mt-2" value={managerSearch} placeholder="Search name or employee ID" onChange={event => setManagerSearch(event.target.value)} /></div>
-          {managers.error && <p role="alert" className="text-sm text-destructive">Unable to load managers. <button type="button" className="underline" onClick={() => managers.refetch()}>Retry</button></p>}
+          <FormField control={form.control} name="eventStaffEligible" render={({field}) => <FormItem className="flex items-center gap-3 space-y-0"><FormControl><input type="checkbox" name={field.name} ref={field.ref} onBlur={field.onBlur} checked={!!field.value} onChange={event => field.onChange(event.target.checked)} /></FormControl><FormLabel>{t("Eligible for event staffing")}</FormLabel><FormMessage /></FormItem>} />
+          <div><label htmlFor="manager-search" className="text-sm font-medium">{t("Find a reporting manager")}</label><Input id="manager-search" className="mt-2" value={managerSearch} placeholder={t("Search name or employee ID")} onChange={event => setManagerSearch(event.target.value)} /></div>
+          {managers.error && <p role="alert" className="text-sm text-destructive">{t("Unable to load managers.")}{" "}<button type="button" className="underline" onClick={() => managers.refetch()}>{t("Retry")}</button></p>}
           <div className="grid gap-4 sm:grid-cols-2">{(['reportingManagerId', 'secondaryManagerId'] as const).map(name => <FormField key={name} control={form.control} name={name} render={({field}) => <FormItem>
-            <FormLabel>{name === 'reportingManagerId' ? 'Primary manager' : 'Secondary manager'}</FormLabel><FormControl>
+            <FormLabel>{name === 'reportingManagerId' ? t('Primary manager') : t('Secondary manager')}</FormLabel><FormControl>
               <select className="h-10 w-full rounded-md border bg-background px-3" name={field.name} ref={field.ref} value={String(field.value ?? '')} onBlur={field.onBlur} onChange={event => field.onChange(event.target.value ? Number(event.target.value) : null)}>
-                <option value="">No manager</option>
-                {field.value && !managers.data?.employees.some(manager => manager.id === field.value && manager.status !== 'inactive') && <option value={String(field.value)}>Current manager #{field.value}</option>}
+                <option value="">{t("No manager")}</option>
+                {field.value && !managers.data?.employees.some(manager => manager.id === field.value && manager.status !== 'inactive') && <option value={String(field.value)}>{t("Current manager #")}{field.value}</option>}
                 {managers.data?.employees.filter(manager => manager.id !== employee?.id && manager.status !== 'inactive').map(manager => <option key={manager.id} value={manager.id}>{manager.firstName} {manager.lastName} · {manager.employeeId}</option>)}
               </select>
             </FormControl><FormMessage />
           </FormItem>} />)}</div>
-          <p className="text-sm text-muted-foreground">Search to find managers beyond the first 50 results. FEC and event teams are assigned in Workforce Operations.</p>
+          <p className="text-sm text-muted-foreground">{t("Search to find managers beyond the first 50 results. FEC and event teams are assigned in Workforce Operations.")}</p>
         </div>}
       </TabsContent>)}
     </Tabs>
     <div className="flex flex-wrap justify-between gap-3 border-t pt-4">
-      <Button type="button" variant="outline" onClick={onCancel} disabled={saving}>Cancel</Button>
-      <div className="flex gap-2">{tab !== 'personal' && <Button type="button" variant="outline" disabled={saving} onClick={() => setTab(tab === 'bank' ? 'employment' : 'personal')}>Back</Button>}
-        {tab !== 'bank' ? <Button key="next" type="button" onClick={event => { event.preventDefault(); setTab(tab === 'personal' ? 'employment' : 'bank'); }}>Next</Button> : <Button key="save" type="submit" disabled={saving}>{saving ? 'Saving...' : employee ? 'Update Employee' : 'Add Employee'}</Button>}
+      <Button type="button" variant="outline" onClick={onCancel} disabled={saving}>{t("Cancel")}</Button>
+      <div className="flex gap-2">{tab !== 'personal' && <Button type="button" variant="outline" disabled={saving} onClick={() => setTab(tab === 'bank' ? 'employment' : 'personal')}>{t("Back")}</Button>}
+        {tab !== 'bank' ? <Button key="next" type="button" onClick={event => { event.preventDefault(); setTab(tab === 'personal' ? 'employment' : 'bank'); }}>{t("Next")}</Button> : <Button key="save" type="submit" disabled={saving}>{saving ? t('Saving...') : employee ? t('Update Employee') : t('Add Employee')}</Button>}
       </div>
     </div>
   </form></Form>;
