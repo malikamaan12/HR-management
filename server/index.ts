@@ -6,9 +6,8 @@ import { validateAuthConfiguration } from './services/auth';
 import { validateAppConfiguration } from './config';
 import { createReadinessHandler } from './services/readiness';
 import { pool } from './db';
-import {runOperationalReminders} from './services/operational-reminders';
-import {runHelpdeskAutomation} from './services/helpdesk-automation';
-import {runReportSchedules} from './services/reportWorkspace';
+import {runScheduledJobs} from './services/scheduled-jobs';
+import scheduledJobsRouter from './routes/scheduled-jobs';
 import {ensureInductionSafetyCourses} from './services/induction-course-library';
 import {securityHeaders, privateApiResponses, sameOriginWrites, apiRateLimit, requestError} from './middleware/security';
 validateAuthConfiguration();
@@ -26,6 +25,7 @@ app.use('/api/contracts', express.json({limit:'256kb', inflate:false}));
 app.use('/api/separations', express.json({limit:'256kb', inflate:false}));
 app.use(express.json({limit:'100kb', inflate:false}));
 app.use(express.urlencoded({ extended: false, limit:'100kb', parameterLimit:100, inflate:false }));
+app.use('/internal/scheduled-jobs',scheduledJobsRouter);
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -73,11 +73,9 @@ app.use((req, res, next) => {
     host: "0.0.0.0",
   }, () => {
     log(`serving on port ${port}`);
-    setTimeout(() => void runHelpdeskAutomation().catch(() => console.error('Helpdesk automation failed')), 30000).unref();
-    setInterval(() => void runHelpdeskAutomation().catch(() => console.error('Helpdesk automation failed')), 5 * 60 * 1000).unref();
-    setTimeout(() => void runOperationalReminders().catch(() => console.error('Operational reminders failed')), 30000).unref();
-    setInterval(() => void runOperationalReminders().catch(() => console.error('Operational reminders failed')), 15 * 60 * 1000).unref();
-    setTimeout(() => void runReportSchedules().catch(() => console.error('Scheduled reports failed')), 45000).unref();
-    setInterval(() => void runReportSchedules().catch(() => console.error('Scheduled reports failed')), 15 * 60 * 1000).unref();
+    if(process.env.SCHEDULER_MODE!=='external'){
+      const tick=()=>void runScheduledJobs().then(jobs=>{if(jobs.some(j=>j.status==='failed'))console.error('Scheduled jobs need operator attention');}).catch(()=>console.error('Scheduled jobs unavailable'));
+      setTimeout(tick,30000).unref();setInterval(tick,60000).unref();
+    }
   });
 })();

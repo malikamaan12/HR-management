@@ -1,3 +1,4 @@
+import {paymentModeError} from '../services/data-mode';
 import {Router} from 'express';
 import {z} from 'zod';
 import {and,desc,eq,inArray,sql} from 'drizzle-orm';
@@ -77,6 +78,7 @@ export default function employeeServiceRoutes(kind:ServiceKind){
       }else {
         if(!independent)fail(403,'An independent reviewer must decide this request');await approver(tx,req.user!.userId,module,employee);
         if(input.action==='fulfill'){
+          const modeError=paymentModeError();if(modeError)fail(409,modeError);
           if(row.status!=='approved')fail(409,'Only approved requests can be fulfilled');if(kind==='expense'?!['super_admin','admin','finance','payroll_specialist'].includes(req.user!.role):row.approverId!==req.user!.userId)fail(403,'The authorized fulfillment handler must record this action');
           if(!input.reference||input.confirmed!==true)fail(400,'Confirm the external transaction or benefit activation and enter its reference');patch.status='fulfilled';patch.fulfillmentReference=input.reference;patch.fulfilledBy=req.user!.userId;patch.fulfilledAt=new Date();
         }else {if(row.approverId!==req.user!.userId)fail(403,'The assigned reviewer must decide');if(row.status!=='submitted')fail(409,'Only submitted requests can be reviewed');if(input.action==='approve')employed(employee);patch.status=input.action==='approve'?'approved':input.action==='return'?'returned':'rejected';patch.approvedBy=input.action==='approve'?req.user!.userId:null;}

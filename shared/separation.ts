@@ -4,6 +4,7 @@ import {civilDate} from './hr-rules';
 const amount=z.string().regex(/^\d{1,8}(\.\d{1,2})?$/, 'Enter a non-negative amount with up to two decimals');
 const text=z.string().trim().max(6000);
 export const separationManager=(role:string)=>['admin','super_admin','hr_director','hr'].includes(role);
+export const separationPolicyManager=(role:string)=>['admin','super_admin','hr_director'].includes(role);
 export const separationKinds=['termination','resignation','contract_expiry','mutual_agreement'] as const;
 export const separationLabels:Record<string,string>={termination:'Termination',resignation:'Resignation',contract_expiry:'Contract expiry',mutual_agreement:'Mutual agreement',draft:'Draft',in_review:'In review',approved:'Approved',completed:'Completed',cancelled:'Cancelled'};
 export const separationStatuses=['draft','in_review','approved','completed','cancelled'] as const;

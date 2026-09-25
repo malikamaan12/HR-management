@@ -3,6 +3,7 @@ import {and,eq,gte,lt,inArray,sql} from 'drizzle-orm';
 import {appSettings,employees,payroll,payrollReviews,payrollTimeLines,workforceMembers,workforceTeams,workforceSites} from '@shared/schema';
 import {getAccessScope,hasPermission} from '@shared/permissions';
 import {defaultWpsSettings,wpsSettingsSchema,wpsEmployeeSchema,wpsRecordSchema,employeeIssues,recordIssues,settingsIssues,sumMoney,type ExportFilter,type ExportGroup,type PayrollExportPreview,type PayrollExportRow,type WpsEmployee,type WpsRecord,type WpsSettings} from '@shared/payroll-exports';
+import {isDemoPayroll} from '@shared/payroll-exports';
 import {moneyCents,moneyText} from '@shared/money';
 import type {TokenPayload} from './auth';
 import {employeeScope} from './access';
@@ -80,6 +81,7 @@ export async function loadPayrollExport(tx:WorkforceTransaction,user:TokenPayloa
       const defaults=defaultRecord(record,review,overtime.get(record.id)||0);
       const details=detail?wpsRecordSchema.parse(detail.record):defaults.value;
       const issues=[...employeeIssues(person,settings.settings),...recordIssues(details,row.net)];
+      if(isDemoPayroll(row))issues.push('Demo payroll cannot be included in a bank payment file.');
       if(record.status!=='approved')issues.push(record.status==='processed'?'Payment is already recorded. WPS exports include approved, unpaid payroll only.':'Approve this payroll before creating a WPS file.');
       if(!review||!review.approvedAt||!review.approvedBy)issues.push('An independently reviewed payroll snapshot is required.');
       if(review?.currency!=='QAR')issues.push('Qatar WPS supports QAR payroll only.');

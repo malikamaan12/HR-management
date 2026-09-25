@@ -1,10 +1,12 @@
 import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomUUID } from 'node:crypto';
+import {scanUpload} from './file-scan';
 
 export class StorageUnavailableError extends Error {}
 const communicationKey = /^communications\/\d+\/[a-f0-9-]+\.(pdf|png|jpg)$/;
 export async function uploadCommunicationFile(channelId:number,file:Express.Multer.File){
+  validateDocumentFile(file);await scanUpload(file.buffer);
   const extension=validateDocumentFile(file),{client,bucket}=configuration();
   const key=`communications/${channelId}/${randomUUID()}.${extension}`;
   try{await client.send(new PutObjectCommand({Bucket:bucket,Key:key,Body:file.buffer,ContentType:'application/octet-stream',ContentDisposition:'attachment'}),{abortSignal:AbortSignal.timeout(30000)});return key;}
@@ -48,6 +50,7 @@ export function validateDocumentFile(file: Pick<Express.Multer.File,'buffer'|'si
   throw new Error('Choose a PDF, PNG, or JPEG document');
 }
 export async function uploadDocument(employeeId:number,file:Express.Multer.File){
+  validateDocumentFile(file);await scanUpload(file.buffer);
   const extension=validateDocumentFile(file),{client,bucket}=configuration();
   const key=`documents/${employeeId}/${randomUUID()}.${extension}`;
   try {await client.send(new PutObjectCommand({Bucket:bucket,Key:key,Body:file.buffer,ContentType:'application/octet-stream',ContentDisposition:'attachment'}));return key;}
@@ -65,6 +68,7 @@ export async function documentDownloadUrl(key:string){
 // Case files never share the general employee-document download namespace.
 const caseKey=/^helpdesk\/\d+\/[a-f0-9-]+\.(pdf|png|jpg)$/;
 export async function uploadCaseAttachment(caseId:number,file:Express.Multer.File){
+  validateDocumentFile(file);await scanUpload(file.buffer);
   const extension=validateDocumentFile(file),{client,bucket}=configuration();
   const key=`helpdesk/${caseId}/${randomUUID()}.${extension}`;
   try{await client.send(new PutObjectCommand({Bucket:bucket,Key:key,Body:file.buffer,ContentType:'application/octet-stream',ContentDisposition:'attachment'}));return key;}finally{client.destroy();}
@@ -80,6 +84,7 @@ export async function caseAttachmentUrl(key:string){
 
 const serviceKey=/^employee-services\/(learning|benefit|expense)\/\d+\/[a-f0-9-]+\.(pdf|png|jpg)$/;
 export async function uploadServiceFile(kind:'learning'|'benefit'|'expense',id:number,file:Express.Multer.File){
+  validateDocumentFile(file);await scanUpload(file.buffer);
   const extension=validateDocumentFile(file),{client,bucket}=configuration(),key=`employee-services/${kind}/${id}/${randomUUID()}.${extension}`;
   try{await client.send(new PutObjectCommand({Bucket:bucket,Key:key,Body:file.buffer,ContentType:'application/octet-stream',ContentDisposition:'attachment'}));return key;}finally{client.destroy();}
 }
@@ -102,6 +107,7 @@ export function validateInductionFile(file:Pick<Express.Multer.File,'buffer'|'si
  throw new Error(logo?'Use a PNG or JPEG logo':'Use a PDF, PNG, JPEG, MP4 or WebM file');
 }
 export async function uploadInductionAsset(courseId:number|null,file:Express.Multer.File){
+ validateInductionFile(file,courseId===null);await scanUpload(file.buffer);
  const type=validateInductionFile(file,courseId===null),{client,bucket}=configuration();
  const key=`induction/${courseId===null?'branding':'course-'+courseId}/${randomUUID()}.${type.extension}`;
  try{

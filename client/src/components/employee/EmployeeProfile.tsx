@@ -1,5 +1,6 @@
 import EmployeePhoto from './EmployeePhoto';
 import {useAuth} from '@/contexts/AuthContext';
+import {useLocale} from '@/contexts/LocaleContext';
 import EmployeeCompensation from '@/components/employees/EmployeeCompensation';
 import {compensationDetailedReaders} from '@shared/compensation';
 import {Corrections} from './Corrections';
@@ -27,6 +28,7 @@ function Info({ title, fields }: { title: string; fields: [string, unknown][] })
   </dl></CardContent></Card>;
 }
 export default function EmployeeProfile({ employeeId, onClose }: { employeeId: number; onClose: () => void }) {
+  const {t}=useLocale();
   const {user}=useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -60,7 +62,7 @@ export default function EmployeeProfile({ employeeId, onClose }: { employeeId: n
         <TabsTrigger value="employment">Employment</TabsTrigger>
         {e.access.personal && <TabsTrigger value="personal">Personal & emergency</TabsTrigger>}
         {e.access.banking && <TabsTrigger value="banking">Banking</TabsTrigger>}
-        {(e.userId===user?.userId||compensationDetailedReaders(user?.role||'')) && <TabsTrigger value="compensation">Salary & benefits</TabsTrigger>}
+        {(e.userId===user?.userId||compensationDetailedReaders(user?.role||'')) && <TabsTrigger value="compensation">{t('Salary & benefits')}</TabsTrigger>}
         {e.access.documents && <TabsTrigger value="documents">Documents</TabsTrigger>}
         {e.access.history && <TabsTrigger value="lifecycle">Lifecycle</TabsTrigger>}
         {e.access.history && <TabsTrigger value="activity">Activity</TabsTrigger>}

@@ -36,6 +36,8 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
     
     // Verify and decode token
     const decodedToken = await authService.authenticateToken(token);
+    const route=req.originalUrl.split('?')[0];
+    if(decodedToken.mfaRequired&&!/^\/api\/auth\/(mfa(?:\/|$)|me$|logout$)/.test(route))return res.status(403).json({message:'Set up multifactor authentication before using this account.',code:'MFA_ENROLLMENT_REQUIRED'});
     
     // Attach user to request
     req.user = decodedToken;

@@ -3,6 +3,7 @@ import {useQuery,useMutation,useQueryClient} from '@tanstack/react-query';
 import type {Payroll as PayrollRecord} from '@shared/schema';
 import type {ApiEmployee} from '@/lib/api-types';
 import {calculatePayroll,csvCell} from '@shared/money';
+import {payrollDataClassification} from '@shared/payroll-exports';
 import {hasPermission} from '@shared/permissions';
 import {useAuth} from '@/contexts/AuthContext';
 import {apiJson} from '@/lib/queryClient';
@@ -16,6 +17,7 @@ const blank={employeeId:'',basicSalary:'0.00',housing:'0.00',transport:'0.00',ot
 const money=(value:unknown)=>Number(value||0).toLocaleString('en',{minimumFractionDigits:2,maximumFractionDigits:2});
 export default function Payroll(){
  const {user}=useAuth(),{toast}=useToast(),cache=useQueryClient();
+ const {data:environment}=useQuery<{dataMode:string}>({queryKey:['/api/environment']});
  const [period,setPeriod]=useState(new Date().toISOString().slice(0,7)),[form,setForm]=useState(blank),[open,setOpen]=useState(false),[editing,setEditing]=useState<number|null>(null),[paid,setPaid]=useState<Row|null>(null),[reference,setReference]=useState('');
  const [year,month]=period.split('-').map(Number);
  const [calculation,setCalculation]=useState<{netSalary:string;roundingAdjustmentCents:number;version:number}|null>(null);
@@ -29,7 +31,7 @@ export default function Payroll(){
  const originalDeductions=(original?.deductions||{}) as Record<string,string|number>;
  const payload=()=>({employeeId:Number(form.employeeId),month,year,basicSalary:form.basicSalary,allowances:{...extraAllowances,housing:form.housing,transport:form.transport,other:form.otherAllowance},deductions:original&&Number(form.deductions)===Object.values(originalDeductions).reduce<number>((sum,value)=>sum+Number(value),0)?originalDeductions:{other:form.deductions}});
  const edit=(row:Row)=>{const allowance=row.allowances as Record<string,string|number>;setCalculation(null);setEditing(row.id);setForm({employeeId:String(row.employeeId),basicSalary:String(row.basicSalary),housing:String(allowance.housing||0),transport:String(allowance.transport||0),otherAllowance:String(allowance.other||0),deductions:String(Object.values(row.deductions as Record<string,string|number>).reduce<number>((sum,value)=>sum+Number(value),0))});setOpen(true);};
- const download=()=>{const lines=[['Employee','Month','Year','Basic salary QAR','Net salary QAR','Status','Payment reference','Rounding adjustment QAR','Rule version'],...records.map(row=>[row.employeeName,row.month,row.year,row.basicSalary,row.netSalary,row.status,row.wpsReference,(row.roundingAdjustmentCents/100).toFixed(2),row.calculationSnapshot?.version||'baseline'])];const url=URL.createObjectURL(new Blob([lines.map(row=>row.map(csvCell).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'}));const link=document.createElement('a');link.href=url;link.download=`payroll-${period}.csv`;link.click();URL.revokeObjectURL(url);};
+ const download=()=>{const lines=[['Employee','Month','Year','Basic salary QAR','Net salary QAR','Status','Payment reference','Data classification','Rounding adjustment QAR','Rule version'],...records.map(row=>[row.employeeName,row.month,row.year,row.basicSalary,row.netSalary,row.status,row.wpsReference,payrollDataClassification({paymentReference:row.wpsReference},environment?.dataMode),(row.roundingAdjustmentCents/100).toFixed(2),row.calculationSnapshot?.version||'baseline'])];const url=URL.createObjectURL(new Blob([lines.map(row=>row.map(csvCell).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'}));const link=document.createElement('a');link.href=url;link.download=`payroll-${period}.csv`;link.click();URL.revokeObjectURL(url);};
  return <Card><CardHeader><CardTitle>Payroll</CardTitle></CardHeader><CardContent className="space-y-5">
   <div className="flex flex-wrap gap-3"><label>Pay period<Input type="month" value={period} onChange={e=>setPeriod(e.target.value)}/></label>{canCreate&&<Button onClick={()=>{setCalculation(null);setEditing(null);setForm(blank);setOpen(true);}}>Create payroll draft</Button>}<Button variant="outline" disabled={!records.length} onClick={download}>Export CSV</Button><Button variant="outline" onClick={()=>window.print()}>Print</Button></div>
   <p className="text-sm text-muted-foreground">Bank submission is not connected. Record a payment reference only after payment has been completed outside this application.</p>

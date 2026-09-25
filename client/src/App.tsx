@@ -1,4 +1,5 @@
 import PageAccessGuard from '@/components/PageAccessGuard';
+import AccountMfa from '@/components/AccountMfa';
 
 
 import { Switch, Route, useLocation, Redirect } from "wouter";
@@ -59,6 +60,7 @@ const Contracts=lazy(()=>import('@/pages/Contracts'));
 const Separation=lazy(()=>import('@/pages/Separation'));
 const Employment=lazy(()=>import('@/pages/Employment'));
 const Retention=lazy(()=>import('@/pages/Retention'));
+const PrivacyRequests=lazy(()=>import('@/pages/PrivacyRequests'));
 const Communications=lazy(()=>import('@/pages/Communications'));
 const Performance=lazy(()=>import('@/pages/Performance'));
 const UserAccount=lazy(()=>import('@/pages/UserAccount'));
@@ -72,7 +74,7 @@ interface ProtectedRouteProps {
 }
 
 const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading,user,logout } = useAuth();
   const [, setLocation] = useLocation();
   
   useEffect(() => {
@@ -89,6 +91,7 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     );
   }
   
+  if(isAuthenticated&&user?.mfaRequired)return <main className="mx-auto max-w-2xl space-y-5 p-6"><h1 className="text-2xl font-semibold">Secure your account</h1><AccountMfa/><button className="underline" onClick={()=>void logout()}>Sign out</button></main>;
   return isAuthenticated ? <>{children}</> : null;
 };
 
@@ -141,6 +144,7 @@ function App() {
       case '/handbook': return 'Employee Handbook';
       case '/employment': return 'Employment and Service History';
       case '/retention': return 'Record Retention';
+      case '/privacy': return 'Privacy requests';
       case '/reminder-rules': return 'Reminder Rules';
       case '/hr-rules': return 'HR Rules';
       case '/operations-setup': return 'Operational setup';
@@ -211,6 +215,7 @@ function App() {
           <Route path="/handbook" component={Handbook} />
           <Route path="/employment" component={Employment} />
           <Route path="/retention"><Retention/></Route>
+          <Route path="/privacy"><PrivacyRequests/></Route>
           <Route path="/reminder-rules"><Redirect to="/settings/reminders"/></Route>
           <Route path="/communications" component={Communications} />
           <Route path="/performance" component={Performance} />

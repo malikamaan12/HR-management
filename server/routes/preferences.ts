@@ -1,0 +1,10 @@
+import {Router} from 'express';
+import {z} from 'zod';
+import {sql} from 'drizzle-orm';
+import {db} from '../db';
+import {authenticate} from '../middleware/auth';
+import {recordHandler} from '../services/workflowRecords';
+const router=Router();router.use(authenticate);
+router.get('/',recordHandler(async(req,res)=>{const row=(await db.execute(sql`SELECT language FROM account_preferences WHERE user_id=${req.user.userId}`)).rows[0];res.json({language:row?.language||'en'});}));
+router.put('/',recordHandler(async(req,res)=>{const {language}=z.object({language:z.enum(['en','ar'])}).strict().parse(req.body);await db.execute(sql`INSERT INTO account_preferences(user_id,language) VALUES(${req.user.userId},${language}) ON CONFLICT(user_id) DO UPDATE SET language=excluded.language,updated_at=now()`);res.json({language});}));
+export default router;

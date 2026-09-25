@@ -1,4 +1,6 @@
 import ThemePicker from '@/components/ux/ThemePicker';
+import LanguagePicker from '@/components/LanguagePicker';
+import {useLocale} from '@/contexts/LocaleContext';
 import {BrandLogo,useBranding} from '@/components/Branding';
 import {defaultPublicBranding} from '@shared/branding';
 import React, { useState, useEffect } from 'react';
@@ -24,6 +26,7 @@ const loginSchema = z.object({
 type LoginForm = z.infer<typeof loginSchema>;
 
 const Login: React.FC = () => {
+  const {t}=useLocale();
   const {data:branding=defaultPublicBranding}=useBranding();
   const { login, isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
@@ -31,6 +34,7 @@ const Login: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+  const [secondFactor,setSecondFactor]=useState('');
   
   // Redirect if already authenticated
   useEffect(() => {
@@ -40,7 +44,7 @@ const Login: React.FC = () => {
   }, [isAuthenticated, setLocation]);
 
   const form = useForm<LoginForm>({
-    resolver: zodResolver(loginSchema),
+    resolver: zodResolver(loginSchema.extend({username:z.string().trim().min(1,t('Username or email is required')).max(254),password:z.string().min(6,t('Password must be at least 6 characters'))})),
     defaultValues: {
       username: '',
       password: '',
@@ -53,7 +57,7 @@ const Login: React.FC = () => {
       setError(null);
       
       // Use auth context login which now handles development mode internally
-      await login(data.username, data.password);
+      await login(data.username, data.password,secondFactor);
       // Redirection will happen automatically in the useEffect above
       
     } catch (err: any) {
@@ -66,7 +70,7 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div className="login-stage min-h-dvh flex items-center justify-center bg-background p-4"><div className="login-theme"><ThemePicker/></div><div className="login-orb login-orb-one" aria-hidden="true"/><div className="login-orb login-orb-two" aria-hidden="true"/>
+    <div className="login-stage min-h-dvh flex items-center justify-center bg-background p-4"><div className="login-theme flex gap-2"><LanguagePicker/><ThemePicker/></div><div className="login-orb login-orb-one" aria-hidden="true"/><div className="login-orb login-orb-two" aria-hidden="true"/>
       <Card className="login-card w-full max-w-md">
         <CardHeader className="space-y-2 text-center">
           <div className="flex justify-center mb-4">
@@ -74,7 +78,7 @@ const Login: React.FC = () => {
           </div>
           <CardTitle className="justify-center text-center text-2xl font-bold text-foreground"><span>{branding.applicationName}</span></CardTitle>
           <CardDescription>
-            Enter your credentials to access your account
+            {t('Enter your credentials to access your account')}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -91,9 +95,9 @@ const Login: React.FC = () => {
                 name="username"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Username or email</FormLabel>
+                    <FormLabel>{t('Username or email')}</FormLabel>
                     <FormControl>
-                      <Input placeholder="Enter your username or email" autoComplete="username" autoCapitalize="none" spellCheck={false} {...field} disabled={isLoading} />
+                      <Input placeholder={t('Enter your username or email')} autoComplete="username" autoCapitalize="none" spellCheck={false} {...field} disabled={isLoading} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -105,20 +109,20 @@ const Login: React.FC = () => {
                 name="password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Password</FormLabel>
+                    <FormLabel>{t('Password')}</FormLabel>
                     <div className="relative">
                       <FormControl>
                         <Input 
                           type={showPassword ? "text" : "password"}
                           autoComplete="current-password"
-                          placeholder="Enter your password" 
+                          placeholder={t('Enter your password')}
                           {...field} 
                           disabled={isLoading}
                           className="pr-10" 
                         />
                       </FormControl>
                       <button
-                        aria-label={showPassword ? "Hide password" : "Show password"}
+                        aria-label={t(showPassword ? 'Hide password' : 'Show password')}
                         type="button"
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
                         onClick={() => setShowPassword(!showPassword)}
@@ -135,14 +139,15 @@ const Login: React.FC = () => {
                 )}
               />
 
+              <div className="space-y-2"><label htmlFor="second-factor" className="text-sm font-medium">{t('Authenticator or recovery code')}</label><Input id="second-factor" autoComplete="one-time-code" maxLength={24} value={secondFactor} onChange={e=>setSecondFactor(e.target.value.replace(/\s/g,''))} disabled={isLoading}/><p className="text-xs text-muted-foreground">{t('Enter a code if you enabled multifactor authentication.')}</p></div>
               <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Signing in...
+                    {t('Signing in...')}
                   </>
                 ) : (
-                  'Sign In'
+                  t('Sign In')
                 )}
               </Button>
             </form>
@@ -150,15 +155,15 @@ const Login: React.FC = () => {
         </CardContent>
         <CardFooter className="flex flex-col space-y-4">
           <div className="text-sm text-center text-muted-foreground">
-            Accounts are created by your administrator. Contact HR for access.
+            {t('Accounts are created by your administrator. Contact HR for access.')}
           </div>
           <div className="text-sm text-center text-muted-foreground">
             <a href="/forgot-password" className="hover:text-primary underline underline-offset-4">
-              Forgot password?
+              {t('Forgot password?')}
             </a>
           </div>
           <div className="text-xs text-center text-muted-foreground">
-            <p>© {new Date().getFullYear()} {branding.applicationName}. All rights reserved.</p>
+            <p>© {new Date().getFullYear()} {branding.applicationName}. {t('All rights reserved.')}</p>
           </div>
         </CardFooter>
       </Card>

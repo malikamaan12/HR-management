@@ -1,0 +1,2 @@
+export function applicationDataMode():'demo'|'operational'|'unconfirmed'{return process.env.APP_DATA_MODE==='demo'?'demo':process.env.APP_DATA_MODE==='operational'?'operational':'unconfirmed';}
+export function paymentModeError(){const mode=applicationDataMode();if(mode==='demo')return 'This is a demo workspace. Bank exports and payment recording are disabled.';if(mode==='unconfirmed'&&process.env.NODE_ENV==='production')return 'Confirm APP_DATA_MODE=operational after separating sample data before exporting or recording payments.';return null;}

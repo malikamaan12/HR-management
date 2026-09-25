@@ -33,9 +33,9 @@ router.use('/leave-request',leaveRoutes);
 
 // Authentication endpoint - generate JWT token
 router.post('/auth/login', loginRateLimit, async (req: Request, res: Response) => {
-  const input=z.object({username:z.string().trim().min(1).max(254),password:z.string().min(1).max(1024)}).safeParse(req.body);
+  const input=z.object({username:z.string().trim().min(1).max(254),password:z.string().min(1).max(1024),secondFactor:z.string().max(32).optional()}).safeParse(req.body);
   if(!input.success)return res.status(400).json({message:'Username and password are required'});
-  try { const session=await authService.login(input.data.username,input.data.password,req.ip,req.get('user-agent'));
+  try { const session=await authService.login(input.data.username,input.data.password,req.ip,req.get('user-agent'),input.data.secondFactor);
     return res.json({...session,token:session.accessToken});
   } catch { return res.status(401).json({message:'Login failed. Check credentials and account approval.'}); }
 });

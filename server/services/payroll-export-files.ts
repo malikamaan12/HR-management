@@ -1,6 +1,8 @@
 import {csvCell,moneyCents,moneyText} from '@shared/money';
 import {totalMoney,type ExportFilter,type PayrollExportRow,type WpsSettings} from '@shared/payroll-exports';
 import type {CompanySettings} from '@shared/settings';
+import {isDemoPayroll,payrollDataClassification} from '@shared/payroll-exports';
+import {applicationDataMode,paymentModeError} from './data-mode';
 
 const escape=(value:unknown)=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]!));
 const stamp=(date:Date)=>{
@@ -8,6 +10,8 @@ const stamp=(date:Date)=>{
   return {date:parts.year+parts.month+parts.day,time:parts.hour+parts.minute};
 };
 export function sifFile(settings:WpsSettings,rows:PayrollExportRow[],filter:ExportFilter,created=new Date()){
+  const modeError=paymentModeError();if(modeError)throw new Error(modeError);
+  if(rows.some(isDemoPayroll))throw new Error('Demo payroll cannot be included in a bank payment file.');
   const at=stamp(created),salaryMonth=`${filter.year}${String(filter.month).padStart(2,'0')}`;
   const cell=(value:unknown)=>'"'+String(value??'').replaceAll('"','""')+'"';
   const lines:unknown[][]=[
@@ -19,10 +23,10 @@ export function sifFile(settings:WpsSettings,rows:PayrollExportRow[],filter:Expo
   return {filename:`SIF_${settings.employerEid}_${settings.payerBank}_${at.date}_${at.time}.csv`,content:lines.map(line=>line.map(cell).join(',')).join('\r\n')+'\r\n'};
 }
 export function payrollCsv(rows:PayrollExportRow[]){
-  const columns=['Payroll ID','Employee ID','Employee','Department','Team(s)','Currency','Period start','Period end','Pay date','Basic','Allowance total','Deduction total','Rounding adjustment','Net','Status','Payment reference'];
+  const columns=['Payroll ID','Employee ID','Employee','Department','Team(s)','Currency','Period start','Period end','Pay date','Basic','Allowance total','Deduction total','Rounding adjustment','Net','Status','Payment reference','Data classification'];
   const sum=(items:Record<string,string>)=>moneyText(Object.values(items).reduce((total,value)=>total+moneyCents(value),0));
   const signed=(cents:number)=>(cents<0?'-':'')+moneyText(Math.abs(cents));
-  return [columns,...rows.map(r=>[r.id,r.employeeRef,r.name,r.department,r.groups.map(g=>g.name).join('; ')|| (r.headOffice?'Head Office':'Unassigned'),r.currency||'Unspecified',r.periodStart,r.periodEnd,r.payDate,r.basic,sum(r.allowances),sum(r.deductions),signed(r.roundingCents),r.net,r.status,r.paymentReference])].map(row=>row.map(csvCell).join(',')).join('\r\n')+'\r\n';
+  return [columns,...rows.map(r=>[r.id,r.employeeRef,r.name,r.department,r.groups.map(g=>g.name).join('; ')|| (r.headOffice?'Head Office':'Unassigned'),r.currency||'Unspecified',r.periodStart,r.periodEnd,r.payDate,r.basic,sum(r.allowances),sum(r.deductions),signed(r.roundingCents),r.net,r.status,r.paymentReference,payrollDataClassification(r,applicationDataMode())])].map(row=>row.map(csvCell).join(',')).join('\r\n')+'\r\n';
 }
 export function payslipDocument(company:CompanySettings,rows:PayrollExportRow[],filter:ExportFilter){
   const period=`${filter.year}-${String(filter.month).padStart(2,'0')}`;
@@ -31,7 +35,7 @@ export function payslipDocument(company:CompanySettings,rows:PayrollExportRow[],
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Payslips ${escape(period)}</title><style>
     *{box-sizing:border-box}body{margin:0;background:#f1f3f8;color:#202339;font:14px/1.5 Arial,sans-serif}header.toolbar{padding:20px;text-align:center;background:#22243a;color:white}.toolbar p{margin:5px 0;font-size:13px}.slip{max-width:850px;margin:24px auto;padding:42px;background:white;border:1px solid #dfe2ed;border-radius:16px}.top{display:flex;justify-content:space-between;gap:24px;border-bottom:3px solid #6d4fc5;padding-bottom:22px}.company{font-size:21px;font-weight:700}.subtle{color:#667085;font-size:12px}.badge{display:inline-block;padding:5px 10px;border-radius:7px;background:#f0ebfc;color:#503b91;font-size:12px;font-weight:bold}.employee{display:grid;grid-template-columns:1fr 1fr;gap:10px 24px;padding:24px 0}.employee h1{font-size:23px;margin:0}.employee p{margin:3px 0}.items{margin:18px 0}.items h2{font-size:14px}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{text-align:left;padding:9px 10px;border-bottom:1px solid #e9eaf2;overflow-wrap:anywhere}th{background:#f5f4fa;font-size:12px}td:last-child,th:last-child{text-align:right;width:38%}.net{display:flex;justify-content:space-between;gap:20px;margin-top:24px;padding:20px;background:#eff8f3;color:#164b36;border-radius:10px;font-size:20px;font-weight:bold}.foot{margin-top:24px;border-top:1px solid #ddd;padding-top:12px;font-size:11px;color:#667085}.draft{padding:10px;background:#fff4d6;color:#755014;font-weight:bold}.meta{overflow-wrap:anywhere}@media(max-width:600px){.slip{margin:10px;padding:22px}.top,.employee{display:block}.employee>div{margin:12px 0}.net{font-size:17px}}@page{size:A4;margin:14mm}@media print{body{background:white;font-size:11px}.toolbar{display:none}.slip{margin:0;max-width:none;padding:0;border:0;border-radius:0;break-after:page}.slip:last-child{break-after:auto}.top{break-inside:avoid}.employee,.net,.foot,tr{break-inside:avoid}thead{display:table-header-group}th{background:#eee!important}.net{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
     </style></head><body><header class="toolbar"><strong>${rows.length} payslip${rows.length===1?'':'s'} · ${escape(period)}</strong><p>Use your browser's Print command (Ctrl+P / Cmd+P), then choose Save as PDF or your printer.</p><p>Each employee starts on a separate page. Confidential payroll information.</p></header>${rows.map(row=>{
-      const paid=['processed','paid'].includes(row.status),approved=row.status==='approved',status=paid?'Payment recorded':approved?'Approved for payment':'Draft / not for payment';
+      const demo=applicationDataMode()==='demo'||isDemoPayroll(row),paid=!demo&&['processed','paid'].includes(row.status),approved=!demo&&row.status==='approved',status=demo?'DEMO — NOT FOR PAYMENT':paid?'Payment recorded':approved?'Approved for payment':'Draft / not for payment';
       const earningItems:[string,string][]=[['Basic salary',row.basic],...Object.entries(row.allowances)];
       const deductionItems=Object.entries(row.deductions);
       if(row.roundingCents>0)earningItems.push(['Rounding adjustment',moneyText(row.roundingCents)]);

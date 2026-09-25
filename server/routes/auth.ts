@@ -8,6 +8,7 @@ import { db } from "../db";
 import { users, employees, userRoleEnum } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { emailConfigured } from '../services/email';
+import mfaRouter from './mfa';
 
 
 const router = express.Router();
@@ -19,6 +20,7 @@ router.use((req, res, next) => {
   res.set('Cache-Control', 'no-store');
   next();
 });
+router.use('/mfa',mfaRouter);
 
 // Employee accounts are provisioned by administrators, never through public registration.
 router.post(['/register','/signup'], (_req,res) => res.status(403).json({success:false,message:'Self-registration is disabled. Contact HR for an administrator-created account.'}));
@@ -48,7 +50,8 @@ router.post("/login", [
       username, 
       password, 
       req.ip, 
-      req.headers["user-agent"]
+      req.headers["user-agent"],
+      typeof req.body.secondFactor==='string'?req.body.secondFactor:''
     );
     
     // Set tokens in cookies (httpOnly for security)

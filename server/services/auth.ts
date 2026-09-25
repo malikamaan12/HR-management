@@ -6,8 +6,10 @@ import jwt from "jsonwebtoken";
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { emailConfigured, sendPasswordResetEmail } from './email';
 import { updateAccount, accountActor, accountTarget, auditAccount, invalidateAccount } from './account-management';
+import {mfaState,mfaRequired,mfaConfigured,verifyMfa} from './mfa';
 
 export function validateAuthConfiguration() {
+  if(process.env.MFA_ENFORCE_PRIVILEGED==='true'&&!mfaConfigured())throw new Error('MFA enforcement requires a 32-byte hexadecimal MFA_ENCRYPTION_KEY');
   const access = process.env.JWT_SECRET;
   const refresh = process.env.JWT_REFRESH_SECRET;
   if (!access || !refresh || access.length < 32 || refresh.length < 32 || access === refresh) {
@@ -39,6 +41,8 @@ const ACCESS_TOKEN_EXPIRY = "15m"; // 15 minutes
 const REFRESH_TOKEN_EXPIRY = "7d";  // 7 days
 
 export interface TokenPayload {
+  mfaVersion?: number;
+  mfaRequired?: boolean;
   userId: number;
   username: string;
   role: UserRole;
@@ -99,7 +103,7 @@ export class AuthService {
   /**
    * Login a user and generate tokens
    */
-  async login(username: string, password: string, ipAddress?: string, userAgent?: string): Promise<AuthResponse> {
+  async login(username: string, password: string, ipAddress?: string, userAgent?: string, secondFactor = ''): Promise<AuthResponse> {
     try {
       if(typeof username!=='string'||!username.trim()||username.length>254||typeof password!=='string'||!password||password.length>1024) throw new Error('Invalid credentials');
       // Accept either identifier, but never choose between ambiguous accounts.
@@ -130,8 +134,10 @@ export class AuthService {
         throw new Error("Invalid credentials");
       }
       
+      const verifiedMfaVersion=await verifyMfa(user.id,secondFactor);
       // Generate tokens
       const tokenPayload: TokenPayload = {
+        ...(verifiedMfaVersion===null?{}:{mfaVersion:verifiedMfaVersion}),
         userId: user.id,
         username: user.username,
         role: user.role,
@@ -147,6 +153,8 @@ export class AuthService {
       requireActive(current);
       if (current.lockoutUntil && current.lockoutUntil > new Date()) throw new Error('Account temporarily locked');
       if (current.accountVersion !== user.accountVersion || current.password !== user.password) throw new Error('Account changed. Sign in again');
+      const mfa=await mfaState(tx,user.id);
+      if(mfa?.enabled&&mfa.version!==verifiedMfaVersion)throw new Error('MFA configuration changed. Sign in again');
       await tx.update(users)
         .set({ 
           lastLogin: new Date(), failedLoginAttempts: 0, lockoutUntil: null
@@ -176,7 +184,7 @@ export class AuthService {
       });
       
       // Remove password from user object
-      const userWithoutPassword = safeUser(user);
+      const userWithoutPassword = {...safeUser(user),mfaRequired:mfaRequired(user.role)&&verifiedMfaVersion===null};
       
       return {
         user: userWithoutPassword,
@@ -265,8 +273,11 @@ export class AuthService {
         throw new Error("Session has been invalidated");
       }
       
+      const mfa=await mfaState(db,user.id);
+      if(mfa?.enabled&&mfa.version!==decoded.mfaVersion)throw new Error('MFA verification required');
       // Generate new tokens
       const tokenPayload: TokenPayload = {
+        ...(decoded.mfaVersion===undefined?{}:{mfaVersion:decoded.mfaVersion}),
         userId: user.id,
         username: user.username,
         role: user.role,
@@ -298,7 +309,7 @@ export class AuthService {
       });
       
       // Remove password from user object
-      const userWithoutPassword = safeUser(user);
+      const userWithoutPassword = {...safeUser(user),mfaRequired:mfaRequired(user.role)&&!mfa?.enabled};
       
       return {
         user: userWithoutPassword,
@@ -506,7 +517,9 @@ export class AuthService {
     const [session] = await db.select({ id: authSessions.id }).from(authSessions).where(and(
       eq(authSessions.userId, user.id), inArray(authSessions.accessToken, sessionTokens(token)), eq(authSessions.isActive, true), gt(authSessions.expiresAt, new Date())));
     if (!session) throw new Error('Session has been invalidated');
-    return { userId: user.id, username: user.username, role: user.role, department: user.department };
+    const mfa=await mfaState(db,user.id);
+    if(mfa?.enabled&&mfa.version!==payload.mfaVersion)throw new Error('MFA verification required');
+    return { userId: user.id, username: user.username, role: user.role, department: user.department,mfaVersion:payload.mfaVersion,mfaRequired:mfaRequired(user.role)&&!mfa?.enabled };
   }
 
   /**

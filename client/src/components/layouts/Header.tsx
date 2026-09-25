@@ -1,4 +1,6 @@
 import ThemePicker from '@/components/ux/ThemePicker';
+import LanguagePicker from '@/components/LanguagePicker';
+import {useLocale} from '@/contexts/LocaleContext';
 import HubIndicator from '@/components/communications/HubIndicator';
 import ModuleLauncher from '@/components/ux/ModuleLauncher';
 import {canOpenPage,pageForPath,roleLabel} from '@shared/navigation';
@@ -23,6 +25,7 @@ interface HeaderProps {
 }
 
 export default function Header({ pageTitle }: HeaderProps) {
+  const {t}=useLocale();
   const { user, logout } = useAuth();
   const { theme } = useTheme();
   const [location, setLocation] = useLocation();
@@ -48,17 +51,18 @@ export default function Header({ pageTitle }: HeaderProps) {
     <header className="z-20 border-b bg-card text-foreground">
       <div className="px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
         <div className="flex min-w-0 flex-1 items-center">
-          <div className="flex min-w-0 items-center gap-2 text-sm"><span className="hidden text-muted-foreground sm:inline">{pageForPath(location)?.section||'Workspace'}</span><span aria-hidden="true" className="hidden text-muted-foreground/50 sm:inline">/</span><span className="font-medium line-clamp-1">{pageTitle}</span></div>
+          <div className="flex min-w-0 items-center gap-2 text-sm"><span className="hidden text-muted-foreground sm:inline">{t(pageForPath(location)?.section||'Workspace')}</span><span aria-hidden="true" className="hidden text-muted-foreground/50 sm:inline">/</span><span className="font-medium line-clamp-1">{t(pageTitle)}</span></div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <div className="flex items-center gap-2">
             <div className="hidden md:block"><ModuleLauncher/></div>
             <ThemePicker/>
+            <LanguagePicker/>
             {canOpenPage(user?.role,pageForPath('/communications')!)&&<HubIndicator onOpen={()=>setLocation('/communications')}/>}
             {/* User Dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button aria-label="Open account menu" className="flex items-center space-x-2 rounded-full overflow-hidden">
+                <button aria-label={t('Open account menu')} className="flex items-center space-x-2 rounded-full overflow-hidden">
                   <Avatar className={cn("h-9 w-9 cursor-pointer ring-2 ring-offset-2 ring-primary", 
                     theme === 'dark' ? 'ring-offset-gray-800' : 'ring-offset-white'
                   )}>
@@ -84,16 +88,16 @@ export default function Header({ pageTitle }: HeaderProps) {
                 <DropdownMenuSeparator />
                 <DropdownMenuItem className="cursor-pointer" onClick={handleAccountClick}>
                   <User className="mr-2 h-4 w-4" />
-                  <span>My Account</span>
+                  <span>{t('My Account')}</span>
                 </DropdownMenuItem>
                 {canOpenPage(user?.role,pageForPath('/settings')!)&&<DropdownMenuItem className="cursor-pointer" onClick={handleSettingsClick}>
                   <Settings className="mr-2 h-4 w-4" />
-                  <span>HR Rules & Settings</span>
+                  <span>{t('HR Rules & Settings')}</span>
                 </DropdownMenuItem>}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem className="cursor-pointer text-destructive focus:text-destructive" onClick={handleLogout}>
                   <LogOut className="mr-2 h-4 w-4" />
-                  <span>Logout</span>
+                  <span>{t('Log out')}</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

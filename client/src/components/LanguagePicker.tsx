@@ -1,0 +1,3 @@
+import {useState} from 'react';
+import {useLocale} from '@/contexts/LocaleContext';
+export default function LanguagePicker(){const {language,setLanguage}=useLocale(),[error,setError]=useState(''),[busy,setBusy]=useState(false);return <div><select aria-label="Language / اللغة" className="max-w-28 rounded border bg-background px-2 py-1 text-sm" disabled={busy} value={language} onChange={async e=>{const value=e.target.value as 'en'|'ar';setBusy(true);setError('');try{await setLanguage(value);}catch{setError('Unable to save language / تعذر حفظ اللغة');}finally{setBusy(false);}}}><option value="en" lang="en">English</option><option value="ar" lang="ar">العربية</option></select>{error&&<p role="alert" className="text-xs text-destructive">{error}</p>}</div>;}

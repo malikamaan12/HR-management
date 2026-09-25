@@ -20,6 +20,7 @@ export async function payrollRecord(tx: WorkforceTransaction, user: TokenPayload
     const [row] = await tx.select({ record: payroll, review: payrollReviews, employeeName: sql<string> `${employees.firstName} || ' ' || ${employees.lastName}`, owner: employees.userId }).from(payroll).innerJoin(employees, eq(payroll.employeeId, employees.id)).leftJoin(payrollReviews, eq(payroll.id, payrollReviews.payrollId)).where(and(eq(payroll.id, id), employeeScope(user, 'payroll_management', permission))).for('update', { of: payroll });
     if (!row)
         fail(404, 'Payroll not found within your access');
+    if(permission!=='read'&&(await tx.execute(sql`SELECT payroll_id FROM settlement_payroll_allocations WHERE payroll_id=${id}`)).rows.length)fail(409,'This payroll is allocated to a settlement payment. Resolve that payment review before changing or paying it separately.');
     return row;
 }
 export function versionMatch(review: {

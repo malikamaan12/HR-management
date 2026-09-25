@@ -10,6 +10,7 @@ export const pages:PageDefinition[]=[
  {href:'/account',label:'My account',icon:'user',section:'Workspace',access:'signed_in'},
  {href:'/communications',label:'Communication Hub',icon:'comments',section:'Workspace',access:'communication',module:'communication_hub'},
  {href:'/helpdesk',label:'HR Helpdesk',icon:'life-ring',section:'Workspace',access:'signed_in'},
+ {href:'/privacy',label:'Privacy requests',icon:'user-shield',section:'Workspace',access:'signed_in'},
  {href:'/employees',label:'Employee Database',icon:'users',section:'People',access:'module',module:'employee_database'},
  {href:'/org-charts',label:'Organization charts',icon:'sitemap',section:'People',access:'team'},
  {href:'/recruitment',label:'Recruitment',icon:'user-plus',section:'People',access:'recruitment',module:'recruitment_onboarding'},

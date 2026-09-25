@@ -1,6 +1,9 @@
 import {z} from 'zod';
 import {moneyCents,moneyText} from './money';
 
+export const isDemoPayroll=(row:{paymentReference:string|null})=>/^DEMO(?:-|\b)/i.test(row.paymentReference||'');
+export const payrollDataClassification=(row:{paymentReference:string|null},mode:string|undefined)=>mode==='demo'||isDemoPayroll(row)?'DEMO — NOT FOR PAYMENT':mode==='operational'?'Operational':'Unconfirmed — verify source';
+
 export const exportKinds=['all','head_office','fec','mall_activation','event','unassigned'] as const;
 export const exportKindLabels:Record<typeof exportKinds[number],string>={all:'All employees',head_office:'Head Office',fec:'FEC',mall_activation:'Mall activation',event:'Event',unassigned:'Unassigned'};
 export const exportFilterSchema=z.object({month:z.coerce.number().int().min(1).max(12),year:z.coerce.number().int().min(2000).max(2200),kind:z.enum(exportKinds).default('all'),teamId:z.coerce.number().int().positive().optional(),siteId:z.coerce.number().int().positive().optional()}).strict();

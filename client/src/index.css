@@ -4,6 +4,13 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Logical layout for the Arabic workspace; bilingual document bodies retain their own direction. */
+html[dir="rtl"] .workspace-sidebar { left:auto; right:0; border-right:0; border-left:1px solid hsl(var(--border)); }
+html[dir="rtl"] .module-table th { text-align:start; }
+html[dir="rtl"] .module-table td { text-align:start; }
+html[dir="rtl"] .nav-group-toggle { text-align:start; }
+html[dir="rtl"] .login-theme { right:auto; left:1rem; }
+
 @layer base {
   :root {
     --aurora-gradient: linear-gradient(135deg, #6A4FB3 0%, #5C77B6 50%, #46A6A9 100%);

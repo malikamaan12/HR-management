@@ -7,12 +7,12 @@ import {moneyCents} from '@shared/money';
 import {effectiveCompensation} from './compensation';
 import {employmentPolicy,serviceContinuity,daysBetween,dateAfter} from './employment';
 import {getCompanySettings} from './settings';
-import {WorkflowError} from './workflowRecords';
+import {WorkflowError,qatarToday} from './workflowRecords';
 
 export function separationFail(status:number,message:string):never{throw new WorkflowError(status,message);}
 export const fingerprint=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 export async function separationPolicy(tx:any):Promise<SeparationPolicy & {version:number}>{
-  const row=(await tx.execute(sql`SELECT version,definition FROM separation_policies ORDER BY version DESC LIMIT 1`)).rows[0];
+  const row=(await tx.execute(sql`SELECT version,definition FROM separation_policies WHERE effective_from<=${qatarToday()}::date ORDER BY effective_from DESC,version DESC LIMIT 1`)).rows[0];
   return {...separationPolicySchema.parse(row?.definition||defaultSeparationPolicy),version:Number(row?.version||0)};
 }
 // Calendar months deliberately remain calendar months, including month-end and leap-day boundaries.

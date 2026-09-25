@@ -7,16 +7,17 @@ import { queryClient } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
+import {LocaleProvider} from '@/contexts/LocaleContext';
 
 // Create root with all global providers
 createRoot(document.getElementById("root")!).render(
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
-      <ThemeProvider>
+      <LocaleProvider><ThemeProvider>
         <BrandingHead />
         <App />
         <Toaster />
-      </ThemeProvider>
+      </ThemeProvider></LocaleProvider>
     </AuthProvider>
   </QueryClientProvider>
 );

@@ -12,6 +12,9 @@ export const storageCheckResult = z.object({
 });
 export type StorageCheckResult = z.infer<typeof storageCheckResult>;
 export type SystemReadiness = {
+  release?:{revision:string|null;expectedMigrations:number|null;appliedMigrations:number|null};
+  security?: {mfaConfigured:boolean;mfaEnforced:boolean;scannerConfigured:boolean;scannerRequired:boolean};
+  scheduler?: {mode:string;externalConfigured:boolean;historyAvailable:boolean;jobs:{name:string;lastStatus:string|null;lastFinishedAt:string|null;nextRunAt:string;failures:number}[]};
   checkedAt: string;
   database: { status: 'available' | 'unavailable' };
   storage: { configured: boolean; provider: string; canVerify: boolean; running: boolean;

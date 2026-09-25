@@ -12,6 +12,7 @@ import {getCompanySettings} from '../services/settings';
 import {canConfigureWps,canManageWps,getWpsSettings,loadPayrollExport,saveVersionedSetting,wpsSettingsKey,profileKey,recordKey,exportKey,fingerprint} from '../services/payroll-exports';
 import {payslipDocument,payrollCsv,sifFile} from '../services/payroll-export-files';
 import {assertUnpaidLeaveUnchanged} from '../services/payroll-leave';
+import {paymentModeError} from '../services/data-mode';
 import {requireApprovedPresence} from '../services/attendance-location';
 
 // Mounted under the authenticated payroll router, before its /:id route.
@@ -64,6 +65,7 @@ router.post('/download',handle(async(req,res)=>{
     // Payroll and WPS setting changes must not race the final file validation.
     const locked=await tx.select({id:payroll.id}).from(payroll).innerJoin(employees,eq(employees.id,payroll.employeeId)).where(and(inArray(payroll.id,input.records.map(r=>r.id)),employeeScope(req.user!,'payroll_management',input.format==='wps'?'update':'read'))).orderBy(payroll.id).for('share',{of:payroll});
     if(locked.length!==input.records.length)fail(404,'One or more payroll records are outside your access.');
+    if(input.format==='wps'&&(await tx.execute(sql`SELECT payroll_id FROM settlement_payroll_allocations WHERE payroll_id IN (${sql.join(input.records.map(r=>sql`${r.id}`),sql`,`)}) LIMIT 1`)).rows.length)fail(409,'A selected payroll is allocated to a settlement payment and cannot be exported separately.');
     if(input.format==='wps')await tx.execute(sql`select pg_advisory_xact_lock(19283023)`);
     const preview=await loadPayrollExport(tx,req.user!,input.filter);
     const index=new Map(preview.rows.map(r=>[r.id,r]));
@@ -76,6 +78,7 @@ router.post('/download',handle(async(req,res)=>{
     }).sort((a,b)=>a.employeeId-b.employeeId||a.id-b.id);
     let filename=`payslips-${input.filter.year}-${String(input.filter.month).padStart(2,'0')}`,content:string,type:string;
     if(input.format==='wps'){
+      const modeError=paymentModeError();if(modeError)fail(409,modeError);
       if(input.confirmed!==true)fail(400,'Confirm the WPS payment details before exporting.');
       if(input.settingsVersion!==preview.settingsVersion)fail(409,'Company WPS settings changed. Refresh before exporting.');
       if(preview.settingsIssues.length)fail(409,'Complete company WPS settings: '+preview.settingsIssues.join(' '));

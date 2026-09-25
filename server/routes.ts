@@ -15,6 +15,9 @@ import handbookRoutes from './routes/handbook';
 import hrLetterRoutes from './routes/hr-letters';
 import employmentRoutes from './routes/employment';
 import retentionRoutes from './routes/retention';
+import privacyRequests from './routes/privacy-requests';
+import preferences from './routes/preferences';
+import {applicationDataMode} from './services/data-mode';
 import reminderRuleRoutes from './routes/reminder-rules';
 import compensationRoutes from './routes/compensation';
 import hiringRoutes from './routes/hiring';
@@ -95,6 +98,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const admitUpload = uploadCapacity();
   app.use('/api', (req,res,next) => req.is('multipart/form-data') ? authenticate(req,res,() => admitUpload(req,res,next)) : next());
   app.use('/api/branding',brandingRouter);
+  app.get('/api/environment',(_req,res)=>res.set('Cache-Control','no-store').json({dataMode:applicationDataMode()}));
   
   // Register auth routes
   app.use('/api/auth', authRoutes);
@@ -130,6 +134,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/separations',separationRouter);
   app.use('/api/employment',employmentRoutes);
   app.use('/api/retention',retentionRoutes);
+  app.use('/api/privacy-requests',privacyRequests);
+  app.use('/api/preferences',preferences);
   app.use('/api/reminder-rules',reminderRuleRoutes);
   app.use('/api/compensation',compensationRoutes);
   app.use('/api/hiring',hiringRoutes);

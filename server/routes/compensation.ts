@@ -12,10 +12,12 @@ import { approver } from '../services/employee-services';
 import { compensationEmployee, effectiveCompensation, packageRow } from '../services/compensation';
 import { fail } from '../services/workforce';
 import { hasPermission } from '@shared/permissions';
+import contractCompensation from './contract-compensation';
 
 const router = Router();
 router.use(authenticate);
 router.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
+router.use('/employees/:employeeId/contract-mappings',contractCompensation);
 
 router.get('/employees/:employeeId', handle(async (req, res) => {
   const employeeId = positiveId.parse(req.params.employeeId), date = civilDate.parse(req.query.date || businessToday());

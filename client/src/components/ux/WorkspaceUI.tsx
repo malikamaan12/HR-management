@@ -1,10 +1,12 @@
 import {AnimatedIcon} from './ExperienceUI';
+import {useLocale} from '@/contexts/LocaleContext';
 import {useId, type ReactNode} from 'react';
 import {ChevronDown, type LucideIcon} from 'lucide-react';
 import {cn} from '@/lib/utils';
 
 export function PageHeading({title,description,actions,icon:Icon}:{title:string;description?:string;actions?:ReactNode;icon?:LucideIcon}) {
-  return <header className="workspace-heading"><div className="flex min-w-0 items-center gap-3">{Icon&&<span className="workspace-heading-icon"><AnimatedIcon icon={Icon}/></span>}<div><h1>{title}</h1>{description&&<p>{description}</p>}</div></div>{actions&&<div className="flex flex-wrap items-center gap-2">{actions}</div>}</header>;
+  const {t}=useLocale();
+  return <header className="workspace-heading"><div className="flex min-w-0 items-center gap-3">{Icon&&<span className="workspace-heading-icon"><AnimatedIcon icon={Icon}/></span>}<div><h1>{t(title)}</h1>{description&&<p>{t(description)}</p>}</div></div>{actions&&<div className="flex flex-wrap items-center gap-2">{actions}</div>}</header>;
 }
 
 export function HelpDisclosure({title='How it works',children}:{title?:string;children:ReactNode}) {

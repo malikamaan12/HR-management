@@ -46,7 +46,8 @@ export function scheduledPeriod(cadence:'daily'|'weekly'|'monthly',hour:number,n
 export async function runReportSchedules(now=new Date(),ownerId?:number){
  return db.transaction(async tx=>{
   const lock=(await tx.execute(sql`SELECT pg_try_advisory_xact_lock(7331044) AS locked`)).rows[0];
-  if(!lock.locked||!(await reportingPolicy(tx)).config.schedulesEnabled)return {created:0,failed:0,skipped:true};
+  if(!lock.locked)return {created:0,failed:0,skipped:true,reason:'busy'};
+  if(!(await reportingPolicy(tx)).config.schedulesEnabled)return {created:0,failed:0,skipped:true,reason:'disabled'};
   const jobs=(await tx.execute(sql`SELECT * FROM analytics_schedules WHERE enabled AND (${!ownerId} OR owner_id=${ownerId||0}) AND (last_attempt_at IS NULL OR last_attempt_at<${now.toISOString()}::timestamptz-interval '30 minutes') ORDER BY last_attempt_at NULLS FIRST,id LIMIT 10 FOR UPDATE SKIP LOCKED`)).rows;
   let created=0,failed=0;
   for(const row of jobs){

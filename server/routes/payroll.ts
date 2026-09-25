@@ -1,8 +1,9 @@
+import {recordPayrollPayment} from '../services/payroll-payment';
 import { Router } from 'express';
 import { z } from 'zod';
 import { and, eq, desc, sql } from 'drizzle-orm';
 import { db } from '../db';
-import { employees, payroll, payrollReviews, payrollTimeLines, workforceTimesheets as sheets, timesheetRevisions } from '@shared/schema';
+import { employees, payroll, payrollReviews, payrollTimeLines } from '@shared/schema';
 import { employeeScope } from '../services/access';
 import { authenticate } from '../middleware/auth';
 import { calculatePayroll } from '@shared/money';
@@ -11,9 +12,10 @@ import { handle } from './hr-rules';
 import { generatePayroll, payrollRecord, versionMatch, addHistory, payrollAmounts } from '../services/payroll-review';
 import { fail } from '../services/workforce';
 import { hasPermission } from '@shared/permissions';
-import {requireApprovedPresence} from '../services/attendance-location';
 import { assertUnpaidLeaveUnchanged } from '../services/payroll-leave';
 import payrollExports from './payroll-exports';
+import {paymentModeError} from '../services/data-mode';
+import {isDemoPayroll} from '@shared/payroll-exports';
 const router = Router();
 router.use(authenticate);
 router.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
@@ -56,28 +58,13 @@ router.post('/:id/action', handle(async (req, res) => {
     }));
 }));
 router.post('/:id/mark-paid', handle(async (req, res) => {
+    const modeError=paymentModeError();if(modeError)fail(409,modeError);
     const input = z.object({ version: z.number().int().positive(), reference: z.string().trim().min(1).max(150), confirmed: z.literal(true) }).strict().parse(req.body);
+    if(isDemoPayroll({paymentReference:input.reference}))fail(400,'A demo reference cannot be recorded as an operational payment.');
     res.json(await db.transaction(async (tx) => {
         const row = await payrollRecord(tx, req.user!, positiveId.parse(req.params.id), 'approve');
         versionMatch(row.review, input.version);
-        if (row.record.status !== 'approved')
-            fail(409, 'Only independently approved payroll can be marked paid');
-        if (row.review!.approverId !== req.user!.userId || row.owner === req.user!.userId)
-            fail(403, 'The designated pay approver must record payment');
-        const savedPolicy = row.review!.policy as { unpaidLeave?: unknown };
-        if (savedPolicy.unpaidLeave !== undefined) await assertUnpaidLeaveUnchanged(tx, row.record.employeeId, { start: row.review!.periodStart, end: row.review!.periodEnd }, savedPolicy.unpaidLeave);
-        const lines = await tx.select().from(payrollTimeLines).where(eq(payrollTimeLines.payrollId, row.record.id));
-        for (const line of lines) {
-            const [sheet] = await tx.select().from(sheets).where(eq(sheets.id, line.timesheetId)).for('update');
-            await requireApprovedPresence(tx,sheet.assignmentId,sheet.actualEndAt);
-            if (sheet.status !== 'approved' || sheet.version !== line.timesheetVersion)
-                fail(409, 'Included time changed; return payroll for reconciliation');
-            const [locked] = await tx.update(sheets).set({ status: 'payroll_locked', payrollId: row.record.id, lockedBy: req.user!.userId, lockedAt: new Date(), version: sheet.version + 1, updatedAt: new Date() }).where(eq(sheets.id, sheet.id)).returning();
-            await tx.insert(timesheetRevisions).values({ timesheetId: sheet.id, version: locked.version, actorId: req.user!.userId, action: 'Payroll paid', reason: `Paid through payroll #${row.record.id}`, snapshot: locked });
-        }
-        const [saved] = await tx.update(payroll).set({ status: 'processed', wpsReference: input.reference, processedBy: req.user!.userId, processedAt: new Date(), updatedAt: new Date() }).where(eq(payroll.id, row.record.id)).returning();
-        await addHistory(tx, req.user!, row.review!, 'Payment recorded', 'External reference: ' + input.reference);
-        return saved;
+        return recordPayrollPayment(tx,row,req.user!,input.reference);
     }));
 }));
 export default router;

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { eq } from 'drizzle-orm';
+import { eq,sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { readFile } from 'node:fs/promises';
@@ -12,6 +12,8 @@ import { getAppUrl } from '../config';
 import { privateStorageConfigured } from '../services/r2';
 import { storageConfigurationFingerprint, verifyPrivateStorage, retryStorageCheckCleanup } from '../services/storage-verification';
 import { WorkflowError, recordHandler } from '../services/workflowRecords';
+import {fileScanStatus} from '../services/file-scan';
+import {mfaConfigured} from '../services/mfa';
 
 const router = Router(), key = 'system:storage-verification';
 const stateSchema = z.object({ runId: z.string().uuid().nullable(), startedAt: z.string().datetime().nullable(), fingerprint: z.string(), result: storageCheckResult.nullable() });
@@ -43,7 +45,16 @@ router.get('/', recordHandler(async (_req, res) => {
     if (row) state = stateSchema.parse(row.value);
   } catch { historyAvailable = false; }
   const configured = privateStorageConfigured();
+  const scanner=fileScanStatus();
+  let expectedMigrations:number|null=null,appliedMigrations:number|null=null;
+  try{expectedMigrations=JSON.parse(await readFile(path.resolve('migrations/meta/_journal.json'),'utf8')).entries.length;appliedMigrations=Number((await db.execute(sql`SELECT count(*)::integer AS count FROM drizzle.__drizzle_migrations`)).rows[0].count);}catch{ /* Unknown migration evidence is displayed as unknown, never successful. */ }
+  const suppliedRevision=process.env.RENDER_GIT_COMMIT||process.env.APP_RELEASE||'';
+  let jobRows:Record<string,unknown>[]=[],jobHistoryAvailable=true;
+  try{jobRows=(await db.execute(sql`SELECT name,last_status,last_finished_at,next_run_at,consecutive_failures FROM scheduled_job_runtime ORDER BY name`)).rows;}catch{jobHistoryAvailable=false;}
   const response: SystemReadiness = {
+    release:{revision:/^[a-f0-9]{7,40}$/i.test(suppliedRevision)?suppliedRevision:null,expectedMigrations,appliedMigrations},
+    security:{mfaConfigured:mfaConfigured(),mfaEnforced:process.env.MFA_ENFORCE_PRIVILEGED==='true',scannerConfigured:scanner.configured,scannerRequired:scanner.required},
+    scheduler:{mode:process.env.SCHEDULER_MODE==='external'?'external':'in_process',externalConfigured:(process.env.SCHEDULER_SECRET||'').length>=32,historyAvailable:jobHistoryAvailable,jobs:jobRows.map(row=>({name:String(row.name),lastStatus:row.last_status?String(row.last_status):null,lastFinishedAt:row.last_finished_at?String(row.last_finished_at):null,nextRunAt:String(row.next_run_at),failures:Number(row.consecutive_failures)}))},
     checkedAt: new Date().toISOString(), database: { status: database },
     storage: { configured, provider: process.env.STORAGE_PROVIDER === 'supabase' ? 'Supabase' : process.env.STORAGE_PROVIDER === 'r2' || !process.env.STORAGE_PROVIDER ? 'R2' : 'Unsupported',
       canVerify: configured && process.env.STORAGE_PROVIDER === 'supabase', historyAvailable,
