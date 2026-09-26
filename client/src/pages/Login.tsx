@@ -1,174 +1,145 @@
-import ThemePicker from '@/components/ux/ThemePicker';
-import LanguagePicker from '@/components/LanguagePicker';
-import {useLocale} from '@/contexts/LocaleContext';
-import {BrandLogo,useBranding} from '@/components/Branding';
-import {defaultPublicBranding} from '@shared/branding';
-import React, { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { ArrowRight, ChevronDown, Eye, EyeOff, KeyRound, Loader2, LockKeyhole, UserRound } from 'lucide-react';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Loader2, Eye, EyeOff } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { useToast } from '@/hooks/use-toast';
+import { BrandLogo, useBranding } from '@/components/Branding';
+import LanguagePicker from '@/components/LanguagePicker';
+import ThemePicker from '@/components/ux/ThemePicker';
+import { useLocale } from '@/contexts/LocaleContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { defaultPublicBranding } from '@shared/branding';
+import '@/styles/login.css';
 
-// Define validation schema for login form
 const loginSchema = z.object({
   username: z.string().trim().min(1, 'Username or email is required').max(254),
   password: z.string().min(6, 'Password must be at least 6 characters'),
 });
-
 type LoginForm = z.infer<typeof loginSchema>;
 
-const Login: React.FC = () => {
-  const {t}=useLocale();
-  const {data:branding=defaultPublicBranding}=useBranding();
+export default function Login() {
+  const { t } = useLocale();
+  const { data: branding = defaultPublicBranding } = useBranding();
   const { login, isAuthenticated, isLoading: authLoading } = useAuth();
-  const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
-  const [secondFactor,setSecondFactor]=useState('');
-  
-  // Redirect if already authenticated
+  const [showSecondFactor, setShowSecondFactor] = useState(false);
+  const [secondFactor, setSecondFactor] = useState('');
+  const [capsLock, setCapsLock] = useState(false);
+  const busy = isLoading || authLoading;
+  const hasCustomLogo = !!(branding.assets.lightLogo || branding.assets.darkLogo);
+
   useEffect(() => {
-    if (isAuthenticated) {
-      setLocation('/');
-    }
+    if (isAuthenticated) setLocation('/');
   }, [isAuthenticated, setLocation]);
 
   const form = useForm<LoginForm>({
-    resolver: zodResolver(loginSchema.extend({username:z.string().trim().min(1,t('Username or email is required')).max(254),password:z.string().min(6,t('Password must be at least 6 characters'))})),
-    defaultValues: {
-      username: '',
-      password: '',
-    },
+    resolver: zodResolver(loginSchema.extend({
+      username: z.string().trim().min(1, t('Username or email is required')).max(254),
+      password: z.string().min(6, t('Password must be at least 6 characters')),
+    })),
+    defaultValues: { username: '', password: '' },
   });
 
-  const onSubmit = async (data: LoginForm) => {
+  async function onSubmit(data: LoginForm) {
+    setIsLoading(true);
+    setError(null);
     try {
-      setIsLoading(true);
-      setError(null);
-      
-      // Use auth context login which now handles development mode internally
-      await login(data.username, data.password,secondFactor);
-      // Redirection will happen automatically in the useEffect above
-      
-    } catch (err: any) {
-      // Handle login errors
-      console.error('Login error:', err);
-      setError(err.message || 'Authentication failed. Please check your credentials.');
+      await login(data.username, data.password, secondFactor);
+    } catch (err) {
+      setError(err instanceof Error ? t(err.message) : t('Unable to sign in. Please try again.'));
     } finally {
       setIsLoading(false);
     }
-  };
+  }
 
   return (
-    <div className="login-stage min-h-dvh flex items-center justify-center bg-background p-4"><div className="login-theme flex gap-2"><LanguagePicker/><ThemePicker/></div><div className="login-orb login-orb-one" aria-hidden="true"/><div className="login-orb login-orb-two" aria-hidden="true"/>
-      <Card className="login-card w-full max-w-md">
-        <CardHeader className="space-y-2 text-center">
-          <div className="flex justify-center mb-4">
-            <BrandLogo className="h-16 w-48"/>
-          </div>
-          <CardTitle className="justify-center text-center text-2xl font-bold text-foreground"><span>{branding.applicationName}</span></CardTitle>
-          <CardDescription>
-            {t('Enter your credentials to access your account')}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {error && (
-            <Alert variant="destructive" className="mb-4">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <FormField
-                control={form.control}
-                name="username"
-                render={({ field }) => (
+    <div className="e3-login">
+      <div className="e3-login-art" aria-hidden="true">
+        <img src="/images/login/e3-sculpture.webp" alt="" decoding="async" />
+      </div>
+      <header className="e3-login-topbar">
+        <span className="e3-login-workspace"><span className="e3-login-brand-dot" aria-hidden="true" />{branding.applicationName}</span>
+        <div className="e3-login-preferences"><LanguagePicker /><ThemePicker /></div>
+      </header>
+      <main className="e3-login-main" id="main-content">
+        <div className="e3-login-manifesto" aria-hidden="true">
+          <span>{t('Ideas.')}</span><span>{t('People.')}</span><span>{t('Beyond.')}</span><i />
+        </div>
+        <section className="e3-login-panel" aria-labelledby="login-heading">
+          <div className="e3-login-panel-content">
+            <div className="e3-login-brand">
+              {hasCustomLogo ? <BrandLogo className="e3-login-custom-logo" /> : (
+                <span className="e3-login-logo" role="img" aria-label={branding.applicationName}>
+                  {/* Present the supplied transparent logo at its artwork bounds, without changing the source. */}
+                  <img src="/images/login/e3-brand.png" alt="" aria-hidden="true" />
+                  <img className="e3-login-logo-light-ink" src="/images/login/e3-brand.png" alt="" aria-hidden="true" />
+                </span>
+              )}
+            </div>
+            <div className="e3-login-heading">
+              <p className="e3-login-eyebrow">{t('YOUR PEOPLE. YOUR WORKSPACE.')}</p>
+              <h1 id="login-heading">{t('Welcome back.')}</h1>
+              <p>{t('Sign in to continue your day.')}</p>
+            </div>
+            {error && <Alert variant="destructive" className="e3-login-error"><AlertDescription>{error}</AlertDescription></Alert>}
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} noValidate aria-busy={busy} className="e3-login-form">
+                <FormField control={form.control} name="username" render={({ field }) => (
                   <FormItem>
                     <FormLabel>{t('Username or email')}</FormLabel>
-                    <FormControl>
-                      <Input placeholder={t('Enter your username or email')} autoComplete="username" autoCapitalize="none" spellCheck={false} {...field} disabled={isLoading} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Password')}</FormLabel>
-                    <div className="relative">
-                      <FormControl>
-                        <Input 
-                          type={showPassword ? "text" : "password"}
-                          autoComplete="current-password"
-                          placeholder={t('Enter your password')}
-                          {...field} 
-                          disabled={isLoading}
-                          className="pr-10" 
-                        />
-                      </FormControl>
-                      <button
-                        aria-label={t(showPassword ? 'Hide password' : 'Show password')}
-                        type="button"
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                        onClick={() => setShowPassword(!showPassword)}
-                      >
-                        {showPassword ? (
-                          <EyeOff className="h-4 w-4" />
-                        ) : (
-                          <Eye className="h-4 w-4" />
-                        )}
-                      </button>
+                    <div className="e3-login-input-wrap">
+                      <UserRound aria-hidden="true" className="e3-login-input-icon" />
+                      <FormControl><Input {...field} className="e3-login-input" placeholder={t('Enter your username or email')} autoComplete="username" autoCapitalize="none" spellCheck={false} disabled={busy} /></FormControl>
                     </div>
                     <FormMessage />
                   </FormItem>
-                )}
-              />
-
-              <div className="space-y-2"><label htmlFor="second-factor" className="text-sm font-medium">{t('Authenticator or recovery code')}</label><Input id="second-factor" autoComplete="one-time-code" maxLength={24} value={secondFactor} onChange={e=>setSecondFactor(e.target.value.replace(/\s/g,''))} disabled={isLoading}/><p className="text-xs text-muted-foreground">{t('Enter a code if you enabled multifactor authentication.')}</p></div>
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {t('Signing in...')}
-                  </>
-                ) : (
-                  t('Sign In')
-                )}
-              </Button>
-            </form>
-          </Form>
-        </CardContent>
-        <CardFooter className="flex flex-col space-y-4">
-          <div className="text-sm text-center text-muted-foreground">
-            {t('Accounts are created by your administrator. Contact HR for access.')}
+                )} />
+                <FormField control={form.control} name="password" render={({ field }) => (
+                  <FormItem>
+                    <div className="e3-login-label-row">
+                      <FormLabel>{t('Password')}</FormLabel><a href="/forgot-password">{t('Forgot password?')}</a>
+                    </div>
+                    <div className="e3-login-input-wrap">
+                      <LockKeyhole aria-hidden="true" className="e3-login-input-icon" />
+                      <FormControl><Input {...field} type={showPassword ? 'text' : 'password'} autoComplete="current-password" placeholder={t('Enter your password')} disabled={busy} className="e3-login-input e3-login-password" onKeyDown={event => setCapsLock(event.getModifierState('CapsLock'))} onKeyUp={event => setCapsLock(event.getModifierState('CapsLock'))} onBlur={() => { field.onBlur(); setCapsLock(false); }} /></FormControl>
+                      <button className="e3-login-password-toggle" type="button" disabled={busy} aria-label={t(showPassword ? 'Hide password' : 'Show password')} aria-pressed={showPassword} onClick={() => setShowPassword(value => !value)}>
+                        {showPassword ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
+                      </button>
+                    </div>
+                    {capsLock && <p className="e3-login-caps" role="status">{t('Caps Lock is on.')}</p>}
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <div className="e3-login-verification">
+                  <button className="e3-login-code-trigger" type="button" disabled={busy} aria-expanded={showSecondFactor} aria-controls="login-verification" onClick={() => { setShowSecondFactor(value => !value); setSecondFactor(''); }}>
+                    <KeyRound aria-hidden="true" /><span>{t('Use an authenticator or recovery code')}</span><ChevronDown aria-hidden="true" className={showSecondFactor ? 'is-expanded' : ''} />
+                  </button>
+                  {showSecondFactor && <div id="login-verification" className="e3-login-code-panel">
+                    <label htmlFor="second-factor">{t('Authenticator or recovery code')}</label>
+                    <Input id="second-factor" name="secondFactor" className="e3-login-input e3-login-code-input" dir="ltr" autoFocus autoComplete="one-time-code" autoCapitalize="none" spellCheck={false} maxLength={24} value={secondFactor} onChange={event => setSecondFactor(event.target.value.replace(/\s/g, ''))} disabled={busy} aria-describedby="login-code-hint" />
+                    <p id="login-code-hint">{t('Use your authenticator code or an unused recovery code. Your password is still required.')}</p>
+                  </div>}
+                </div>
+                <Button type="submit" className="e3-login-submit" disabled={busy}>
+                  <span>{isLoading ? t('Signing in...') : authLoading ? t('Please wait…') : t('Sign In')}</span>
+                  {busy ? <Loader2 className="animate-spin" aria-hidden="true" /> : <ArrowRight aria-hidden="true" />}
+                </Button>
+              </form>
+            </Form>
+            <div className="e3-login-access"><LockKeyhole aria-hidden="true" /><p>{t('Need an account?')} <span>{t('Contact your HR team.')}</span></p></div>
           </div>
-          <div className="text-sm text-center text-muted-foreground">
-            <a href="/forgot-password" className="hover:text-primary underline underline-offset-4">
-              {t('Forgot password?')}
-            </a>
-          </div>
-          <div className="text-xs text-center text-muted-foreground">
-            <p>© {new Date().getFullYear()} {branding.applicationName}. {t('All rights reserved.')}</p>
-          </div>
-        </CardFooter>
-      </Card>
+        </section>
+        <p className="e3-login-side-note" aria-hidden="true">{t('Great experiences.')}<br /><strong>{t('Start with our people.')}</strong></p>
+      </main>
+      <footer className="e3-login-footer"><span>© {new Date().getFullYear()} {branding.applicationName}</span><span>{t('All rights reserved.')}</span></footer>
     </div>
   );
-};
-
-export default Login;
+}

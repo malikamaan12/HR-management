@@ -2,6 +2,18 @@ import {compensationArabic} from './compensation-localization';
 import {employeeArabic} from './employee-localization';
 export type Language='en'|'ar';
 export const arabic:Record<string,string>={
+ 'Welcome back.':'مرحبًا بعودتك.',
+ 'YOUR PEOPLE. YOUR WORKSPACE.':'فريقك. مساحة عملك.',
+ 'Sign in to continue your day.':'سجّل الدخول لمتابعة يومك.',
+ 'Use an authenticator or recovery code':'استخدام رمز المصادقة أو الاسترداد',
+ 'Use your authenticator code or an unused recovery code. Your password is still required.':'أدخل رمز المصادقة أو رمز استرداد غير مستخدم. تظل كلمة المرور مطلوبة.',
+ 'Need an account?':'تحتاج إلى حساب؟',
+ 'Contact your HR team.':'تواصل مع فريق الموارد البشرية.',
+ 'Caps Lock is on.':'مفتاح الأحرف الكبيرة مفعّل.',
+ 'Unable to sign in. Please try again.':'تعذّر تسجيل الدخول. يرجى المحاولة مجددًا.',
+ 'Please wait…':'يرجى الانتظار…',
+ 'Ideas.':'أفكار.', 'People.':'أشخاص.', 'Beyond.':'آفاق أوسع.',
+ 'Great experiences.':'تجارب مميزة.', 'Start with our people.':'تبدأ مع فريقنا.',
  ...compensationArabic,
  ...employeeArabic,
  'Enter your credentials to access your account':'أدخل بيانات تسجيل الدخول للوصول إلى حسابك','Enter your username or email':'أدخل اسم المستخدم أو البريد الإلكتروني','Enter your password':'أدخل كلمة المرور','Hide password':'إخفاء كلمة المرور','Show password':'إظهار كلمة المرور','Enter a code if you enabled multifactor authentication.':'أدخل الرمز إذا فعّلت المصادقة متعددة العوامل.','Signing in...':'جارٍ تسجيل الدخول…','Accounts are created by your administrator. Contact HR for access.':'ينشئ المسؤول الحسابات. تواصل مع الموارد البشرية للحصول على صلاحية الدخول.','Forgot password?':'هل نسيت كلمة المرور؟','All rights reserved.':'جميع الحقوق محفوظة.','Username or email is required':'اسم المستخدم أو البريد الإلكتروني مطلوب','Password must be at least 6 characters':'يجب أن تتكون كلمة المرور من ستة أحرف على الأقل','Modules':'الأقسام','Browse modules':'استعراض الأقسام','What would you like to do?':'ماذا تريد أن تفعل؟','Choose a workspace available to your account.':'اختر مساحة عمل متاحة لحسابك.','Search workspaces':'البحث في مساحات العمل','Search people, leave, payroll…':'ابحث عن الموظفين أو الإجازات أو الرواتب…','No available workspaces match your search.':'لا توجد مساحات عمل متاحة تطابق بحثك.',
